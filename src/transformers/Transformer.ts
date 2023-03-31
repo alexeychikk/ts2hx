@@ -9,6 +9,7 @@ export type VisitNodeContext = {};
 
 export type SourceFileContext = {
 	includeEitherTypeImport?: boolean;
+	includeDynamicAccessImport?: boolean;
 	nodesToIgnore: Set<ts.Node>;
 };
 
@@ -36,11 +37,14 @@ export class Transformer {
 	}
 
 	run(): string {
-		let haxeCode = this.visitNode(this.sourceFile, {});
-		if (this.context.includeEitherTypeImport) {
-			haxeCode = `import haxe.extern.EitherType;\n\n${haxeCode}`;
-		}
-		return haxeCode;
+		const haxeCode = this.visitNode(this.sourceFile, {});
+
+		const imports = [
+			this.context.includeEitherTypeImport && `import haxe.extern.EitherType;`,
+			this.context.includeDynamicAccessImport && `import haxe.DynamicAccess;`,
+		].filter(Boolean);
+
+		return `${imports.join("\n") + (imports.length ? "\n\n" : "")}${haxeCode}`;
 	}
 
 	protected visitNode(

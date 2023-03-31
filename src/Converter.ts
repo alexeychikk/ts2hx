@@ -3,9 +3,10 @@ import fs from "fs-extra";
 import path from "path";
 import { Transformer, TransformerFn } from "./transformers";
 import * as fn from "./transformers/fn";
+import { logger } from "./Logger";
 
 export type ConverterOptions = {
-	program: ts.Program;
+	tsconfigPath: string;
 	outputDirPath: string;
 	rootPackageName?: string;
 };
@@ -18,6 +19,8 @@ const transformers: TransformerFn[] = [
 	fn.transformTemplateExpression,
 	fn.transformTemplateParts,
 	fn.transformPropertyAssignment,
+	fn.transformElementAccessOfObject,
+	fn.transformElementWriteToObject,
 	fn.transformGetSet,
 	fn.transformMethodOnObject,
 	fn.transformLiteralTypes,
@@ -29,7 +32,10 @@ const transformers: TransformerFn[] = [
 	fn.transformNotOperator,
 	fn.transformConditions,
 	fn.transformForLoop,
+	fn.transformForOfLoop,
+	fn.transformForInLoop,
 	fn.transformJsApiAccess,
+	fn.transformCommonTypes,
 	fn.transformKeywords,
 ];
 
@@ -40,7 +46,25 @@ export class Converter {
 	outputDirPath: string;
 
 	constructor(options: ConverterOptions) {
-		this.program = options.program;
+		const configFile = ts.readConfigFile(options.tsconfigPath, ts.sys.readFile);
+
+		if (configFile.error) {
+			logger.error(configFile.error.messageText);
+			process.exit(1);
+		}
+
+		const config = ts.parseJsonConfigFileContent(
+			configFile.config,
+			ts.sys,
+			path.dirname(options.tsconfigPath)
+		);
+
+		const program = ts.createProgram({
+			rootNames: config.fileNames,
+			options: config.options,
+		});
+
+		this.program = program;
 		this.outputDirPath = options.outputDirPath;
 		this.typeChecker = this.program.getTypeChecker();
 		this.compilerOptions = this.program.getCompilerOptions();

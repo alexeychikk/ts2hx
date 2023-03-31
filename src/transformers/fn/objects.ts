@@ -26,6 +26,48 @@ export const transformPropertyAssignment: TransformerFn = function (
 	}
 };
 
+export const transformElementAccessOfObject: TransformerFn = function (
+	this: Transformer,
+	node,
+	context
+) {
+	// myObj[myKey]
+	if (!ts.isElementAccessExpression(node)) return;
+	const type = this.typeChecker.getTypeAtLocation(node.expression);
+	if (this.typeChecker.isArrayLikeType(type)) return;
+	if (type.flags & ts.TypeFlags.Object) {
+		return `Reflect.field(${this.visitNode(
+			node.expression,
+			context
+		)}, ${this.visitNode(node.argumentExpression, context)})`;
+	}
+};
+
+export const transformElementWriteToObject: TransformerFn = function (
+	this: Transformer,
+	node,
+	context
+) {
+	// myObj[myKey] = myValue
+	if (!ts.isBinaryExpression(node)) return;
+	if (node.operatorToken.kind !== SyntaxKind.EqualsToken) return;
+	if (!ts.isElementAccessExpression(node.left)) return;
+
+	const { expression, argumentExpression } = node.left;
+	const type = this.typeChecker.getTypeAtLocation(expression);
+	if (this.typeChecker.isArrayLikeType(type)) return;
+
+	if (type.flags & ts.TypeFlags.Object) {
+		return `Reflect.setField(${this.visitNode(
+			expression,
+			context
+		)}, ${this.visitNode(argumentExpression, context)}, ${this.visitNode(
+			node.right,
+			context
+		)})`;
+	}
+};
+
 export const transformGetSet: TransformerFn = function (
 	this: Transformer,
 	node

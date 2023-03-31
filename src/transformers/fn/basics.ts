@@ -44,6 +44,26 @@ export const transformKeywords: TransformerFn = function (
 	}
 };
 
+export const transformCommonTypes: TransformerFn = function (
+	this: Transformer,
+	node,
+	context
+) {
+	if (!ts.isTypeReferenceNode(node)) return;
+	const type = this.typeChecker.getTypeAtLocation(node.typeName);
+	const name = type.aliasSymbol?.name || type.symbol.name;
+
+	switch (name) {
+		case "Record":
+			this.context.includeDynamicAccessImport = true;
+			return `DynamicAccess<${
+				node.typeArguments?.[1]
+					? this.visitNode(node.typeArguments[1], context)
+					: "Dynamic"
+			}>`;
+	}
+};
+
 export const transformSimpleTemplate: TransformerFn = function (
 	this: Transformer,
 	node

@@ -116,5 +116,3 @@ function wrapper() {
 	// make sure infinite loop is last
 	for (;;) console.log("infinite");
 }
-
-//
