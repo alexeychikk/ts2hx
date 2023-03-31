@@ -1,0 +1,19 @@
+{
+	"name": "ts2hx",
+	"version": "1.0.0",
+	"description": "",
+	"main": "dist/src/cli.js",
+	"scripts": {
+		"ts": "tsc -p tsconfig.json"
+	},
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"fs-extra": "~11.1.1",
+		"typescript": "~5.0.2"
+	},
+	"devDependencies": {
+		"@types/fs-extra": "~11.0.1",
+		"@types/node": "~18.15.6"
+	}
+}
