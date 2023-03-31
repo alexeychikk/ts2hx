@@ -1,10 +1,10 @@
-import ts from "typescript";
-import { Transformer, TransformerFn } from "../Transformer";
+import ts from 'typescript';
+import { type Transformer, type TransformerFn } from '../Transformer';
 
 export const transformArrowFnToken: TransformerFn = function (
-	this: Transformer,
-	node
+  this: Transformer,
+  node,
 ) {
-	if (!ts.isEqualsGreaterThanToken(node)) return;
-	return `->`;
+  if (!ts.isEqualsGreaterThanToken(node)) return;
+  return `->`;
 };

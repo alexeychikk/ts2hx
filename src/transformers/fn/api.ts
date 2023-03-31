@@ -1,13 +1,13 @@
-import ts from "typescript";
-import { Transformer, TransformerFn } from "../Transformer";
+import ts from 'typescript';
+import { type Transformer, type TransformerFn } from '../Transformer';
 
 export const transformJsApiAccess: TransformerFn = function (
-	this: Transformer,
-	node
+  this: Transformer,
+  node,
 ) {
-	if (!ts.isPropertyAccessExpression(node)) return;
-	switch (node.getText()) {
-		case "console.log":
-			return "trace";
-	}
+  if (!ts.isPropertyAccessExpression(node)) return;
+  switch (node.getText()) {
+    case 'console.log':
+      return 'trace';
+  }
 };

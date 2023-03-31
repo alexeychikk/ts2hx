@@ -1,7 +1,7 @@
 {
 	"name": "ts2hx",
 	"version": "1.0.0",
-	"description": "",
+	"description": "Converts TypeScript into Haxe",
 	"main": "dist/src/cli.js",
 	"engines": {
 		"npm": ">=8.0.0",
@@ -9,7 +9,9 @@
 	},
 	"scripts": {
 		"start": "node ./dist/src/cli.js",
-		"ts": "tsc -p tsconfig.json"
+		"ts": "tsc -p tsconfig.json",
+		"lint": "eslint .",
+		"lint:fix": "eslint . --fix"
 	},
 	"author": "",
 	"license": "ISC",
@@ -19,6 +21,14 @@
 	},
 	"devDependencies": {
 		"@types/fs-extra": "~11.0.1",
-		"@types/node": "~18.15.6"
+		"@types/node": "~18.15.6",
+		"@typescript-eslint/eslint-plugin": "^5.57.0",
+		"eslint": "^8.37.0",
+		"eslint-config-prettier": "^8.8.0",
+		"eslint-config-standard-with-typescript": "^34.0.1",
+		"eslint-plugin-import": "^2.27.5",
+		"eslint-plugin-n": "^15.7.0",
+		"eslint-plugin-promise": "^6.1.1",
+		"prettier": "^2.8.7"
 	}
 }

@@ -1,67 +1,67 @@
-import ts, { SyntaxKind } from "typescript";
-import { TsUtils } from "../../TsUtils";
-import { Transformer, TransformerFn } from "../Transformer";
+import ts from 'typescript';
+import { TsUtils } from '../../TsUtils';
+import { type Transformer, type TransformerFn } from '../Transformer';
 
 export const transformForLoop: TransformerFn = function (
-	this: Transformer,
-	node,
-	context
+  this: Transformer,
+  node,
+  context,
 ) {
-	// for (;;)
-	if (!ts.isForStatement(node)) return;
+  // for (;;)
+  if (!ts.isForStatement(node)) return;
 
-	const declarations = node.initializer
-		? `${this.visitNode(node.initializer, context)};\n`
-		: "";
-	const indent = node.initializer ? TsUtils.getIndent(node) : "";
+  const declarations = node.initializer
+    ? `${this.visitNode(node.initializer, context)};\n`
+    : '';
+  const indent = node.initializer ? TsUtils.getIndent(node) : '';
 
-	const condition = node.condition
-		? this.toExplicitBooleanCondition(node.condition, context)
-		: "true";
+  const condition = node.condition
+    ? this.toExplicitBooleanCondition(node.condition, context) ?? ''
+    : 'true';
 
-	const body = ts.isBlock(node.statement)
-		? node.statement.statements.map((s) => this.visitNode(s, context)).join("")
-		: this.visitNode(node.statement, context);
+  const body = ts.isBlock(node.statement)
+    ? node.statement.statements.map((s) => this.visitNode(s, context)).join('')
+    : this.visitNode(node.statement, context);
 
-	const increments = node.incrementor
-		? `${this.toSeparateStatements(node.incrementor, context)}`
-		: "";
+  const increments = node.incrementor
+    ? `${this.toSeparateStatements(node.incrementor, context)}`
+    : '';
 
-	return `${declarations}${indent}while(${condition}) {${body}\n${increments}${TsUtils.getIndent(
-		node
-	)}}`;
+  return `${declarations}${indent}while(${condition}) {${body}\n${increments}${TsUtils.getIndent(
+    node,
+  )}}`;
 };
 
 export const transformForOfLoop: TransformerFn = function (
-	this: Transformer,
-	node,
-	context
+  this: Transformer,
+  node,
+  context,
 ) {
-	// for (const var of arr)
-	if (!ts.isForOfStatement(node)) return;
+  // for (const var of arr)
+  if (!ts.isForOfStatement(node)) return;
 
-	const initializer = ts.isVariableDeclarationList(node.initializer)
-		? this.visitNode(node.initializer.declarations[0], context)
-		: this.visitNode(node.initializer, context);
-	const expression = this.visitNode(node.expression, context);
-	const body = this.visitNode(node.statement, context);
+  const initializer = ts.isVariableDeclarationList(node.initializer)
+    ? this.visitNode(node.initializer.declarations[0], context)
+    : this.visitNode(node.initializer, context);
+  const expression = this.visitNode(node.expression, context);
+  const body = this.visitNode(node.statement, context);
 
-	return `for (${initializer} in ${expression}) ${body}`;
+  return `for (${initializer} in ${expression}) ${body}`;
 };
 
 export const transformForInLoop: TransformerFn = function (
-	this: Transformer,
-	node,
-	context
+  this: Transformer,
+  node,
+  context,
 ) {
-	// for (const var in obj)
-	if (!ts.isForInStatement(node)) return;
+  // for (const var in obj)
+  if (!ts.isForInStatement(node)) return;
 
-	const initializer = ts.isVariableDeclarationList(node.initializer)
-		? this.visitNode(node.initializer.declarations[0], context)
-		: this.visitNode(node.initializer, context);
-	let expression = this.visitNode(node.expression, context);
-	const body = this.visitNode(node.statement, context);
+  const initializer = ts.isVariableDeclarationList(node.initializer)
+    ? this.visitNode(node.initializer.declarations[0], context)
+    : this.visitNode(node.initializer, context);
+  const expression = this.visitNode(node.expression, context);
+  const body = this.visitNode(node.statement, context);
 
-	return `for (${initializer} in Reflect.fields(${expression})) ${body}`;
+  return `for (${initializer} in Reflect.fields(${expression})) ${body}`;
 };
