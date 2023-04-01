@@ -6,6 +6,7 @@ let myNan = NaN;
 const myBoolean: boolean = false;
 let myNull: null = null;
 let myUndefined: undefined = undefined;
+let myVoid = void 0;
 
 /**
  * Literal types
@@ -55,7 +56,7 @@ const myObject = {
     this.foo = value;
   },
   myMethod() {},
-  myFnProp: function foo() {
+  myFnProp: function foo(): void {
     console.log('foo');
   },
   myAnonymousFnProp: function () {
@@ -63,7 +64,6 @@ const myObject = {
   },
   myArrowFnProp: () => ({ foo: 'bar' }),
 };
-export const MY_RECORD: Record<number, string> = { 1: 'foo', 2: 'bar' };
 /* --- */
 
 function wrapper() {
@@ -83,6 +83,7 @@ function wrapper() {
   myObject.foo = 'not foo';
   myObject['0_stringKey'] = [];
   const myArrayAccess = myNumberArray[1];
+  void (2 * 2 === 4);
 
   if (myNumber) {
     console.log('if statement');

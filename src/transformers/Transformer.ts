@@ -57,7 +57,9 @@ export class Transformer {
     }
 
     const transformedCode = this.transformNode(node, context);
-    if (transformedCode) return this.dump(node, transformedCode);
+    if (transformedCode != null) {
+      return this.dump(node, transformedCode);
+    }
 
     return this.traverseChildren(node, context);
   }
@@ -68,7 +70,7 @@ export class Transformer {
   ): string | undefined {
     for (const fn of this.transformers) {
       const result = fn.call(this, node, context);
-      if (result) return result;
+      if (result != null) return result;
     }
   }
 

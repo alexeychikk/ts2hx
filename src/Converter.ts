@@ -1,8 +1,7 @@
 import ts from 'typescript';
 import fs from 'fs-extra';
 import path from 'path';
-import { Transformer, type TransformerFn } from './transformers';
-import * as fn from './transformers/fn';
+import { Transformer, api, lang, type TransformerFn } from './transformers';
 import { logger } from './Logger';
 
 export interface ConverterOptions {
@@ -11,32 +10,36 @@ export interface ConverterOptions {
   rootPackageName?: string;
 }
 
+// Order here actually matters
 const transformers: TransformerFn[] = [
-  fn.transformVariableDeclarationList,
-  fn.transformVariableDeclaration,
-  fn.transformArrowFnToken,
-  fn.transformSimpleTemplate,
-  fn.transformTemplateExpression,
-  fn.transformTemplateParts,
-  fn.transformPropertyAssignment,
-  fn.transformElementAccessOfObject,
-  fn.transformElementWriteToObject,
-  fn.transformGetSet,
-  fn.transformMethodOnObject,
-  fn.transformLiteralTypes,
-  fn.transformArrayType,
-  fn.transformUnionType,
-  fn.transformTupleType,
-  fn.transformAsExpression,
-  fn.transformRegex,
-  fn.transformNotOperator,
-  fn.transformConditions,
-  fn.transformForLoop,
-  fn.transformForOfLoop,
-  fn.transformForInLoop,
-  fn.transformJsApiAccess,
-  fn.transformCommonTypes,
-  fn.transformKeywords,
+  api.transformJsApiAccess,
+  api.transformTsLibTypes,
+  lang.transformVariableDeclarationList,
+  lang.transformVariableDeclaration,
+  lang.transformForLoop,
+  lang.transformForOfLoop,
+  lang.transformForInLoop,
+  lang.transformPropertySignature,
+  lang.transformMethodSignature,
+  lang.transformPropertyAssignment,
+  lang.transformElementAccessOfObject,
+  lang.transformElementWriteToObject,
+  lang.transformGetSet,
+  lang.transformMethodOnObject,
+  lang.transformSimpleTemplate,
+  lang.transformTemplateExpression,
+  lang.transformTemplateParts,
+  lang.transformLiteralTypes,
+  lang.transformArrayType,
+  lang.transformUnionType,
+  lang.transformTupleType,
+  lang.transformVoidExpression,
+  lang.transformAsExpression,
+  lang.transformRegex,
+  lang.transformNotOperator,
+  lang.transformConditions,
+  lang.transformArrowFnToken,
+  lang.transformKeywords,
 ];
 
 export class Converter {

@@ -1,4 +1,5 @@
 import ts, { SyntaxKind } from 'typescript';
+import { logger } from '../../Logger';
 import { TsUtils } from '../../TsUtils';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
@@ -19,6 +20,8 @@ export const transformKeywords: TransformerFn = function (
     // myVar: undefined
     case SyntaxKind.UndefinedKeyword:
       return 'Null<Void>';
+    case SyntaxKind.VoidKeyword:
+      return 'Void';
     // myVar: unknown
     case SyntaxKind.UnknownKeyword:
     // myVar: any
@@ -41,26 +44,6 @@ export const transformKeywords: TransformerFn = function (
         case 'NaN':
           return 'Math.NaN';
       }
-  }
-};
-
-export const transformCommonTypes: TransformerFn = function (
-  this: Transformer,
-  node,
-  context,
-) {
-  if (!ts.isTypeReferenceNode(node)) return;
-  const type = this.typeChecker.getTypeAtLocation(node.typeName);
-  const name = type.aliasSymbol?.name ?? type.symbol.name;
-
-  switch (name) {
-    case 'Record':
-      this.context.includeDynamicAccessImport = true;
-      return `DynamicAccess<${
-        node.typeArguments?.[1]
-          ? this.visitNode(node.typeArguments[1], context)
-          : 'Dynamic'
-      }>`;
   }
 };
 
@@ -102,72 +85,44 @@ export const transformRegex: TransformerFn = function (
   return `~${node.text}`;
 };
 
-export const transformLiteralTypes: TransformerFn = function (
-  this: Transformer,
-  node,
-) {
-  if (!ts.isLiteralTypeNode(node)) return;
-  // myVar: 42
-  if (ts.isNumericLiteral(node.literal)) {
-    return 'Float';
-  }
-  // myVar: "Hello"
-  if (ts.isStringLiteral(node.literal)) {
-    return 'String';
-  }
-  // myVar: true
-  if (
-    node.literal.kind === SyntaxKind.TrueKeyword ||
-    node.literal.kind === SyntaxKind.FalseKeyword
-  ) {
-    return 'Bool';
-  }
-  // myVar: null
-  if (node.literal.kind === SyntaxKind.NullKeyword) {
-    return 'Null<Void>';
-  }
-};
-
-export const transformArrayType: TransformerFn = function (
-  this: Transformer,
-  node,
-  context,
-) {
-  // myVar: number[]
-  if (!ts.isArrayTypeNode(node)) return;
-  return `Array<${this.visitNode(node.elementType, context)}>`;
-};
-
-export const transformUnionType: TransformerFn = function (
-  this: Transformer,
-  node,
-  context,
-) {
-  // myVar: string | boolean
-  if (!ts.isUnionTypeNode(node)) return;
-  if (node.types.length > 3) return 'Dynamic';
-  return this.toEitherType(node, context, node.types);
-};
-
-export const transformTupleType: TransformerFn = function (
-  this: Transformer,
-  node,
-  context,
-) {
-  // myVar: [number, string]
-  if (!ts.isTupleTypeNode(node)) return;
-  if (node.elements.length > 3) return 'Dynamic';
-  const res = this.toEitherType(node, context, node.elements);
-  return res ? `Array<${res}>` : undefined;
-};
-
 export const transformAsExpression: TransformerFn = function (
   this: Transformer,
   node,
   context,
 ) {
+  if (!ts.isAsExpression(node)) return;
+
+  // as const
+  if (
+    ts.isTypeReferenceNode(node.type) &&
+    node.type.typeName.getText() === 'const'
+  ) {
+    return this.visitNode(node.expression, context);
+  }
+
   // myVar = hisVar as T
-  if (ts.isAsExpression(node) && !ts.isParenthesizedExpression(node.parent)) {
+  if (!ts.isParenthesizedExpression(node.parent)) {
     return `(${this.traverseChildren(node, context)})`;
+  }
+};
+
+export const transformVoidExpression: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  if (!ts.isVoidExpression(node)) return;
+  if (
+    ts.isLiteralExpression(node.expression) ||
+    ts.isIdentifier(node.expression)
+  ) {
+    return `null`;
+  } else {
+    logger.warn(
+      `void expression is not supported at`,
+      TsUtils.getNodeSourcePath(node),
+    );
+
+    return `${TsUtils.commentOutNode(node)} null`;
   }
 };
