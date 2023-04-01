@@ -18,7 +18,7 @@ export const transformKeywords: TransformerFn = function (
       return 'Bool';
     // myVar: undefined
     case SyntaxKind.UndefinedKeyword:
-      return 'Null<Any>';
+      return 'Null<Void>';
     // myVar: unknown
     case SyntaxKind.UnknownKeyword:
     // myVar: any
@@ -124,7 +124,7 @@ export const transformLiteralTypes: TransformerFn = function (
   }
   // myVar: null
   if (node.literal.kind === SyntaxKind.NullKeyword) {
-    return 'Null<Any>';
+    return 'Null<Void>';
   }
 };
 
