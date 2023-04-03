@@ -1,4 +1,6 @@
 import ts, { SyntaxKind } from 'typescript';
+import { TsUtils } from '../../TsUtils';
+import { logger } from '../../Logger';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
 export const transformLiteralTypes: TransformerFn = function (
@@ -81,6 +83,21 @@ export const transformPropertySignature: TransformerFn = function (
   };`;
 };
 
+export const transformIndexSignature: TransformerFn = function (
+  this: Transformer,
+  node,
+) {
+  // { [key: string]: number; }
+  if (!ts.isIndexSignatureDeclaration(node)) return;
+
+  logger.warn(
+    'Index signature is not supported at',
+    TsUtils.getNodeSourcePath(node),
+  );
+
+  return TsUtils.commentOutNode(node);
+};
+
 export const transformMethodSignature: TransformerFn = function (
   this: Transformer,
   node,
@@ -103,4 +120,20 @@ export const transformMethodSignature: TransformerFn = function (
   }public function ${node.name.getText()}${generics ? `<${generics}>` : ''}(${
     params || ''
   }):${ret};`;
+};
+
+export const transformTypeQuery: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  // type T = typeof MY_VAR
+  if (!ts.isTypeQueryNode(node)) return;
+
+  logger.warn(
+    'typeof type query is not supported at',
+    TsUtils.getNodeSourcePath(node),
+  );
+
+  return `${TsUtils.commentOutNode(node)} Any`;
 };

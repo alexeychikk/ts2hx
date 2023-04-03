@@ -126,3 +126,14 @@ export const transformVoidExpression: TransformerFn = function (
     return `${TsUtils.commentOutNode(node)} null`;
   }
 };
+
+export const transformTypeofExpression: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  if (!ts.isTypeOfExpression(node)) return;
+
+  this.context.importTs2hx = true;
+  return `Ts2hx.typeof(${this.visitNode(node.expression, context)})`;
+};

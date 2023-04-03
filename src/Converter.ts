@@ -7,7 +7,6 @@ import { logger } from './Logger';
 export interface ConverterOptions {
   tsconfigPath: string;
   outputDirPath: string;
-  rootPackageName?: string;
 }
 
 // Order here actually matters
@@ -20,6 +19,7 @@ const transformers: TransformerFn[] = [
   lang.transformForOfLoop,
   lang.transformForInLoop,
   lang.transformPropertySignature,
+  lang.transformIndexSignature,
   lang.transformMethodSignature,
   lang.transformPropertyAssignment,
   lang.transformElementAccessOfObject,
@@ -35,6 +35,8 @@ const transformers: TransformerFn[] = [
   lang.transformTupleType,
   lang.transformVoidExpression,
   lang.transformAsExpression,
+  lang.transformTypeofExpression,
+  lang.transformTypeQuery,
   lang.transformRegex,
   lang.transformNotOperator,
   lang.transformConditions,
@@ -81,6 +83,8 @@ export class Converter {
     await Promise.all(
       this.program.getSourceFiles().map(this.convertSourceFile),
     );
+    const libFiles = path.resolve(process.cwd(), './lib');
+    await fs.copy(libFiles, this.outputDirPath);
   }
 
   protected convertSourceFile = async (
@@ -94,19 +98,37 @@ export class Converter {
       typeChecker: this.typeChecker,
     });
     const haxeCode = transformer.run();
+    if (!haxeCode) {
+      logger.log(`Transformed file is empty`, sourceFile.fileName);
+      return;
+    }
+    const packageName = this.getPackageName(sourceFile.fileName);
+    const moduleCode = `${
+      packageName ? `package ${packageName};\n\n` : ''
+    }${haxeCode}`;
 
-    await this.writeOutputFile(sourceFile.fileName, haxeCode);
+    await this.writeOutputFile(sourceFile.fileName, moduleCode);
   };
 
   protected async writeOutputFile(
     fileName: string,
     code: string,
   ): Promise<void> {
-    const relativePath = path.relative(this.compilerOptions.rootDir!, fileName);
+    const relativePath = this.getRelativeFilePath(fileName);
     const haxeFileName = path.join(
       this.outputDirPath,
       relativePath.replace(/\.ts$/i, '.hx'),
     );
     await fs.outputFile(haxeFileName, code);
+  }
+
+  protected getPackageName(fileName: string): string {
+    const dirPath = path.dirname(this.getRelativeFilePath(fileName));
+    if (dirPath === '.') return '';
+    return dirPath.replace(/[\\/]/g, '.');
+  }
+
+  protected getRelativeFilePath(fileName: string): string {
+    return path.relative(this.compilerOptions.rootDir!, fileName);
   }
 }

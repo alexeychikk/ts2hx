@@ -9,8 +9,9 @@ import { TsUtils } from '../TsUtils';
 export interface VisitNodeContext {}
 
 export interface SourceFileContext {
-  includeEitherTypeImport?: boolean;
-  includeDynamicAccessImport?: boolean;
+  importEitherType?: boolean;
+  importDynamicAccess?: boolean;
+  importTs2hx?: boolean;
   nodesToIgnore: Set<ts.Node>;
 }
 
@@ -41,8 +42,9 @@ export class Transformer {
     const haxeCode = this.visitNode(this.sourceFile, {});
 
     const imports = [
-      this.context.includeEitherTypeImport && `import haxe.extern.EitherType;`,
-      this.context.includeDynamicAccessImport && `import haxe.DynamicAccess;`,
+      this.context.importEitherType && `import haxe.extern.EitherType;`,
+      this.context.importDynamicAccess && `import haxe.DynamicAccess;`,
+      this.context.importTs2hx && `import ts2hx.Ts2hx;`,
     ].filter(Boolean);
 
     return `${imports.join('\n') + (imports.length ? '\n\n' : '')}${haxeCode}`;
@@ -119,7 +121,7 @@ export class Transformer {
         )
         .join(', ') + '>'.repeat(types.length - 1);
     if (res) {
-      this.context.includeEitherTypeImport = true;
+      this.context.importEitherType = true;
     }
     return res;
   };

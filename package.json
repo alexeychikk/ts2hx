@@ -2,6 +2,7 @@
 	"name": "ts2hx",
 	"version": "1.0.0",
 	"description": "Converts TypeScript into Haxe",
+	"keywords": ["typescript", "haxe", "converter", "ast"],
 	"main": "dist/src/cli.js",
 	"engines": {
 		"npm": ">=8.0.0",

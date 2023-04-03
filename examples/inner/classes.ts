@@ -1,4 +1,7 @@
-import { MyInterfaceToImplement, MyInterfaceToImplementSecond } from './types';
+import {
+  MyInterfaceToImplement,
+  MyInterfaceToImplementSecond,
+} from './TypesAndInterfaces';
 
 export class MyEmptyClass {}
 
