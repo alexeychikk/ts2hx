@@ -13,6 +13,7 @@ export interface ConverterOptions {
 const transformers: TransformerFn[] = [
   api.transformJsApiAccess,
   api.transformTsLibTypes,
+  lang.transformVariableStatement,
   lang.transformVariableDeclarationList,
   lang.transformVariableDeclaration,
   lang.transformForLoop,

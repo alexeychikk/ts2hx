@@ -13,6 +13,7 @@ export interface SourceFileContext {
   importDynamicAccess?: boolean;
   importTs2hx?: boolean;
   nodesToIgnore: Set<ts.Node>;
+  nodesToFullyReplace: Set<ts.Node>;
 }
 
 export type TransformerFn = (
@@ -35,7 +36,7 @@ export class Transformer {
     this.typeChecker = options.typeChecker;
     this.sourceFile = options.sourceFile;
     this.transformers = options.transformers;
-    this.context = { nodesToIgnore: new Set() };
+    this.context = { nodesToIgnore: new Set(), nodesToFullyReplace: new Set() };
   }
 
   run(): string {
@@ -55,7 +56,7 @@ export class Transformer {
     context: VisitNodeContext,
   ): string {
     if (!node || this.context.nodesToIgnore.has(node)) {
-      return '';
+      return ' ';
     }
 
     const transformedCode = this.transformNode(node, context);
@@ -101,8 +102,31 @@ export class Transformer {
     return nodeFullCode || node.getFullText();
   }
 
+  protected filterChildren(
+    node: ts.Node,
+    context: VisitNodeContext,
+    comparator: (node: ts.Node) => boolean,
+  ): string {
+    const nodeFullCode = node
+      .getChildren()
+      .map((node) => (comparator(node) ? this.visitNode(node, context) : ' '))
+      .join('');
+
+    return nodeFullCode || node.getFullText();
+  }
+
+  protected omitChildrenByKind(
+    node: ts.Node,
+    context: VisitNodeContext,
+    childKind: SyntaxKind,
+  ): string {
+    return this.filterChildren(node, context, (n) => n.kind !== childKind);
+  }
+
   protected dump(node: ts.Node, code: string): string {
-    return node.getFullText().replace(node.getText(), code);
+    return this.context.nodesToFullyReplace.has(node)
+      ? code
+      : node.getFullText().replace(node.getText(), code);
   }
 
   protected toEitherType = (
@@ -190,6 +214,10 @@ export class Transformer {
 
   protected ignoreNode(node: ts.Node): void {
     this.context.nodesToIgnore.add(node);
+  }
+
+  protected replaceNodeFully(node: ts.Node): void {
+    this.context.nodesToFullyReplace.add(node);
   }
 
   protected ignoreNextNodeOfKind(node: ts.Node, kind: SyntaxKind): void {

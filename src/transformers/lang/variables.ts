@@ -1,6 +1,20 @@
-import ts from 'typescript';
+import ts, { SyntaxKind } from 'typescript';
 import { TsUtils } from '../../TsUtils';
 import { type Transformer, type TransformerFn } from '../Transformer';
+
+export const transformVariableStatement: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  // /** JS doc */ var foo = "bar";
+  if (!ts.isVariableStatement(node)) return;
+  // For some reason VariableDeclarationList.getFullText() includes text of
+  // JSDoc node from parent VariableStatement thus duplicating this comment
+  // when a node is finally dumped after transformation
+  this.replaceNodeFully(node);
+  return this.omitChildrenByKind(node, context, SyntaxKind.JSDoc);
+};
 
 export const transformVariableDeclarationList: TransformerFn = function (
   this: Transformer,
