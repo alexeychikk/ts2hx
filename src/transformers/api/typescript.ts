@@ -18,23 +18,29 @@ export const transformTsLibTypes: TransformerFn = function (
   const name = type.aliasSymbol?.name ?? type.symbol?.name;
 
   switch (name) {
-    case 'Record':
+    case 'Record': {
       this.context.importDynamicAccess = true;
       return `DynamicAccess<${
         node.typeArguments?.[1]
           ? this.visitNode(node.typeArguments[1], context)
           : 'Dynamic'
       }>`;
+    }
     case 'Required':
     case 'Partial':
-    case 'Readonly':
+    case 'Readonly': {
       logger.warn(
         `${name}<T> type is not supported at`,
         TsUtils.getNodeSourcePath(typeNode),
       );
-      return `/* ${TsUtils.todoString} ${name}< */ ${this.visitNode(
-        node.typeArguments?.[0],
-        context,
-      )} /* > */`;
+
+      const typeParam = this.visitNode(node.typeArguments?.[0], context);
+
+      return (
+        TsUtils.createComment(({ todo }) => `${todo} ${name}<`) +
+        typeParam +
+        TsUtils.createComment(() => `>`)
+      );
+    }
   }
 };

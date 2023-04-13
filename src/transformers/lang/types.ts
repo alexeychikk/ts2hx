@@ -130,17 +130,12 @@ export const transformConstructorSignature: TransformerFn = function (
   // { new(): MyClass; }
   if (!ts.isConstructSignatureDeclaration(node)) return;
 
-  const generics = node.typeParameters
-    ?.map((p) => this.visitNode(p, context))
-    .join(', ');
-  const params = node.parameters
-    ?.map((p) => this.visitNode(p, context))
-    .join(', ');
-  const ret = this.visitNode(node.type, context) || 'Void';
+  logger.warn(
+    `Constructor signature is not supported at`,
+    TsUtils.getNodeSourcePath(node),
+  );
 
-  return `public function new${generics ? `<${generics}>` : ''}(${
-    params || ''
-  }):${ret};`;
+  return TsUtils.commentOutNode(node);
 };
 
 export const transformHeritageClause: TransformerFn = function (

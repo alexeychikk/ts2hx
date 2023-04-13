@@ -1,6 +1,9 @@
 import ts, { SyntaxKind } from 'typescript';
 
 export class TsUtils {
+  static includeTodos = true;
+  static includeComments = true;
+
   static getNextNode(
     node: ts.Node,
     parent = TsUtils.getDirectParent(node),
@@ -67,12 +70,22 @@ export class TsUtils {
     return `${sourceFile.fileName}:${line + 1}:${character + 1}`;
   }
 
-  static todoString = `TODO(ts2hx)`;
+  static get todoString(): string {
+    return TsUtils.includeTodos ? `TODO(ts2hx)` : '';
+  }
 
   static commentOutNode(node: ts.Node): string {
-    return `/* ${TsUtils.todoString} */\n${TsUtils.getIndent(
-      node,
-    )}/* ${node.getText()} */`;
+    return TsUtils.includeComments
+      ? `${
+          TsUtils.includeTodos ? `/* ${TsUtils.todoString} */\n` : ''
+        }${TsUtils.getIndent(node)}/* ${node.getText()} */`
+      : '';
+  }
+
+  static createComment(fn: (params: { todo: string }) => string): string {
+    return TsUtils.includeComments
+      ? `/* ${fn({ todo: TsUtils.todoString })} */`
+      : '';
   }
 
   static escapeStringText(text: string): string {
