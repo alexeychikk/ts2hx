@@ -22,6 +22,8 @@ const transformers: TransformerFn[] = [
   lang.transformPropertySignature,
   lang.transformIndexSignature,
   lang.transformMethodSignature,
+  lang.transformConstructorSignature,
+  lang.transformHeritageClause,
   lang.transformPropertyAssignment,
   lang.transformElementAccessOfObject,
   lang.transformElementWriteToObject,

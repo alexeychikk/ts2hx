@@ -122,6 +122,43 @@ export const transformMethodSignature: TransformerFn = function (
   }):${ret};`;
 };
 
+export const transformConstructorSignature: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  // { new(): MyClass; }
+  if (!ts.isConstructSignatureDeclaration(node)) return;
+
+  const generics = node.typeParameters
+    ?.map((p) => this.visitNode(p, context))
+    .join(', ');
+  const params = node.parameters
+    ?.map((p) => this.visitNode(p, context))
+    .join(', ');
+  const ret = this.visitNode(node.type, context) || 'Void';
+
+  return `public function new${generics ? `<${generics}>` : ''}(${
+    params || ''
+  }):${ret};`;
+};
+
+export const transformHeritageClause: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  // extends A, B, C
+  if (!ts.isHeritageClause(node)) return;
+
+  const keyword =
+    node.token === SyntaxKind.ExtendsKeyword ? 'extends' : 'implements';
+
+  return node.types
+    .map((t) => `${keyword} ${this.visitNode(t, context)}`)
+    .join(' ');
+};
+
 export const transformTypeQuery: TransformerFn = function (
   this: Transformer,
   node,

@@ -67,8 +67,10 @@ export class TsUtils {
     return `${sourceFile.fileName}:${line + 1}:${character + 1}`;
   }
 
+  static todoString = `TODO(ts2hx)`;
+
   static commentOutNode(node: ts.Node): string {
-    return `/* TODO(ts2hx) */\n${TsUtils.getIndent(
+    return `/* ${TsUtils.todoString} */\n${TsUtils.getIndent(
       node,
     )}/* ${node.getText()} */`;
   }
