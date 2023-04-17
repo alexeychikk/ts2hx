@@ -29,7 +29,8 @@ export const MY_CONSTANT = {
 
 export type MyConstant = typeof MY_CONSTANT;
 
-export const MY_RECORD: Record<number, string> = { 1: 'foo', 2: 'bar' };
+const MY_RECORD: Record<number, string> = { 1: 'foo', 2: 'bar' };
+export default MY_RECORD;
 
 export interface MyInterface {
   foo: string;

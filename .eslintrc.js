@@ -16,5 +16,6 @@ module.exports = {
     '@typescript-eslint/no-non-null-assertion': 'off',
     '@typescript-eslint/no-extraneous-class': 'off',
     'no-fallthrough': 'off',
+    'array-callback-return': 'off',
   },
 };

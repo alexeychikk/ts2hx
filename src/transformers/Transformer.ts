@@ -1,3 +1,4 @@
+import path from 'path';
 import ts, { SyntaxKind } from 'typescript';
 import { TsUtils } from '../TsUtils';
 
@@ -24,31 +25,65 @@ export type TransformerFn = (
 
 export class Transformer {
   typeChecker: ts.TypeChecker;
+  compilerOptions: ts.CompilerOptions;
   sourceFile: ts.SourceFile;
   context: SourceFileContext;
   transformers: TransformerFn[];
 
   constructor(options: {
     typeChecker: ts.TypeChecker;
+    compilerOptions: ts.CompilerOptions;
     sourceFile: ts.SourceFile;
     transformers: TransformerFn[];
   }) {
     this.typeChecker = options.typeChecker;
+    this.compilerOptions = options.compilerOptions;
     this.sourceFile = options.sourceFile;
     this.transformers = options.transformers;
     this.context = { nodesToIgnore: new Set(), nodesToFullyReplace: new Set() };
   }
 
   run(): string {
-    const haxeCode = this.visitNode(this.sourceFile, {});
+    let haxeCode = this.visitNode(this.sourceFile, {});
 
     const imports = [
       this.context.importEitherType && `import haxe.extern.EitherType;`,
       this.context.importDynamicAccess && `import haxe.DynamicAccess;`,
       this.context.importTs2hx && `import ts2hx.Ts2hx;`,
     ].filter(Boolean);
+    haxeCode = `${
+      imports.join('\n') + (imports.length ? '\n\n' : '')
+    }${haxeCode}`;
 
-    return `${imports.join('\n') + (imports.length ? '\n\n' : '')}${haxeCode}`;
+    const packageName = this.getPackageName();
+    haxeCode = `${packageName ? `package ${packageName};\n\n` : ''}${haxeCode}`;
+
+    return haxeCode;
+  }
+
+  getPackageName(filePath = this.getRelativeFilePath()): string {
+    const dirPath = path.dirname(filePath);
+    if (dirPath === '.') return '';
+    return dirPath.replace(/[\\/]/g, '.');
+  }
+
+  getModuleFilePath(fileName = this.sourceFile.fileName): string {
+    const filePath = this.getRelativeFilePath(fileName);
+    const fileExt = path.extname(filePath);
+    return filePath.slice(0, -fileExt.length);
+  }
+
+  getRelativeFilePath(fileName = this.sourceFile.fileName): string {
+    return path.relative(this.compilerOptions.rootDir!, fileName);
+  }
+
+  getImportedPackageName(fileName: string): string {
+    const modulePath = this.getModuleFilePath(fileName);
+    const relativeFileName =
+      path.basename(modulePath) === 'index'
+        ? modulePath
+        : path.join(modulePath, './index.ts');
+    return this.getPackageName(relativeFileName);
   }
 
   protected visitNode(
@@ -210,6 +245,13 @@ export class Transformer {
       node.left,
       context,
     )};\n${TsUtils.getIndent(node)}${this.visitNode(node.right, context)};\n`;
+  }
+
+  protected getDeclarationSourceFile(node: ts.Node): ts.SourceFile | undefined {
+    const symbol = this.typeChecker.getSymbolAtLocation(node);
+    if (!symbol) return;
+    const aliasedSymbol = this.typeChecker.getAliasedSymbol(symbol);
+    return aliasedSymbol?.declarations?.[0].getSourceFile();
   }
 
   protected ignoreNode(node: ts.Node): void {

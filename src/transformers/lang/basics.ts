@@ -137,3 +137,61 @@ export const transformTypeofExpression: TransformerFn = function (
   this.context.importTs2hx = true;
   return `Ts2hx.typeof(${this.visitNode(node.expression, context)})`;
 };
+
+export const transformImportDeclaration: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  if (!ts.isImportDeclaration(node)) return;
+
+  // import './foo';
+  if (!node.importClause) {
+    logger.warn(
+      `Side-effect only import is not supported at`,
+      TsUtils.getNodeSourcePath(node),
+    );
+    return TsUtils.commentOutNode(node);
+  }
+
+  // import foo from './foo';
+  if (!node.importClause.namedBindings) {
+    const symbol = this.typeChecker.getSymbolAtLocation(
+      node.importClause.name!,
+    );
+    if (!symbol) return '';
+    const aliasedSymbol = this.typeChecker.getAliasedSymbol(symbol);
+    const fileName = aliasedSymbol?.declarations?.[0].getSourceFile().fileName;
+    if (!fileName) return '';
+
+    return `import ${this.getImportedPackageName(fileName)}.${
+      aliasedSymbol.name
+    }${symbol.name !== aliasedSymbol.name ? ` as ${symbol.name}` : ''};`;
+  }
+
+  // import { foo, bar as quz } from './foo';
+  if (ts.isNamedImports(node.importClause.namedBindings)) {
+    return node.importClause.namedBindings.elements
+      .map((el) => {
+        const fileName = this.getDeclarationSourceFile(el.name)?.fileName;
+        if (!fileName) return;
+
+        return `import ${this.getImportedPackageName(fileName)}.${
+          el.propertyName?.text ?? el.name.text
+        }${el.propertyName ? ` as ${el.name.text}` : ''};`;
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  // import * as Foo from './foo';
+  if (ts.isNamespaceImport(node.importClause.namedBindings)) {
+    logger.warn(
+      `Namespace import is not supported at`,
+      TsUtils.getNodeSourcePath(node),
+    );
+    return TsUtils.commentOutNode(node);
+  }
+
+  return '';
+};

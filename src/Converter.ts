@@ -16,6 +16,7 @@ const transformers: TransformerFn[] = [
   lang.transformVariableStatement,
   lang.transformVariableDeclarationList,
   lang.transformVariableDeclaration,
+  lang.transformImportDeclaration,
   lang.transformForLoop,
   lang.transformForOfLoop,
   lang.transformForInLoop,
@@ -99,39 +100,25 @@ export class Converter {
       sourceFile,
       transformers,
       typeChecker: this.typeChecker,
+      compilerOptions: this.compilerOptions,
     });
     const haxeCode = transformer.run();
     if (!haxeCode) {
-      logger.log(`Transformed file is empty`, sourceFile.fileName);
+      logger.warn(`Transformed file is empty`, sourceFile.fileName);
       return;
     }
-    const packageName = this.getPackageName(sourceFile.fileName);
-    const moduleCode = `${
-      packageName ? `package ${packageName};\n\n` : ''
-    }${haxeCode}`;
 
-    await this.writeOutputFile(sourceFile.fileName, moduleCode);
+    await this.writeOutputFile(transformer.getRelativeFilePath(), haxeCode);
   };
 
   protected async writeOutputFile(
     fileName: string,
     code: string,
   ): Promise<void> {
-    const relativePath = this.getRelativeFilePath(fileName);
     const haxeFileName = path.join(
       this.outputDirPath,
-      relativePath.replace(/\.ts$/i, '.hx'),
+      fileName.replace(/\.ts$/i, '.hx'),
     );
     await fs.outputFile(haxeFileName, code);
-  }
-
-  protected getPackageName(fileName: string): string {
-    const dirPath = path.dirname(this.getRelativeFilePath(fileName));
-    if (dirPath === '.') return '';
-    return dirPath.replace(/[\\/]/g, '.');
-  }
-
-  protected getRelativeFilePath(fileName: string): string {
-    return path.relative(this.compilerOptions.rootDir!, fileName);
   }
 }
