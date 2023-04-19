@@ -1,4 +1,5 @@
 export * from './basics';
+export * from './classes';
 export * from './conditions';
 export * from './functions';
 export * from './loops';

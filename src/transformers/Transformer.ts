@@ -15,6 +15,7 @@ export interface SourceFileContext {
   importTs2hx?: boolean;
   nodesToIgnore: Set<ts.Node>;
   nodesToFullyReplace: Set<ts.Node>;
+  anonymousClassCounter: number;
 }
 
 export type TransformerFn = (
@@ -40,7 +41,11 @@ export class Transformer {
     this.compilerOptions = options.compilerOptions;
     this.sourceFile = options.sourceFile;
     this.transformers = options.transformers;
-    this.context = { nodesToIgnore: new Set(), nodesToFullyReplace: new Set() };
+    this.context = {
+      nodesToIgnore: new Set(),
+      nodesToFullyReplace: new Set(),
+      anonymousClassCounter: 0,
+    };
   }
 
   run(): string {

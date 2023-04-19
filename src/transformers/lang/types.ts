@@ -138,20 +138,16 @@ export const transformConstructorSignature: TransformerFn = function (
   return TsUtils.commentOutNode(node);
 };
 
-export const transformHeritageClause: TransformerFn = function (
+export const transformTypeParameter: TransformerFn = function (
   this: Transformer,
   node,
   context,
 ) {
-  // extends A, B, C
-  if (!ts.isHeritageClause(node)) return;
+  // <T extends string> (without angle brackets)
+  if (!ts.isTypeParameterDeclaration(node)) return;
 
-  const keyword =
-    node.token === SyntaxKind.ExtendsKeyword ? 'extends' : 'implements';
-
-  return node.types
-    .map((t) => `${keyword} ${this.visitNode(t, context)}`)
-    .join(' ');
+  // TODO
+  return this.traverseChildren(node, context);
 };
 
 export const transformTypeQuery: TransformerFn = function (

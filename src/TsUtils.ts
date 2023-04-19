@@ -88,6 +88,15 @@ export class TsUtils {
       : '';
   }
 
+  static getAccessModifier(node: ts.HasModifiers): ts.Modifier | undefined {
+    return node.modifiers?.find(
+      (modifier) =>
+        modifier.kind === SyntaxKind.PublicKeyword ||
+        modifier.kind === SyntaxKind.ProtectedKeyword ||
+        modifier.kind === SyntaxKind.PrivateKeyword,
+    ) as ts.Modifier | undefined;
+  }
+
   static escapeStringText(text: string): string {
     return text.replace(/"/g, `\\"`);
   }
