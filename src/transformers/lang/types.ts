@@ -1,6 +1,5 @@
 import ts, { SyntaxKind } from 'typescript';
 import { TsUtils } from '../../TsUtils';
-import { logger } from '../../Logger';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
 export const transformLiteralTypes: TransformerFn = function (
@@ -90,12 +89,7 @@ export const transformIndexSignature: TransformerFn = function (
   // { [key: string]: number; }
   if (!ts.isIndexSignatureDeclaration(node)) return;
 
-  logger.warn(
-    'Index signature is not supported at',
-    TsUtils.getNodeSourcePath(node),
-  );
-
-  return TsUtils.commentOutNode(node);
+  return TsUtils.commentOutNode(node, `Index signature is not supported at`);
 };
 
 export const transformMethodSignature: TransformerFn = function (
@@ -130,12 +124,10 @@ export const transformConstructorSignature: TransformerFn = function (
   // { new(): MyClass; }
   if (!ts.isConstructSignatureDeclaration(node)) return;
 
-  logger.warn(
+  return TsUtils.commentOutNode(
+    node,
     `Constructor signature is not supported at`,
-    TsUtils.getNodeSourcePath(node),
   );
-
-  return TsUtils.commentOutNode(node);
 };
 
 export const transformTypeParameter: TransformerFn = function (
@@ -158,10 +150,9 @@ export const transformTypeQuery: TransformerFn = function (
   // type T = typeof MY_VAR
   if (!ts.isTypeQueryNode(node)) return;
 
-  logger.warn(
-    'typeof type query is not supported at',
-    TsUtils.getNodeSourcePath(node),
+  const comment = TsUtils.commentOutNode(
+    node,
+    `typeof type query is not supported at`,
   );
-
-  return `${TsUtils.commentOutNode(node)} Any`;
+  return `${comment} Any`;
 };

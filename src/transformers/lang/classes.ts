@@ -1,5 +1,4 @@
 import ts, { SyntaxKind } from 'typescript';
-import { logger } from '../../Logger';
 import { TsUtils } from '../../TsUtils';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
@@ -58,11 +57,10 @@ export const transformClassPropertyDeclaration: TransformerFn = function (
     return;
 
   if (ts.isComputedPropertyName(node.name)) {
-    logger.warn(
-      'Computed property name is not supported in class property declaration at',
-      TsUtils.getNodeSourcePath(node),
+    return TsUtils.commentOutNode(
+      node,
+      `Computed property name is not supported in class property declaration at`,
     );
-    return TsUtils.commentOutNode(node);
   }
 
   // in Haxe class members are private by default unlike in TS

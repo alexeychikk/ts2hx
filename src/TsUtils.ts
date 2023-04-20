@@ -1,4 +1,5 @@
 import ts, { SyntaxKind } from 'typescript';
+import { logger } from './Logger';
 
 export class TsUtils {
   static includeTodos = true;
@@ -74,7 +75,11 @@ export class TsUtils {
     return TsUtils.includeTodos ? `TODO(ts2hx)` : '';
   }
 
-  static commentOutNode(node: ts.Node): string {
+  static commentOutNode(node: ts.Node, warning?: string): string {
+    if (warning) {
+      logger.warn(warning, TsUtils.getNodeSourcePath(node));
+    }
+
     return TsUtils.includeComments
       ? `${
           TsUtils.includeTodos ? `/* ${TsUtils.todoString} */\n` : ''

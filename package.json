@@ -12,7 +12,8 @@
 		"start": "node ./dist/src/cli.js",
 		"ts": "tsc -p tsconfig.json",
 		"lint": "eslint .",
-		"lint:fix": "eslint . --fix"
+		"lint:fix": "eslint . --fix",
+		"prettify": "npx prettier --write ."
 	},
 	"author": "",
 	"license": "ISC",

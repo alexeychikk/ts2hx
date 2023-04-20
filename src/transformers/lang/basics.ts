@@ -120,12 +120,11 @@ export const transformVoidExpression: TransformerFn = function (
   ) {
     return `null`;
   } else {
-    logger.warn(
+    const comment = TsUtils.commentOutNode(
+      node,
       `void expression is not supported at`,
-      TsUtils.getNodeSourcePath(node),
     );
-
-    return `${TsUtils.commentOutNode(node)} null`;
+    return `${comment} null`;
   }
 };
 
@@ -149,11 +148,10 @@ export const transformImportDeclaration: TransformerFn = function (
 
   // import './foo';
   if (!node.importClause) {
-    logger.warn(
+    return TsUtils.commentOutNode(
+      node,
       `Side-effect only import is not supported at`,
-      TsUtils.getNodeSourcePath(node),
     );
-    return TsUtils.commentOutNode(node);
   }
 
   // import foo from './foo';

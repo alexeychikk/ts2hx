@@ -75,13 +75,12 @@ export const transformGetSet: TransformerFn = function (
   // { get prop() {}, set prop(value) {} }
   if (!(ts.isGetAccessor(node) || ts.isSetAccessor(node))) return;
   if (!ts.isObjectLiteralExpression(node.parent)) return;
-  logger.warn(
-    `Getters and setters on object literals are not supported at`,
-    TsUtils.getNodeSourcePath(node),
-  );
 
   this.ignoreNextNodeOfKind(node, SyntaxKind.CommaToken);
-  return TsUtils.commentOutNode(node);
+  return TsUtils.commentOutNode(
+    node,
+    `Getters and setters on object literals are not supported at`,
+  );
 };
 
 export const transformMethodOnObject: TransformerFn = function (
