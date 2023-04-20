@@ -46,7 +46,7 @@ export const transformUnionType: TransformerFn = function (
   // myVar: string | boolean
   if (!ts.isUnionTypeNode(node)) return;
   if (node.types.length > 3) return 'Dynamic';
-  return this.toEitherType(node, context, node.types);
+  return this.toEitherType(node.types, context);
 };
 
 export const transformTupleType: TransformerFn = function (
@@ -57,7 +57,7 @@ export const transformTupleType: TransformerFn = function (
   // myVar: [number, string]
   if (!ts.isTupleTypeNode(node)) return;
   if (node.elements.length > 3) return 'Dynamic';
-  const res = this.toEitherType(node, context, node.elements);
+  const res = this.toEitherType(node.elements, context);
   return res ? `Array<${res}>` : undefined;
 };
 
@@ -101,17 +101,15 @@ export const transformMethodSignature: TransformerFn = function (
   if (!ts.isMethodSignature(node)) return;
 
   const isOptional = !!node.questionToken;
-  const generics = node.typeParameters
-    ?.map((p) => this.visitNode(p, context))
-    .join(', ');
+  const typeParams = this.joinTypeParameters(node.typeParameters, context);
   const params = node.parameters
     ?.map((p) => this.visitNode(p, context))
     .join(', ');
-  const ret = this.visitNode(node.type, context) || 'Void';
+  const ret = node.type ? this.visitNode(node.type, context) : 'Void';
 
   return `${
     isOptional ? '@:optional ' : ''
-  }public function ${node.name.getText()}${generics ? `<${generics}>` : ''}(${
+  }public function ${node.name.getText()}${typeParams}(${
     params || ''
   }):${ret};`;
 };
@@ -138,7 +136,7 @@ export const transformTypeParameter: TransformerFn = function (
   // <T extends string> (without angle brackets)
   if (!ts.isTypeParameterDeclaration(node)) return;
 
-  // TODO
+  // TODO: extends keyword
   return this.traverseChildren(node, context);
 };
 

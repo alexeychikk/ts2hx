@@ -12,7 +12,7 @@ export const transformNotOperator: TransformerFn = function (
     ts.isPrefixUnaryExpression(node) &&
     node.operator === SyntaxKind.ExclamationToken
   ) {
-    const res = this.toExplicitBooleanCondition(node.operand, context);
+    const res = this.toExplicitBooleanCondition(node.operand);
     return res ? `!(${res})` : undefined;
   }
 };
@@ -30,6 +30,6 @@ export const transformConditions: TransformerFn = function (
     // if (myVar) ; while(myVar) ;
     TsUtils.isBooleanExpressionOfStatement(node)
   ) {
-    return this.toExplicitBooleanCondition(node, context);
+    return this.toExplicitBooleanCondition(node);
   }
 };

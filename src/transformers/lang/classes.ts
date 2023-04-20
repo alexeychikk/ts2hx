@@ -9,24 +9,22 @@ export const transformClassDeclaration: TransformerFn = function (
 ) {
   if (!ts.isClassDeclaration(node)) return;
 
-  const modifiers =
-    node.modifiers?.map((m) => this.visitNode(m, context) + ' ').join('') ?? '';
+  const modifiers = this.joinModifiers(node.modifiers, context);
   const className =
     node.name?.getText() ??
     `AnonymousClass_${this.context.anonymousClassCounter++}`;
-  const typeParams = node.typeParameters
-    ?.map((tp) => this.visitNode(tp, context))
-    .join(', ');
+  const typeParams = this.joinTypeParameters(node.typeParameters, context);
   const defaultConstructor = node.members.find((m) =>
     ts.isConstructorDeclaration(m),
   )
     ? ''
     : `\n${TsUtils.getIndent(node)}  public function new() {}\n`;
+  const inheritance = this.joinNodes(node.heritageClauses, context, ' ');
 
   return (
-    `${modifiers}class ${className}${typeParams ? `<${typeParams}>` : ''} {` +
+    `${modifiers}class ${className}${typeParams} ${inheritance} {` +
     defaultConstructor +
-    node.members.map((m) => this.visitNode(m, context)).join('') +
+    this.joinNodes(node.members, context, '') +
     `\n${TsUtils.getIndent(node)}}`
   );
 };
@@ -63,23 +61,36 @@ export const transformClassPropertyDeclaration: TransformerFn = function (
     );
   }
 
-  // in Haxe class members are private by default unlike in TS
-  const defaultAccessModifier = TsUtils.getAccessModifier(node)
-    ? ''
-    : 'public ';
-  const modifiers =
-    node.modifiers?.map((m) => this.visitNode(m, context) + ' ').join('') ?? '';
+  const modifiers = this.joinMemberModifiers(node, context);
 
-  let type = this.visitNode(node.type, context);
-  if (type.trim()) {
+  let type = '';
+  if (node.type) {
+    type = this.visitNode(node.type, context);
     if (node.questionToken) type = `Null<${type}>`;
     type = `: ${type}`;
   }
 
-  let initializer = this.visitNode(node.initializer, context);
-  if (initializer.trim()) {
-    initializer = ` = ${initializer}`;
-  }
+  const initializer = node.initializer
+    ? `= ${this.visitNode(node.initializer, context)}`
+    : '';
 
-  return `${defaultAccessModifier}${modifiers}var ${node.name.getText()}${type}${initializer};`;
+  return `${modifiers}var ${node.name.getText()}${type}${initializer};`;
+};
+
+export const transformClassMethodDeclaration: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  // public static main(): void {}
+  if (!(ts.isMethodDeclaration(node) && ts.isClassDeclaration(node.parent)))
+    return;
+
+  const modifiers = this.joinMemberModifiers(node, context);
+  const typeParams = this.joinTypeParameters(node.typeParameters, context);
+  const params = this.joinNodes(node.parameters, context);
+  const returnType = node.type ? `: ${this.visitNode(node.type, context)}` : '';
+  const body = node.body ? this.visitNode(node.body, context) : ';';
+
+  return `${modifiers}function ${node.name.getText()}${typeParams}(${params})${returnType}${body}`;
 };

@@ -126,6 +126,16 @@ export class Transformer {
     return nodeFullCode || node.getFullText();
   }
 
+  protected joinNodes<T extends ts.Node>(
+    nodes: ts.NodeArray<T> | undefined,
+    context: VisitNodeContext,
+    separator = ', ',
+  ): string {
+    return (
+      nodes?.map((tp) => this.visitNode(tp, context)).join(separator) ?? ''
+    );
+  }
+
   protected replaceChild(
     node: ts.Node,
     context: VisitNodeContext,
@@ -169,11 +179,10 @@ export class Transformer {
       : node.getFullText().replace(node.getText(), code);
   }
 
-  protected toEitherType = (
-    node: ts.Node,
-    context: VisitNodeContext,
+  protected toEitherType(
     types: ts.NodeArray<ts.TypeNode>,
-  ): string | undefined => {
+    context: VisitNodeContext,
+  ): string | undefined {
     const res =
       types
         .map(
@@ -188,9 +197,9 @@ export class Transformer {
       this.context.importEitherType = true;
     }
     return res;
-  };
+  }
 
-  protected toExplicitBooleanCondition: TransformerFn = (node) => {
+  protected toExplicitBooleanCondition(node: ts.Node): string | undefined {
     switch (node.kind) {
       case SyntaxKind.TrueKeyword:
       case SyntaxKind.FalseKeyword:
@@ -232,7 +241,7 @@ export class Transformer {
       return `${node.getText()} != ""`;
     }
     return `${node.getText()} != null`;
-  };
+  }
 
   protected toSeparateStatements(
     node: ts.Node,
@@ -250,6 +259,35 @@ export class Transformer {
       node.left,
       context,
     )};\n${TsUtils.getIndent(node)}${this.visitNode(node.right, context)};\n`;
+  }
+
+  protected joinTypeParameters(
+    typeParameters: ts.NodeArray<ts.TypeParameterDeclaration> | undefined,
+    context: VisitNodeContext,
+  ): string {
+    const typeParams = this.joinNodes(typeParameters, context);
+    return typeParams ? `<${typeParams}>` : '';
+  }
+
+  protected joinModifiers(
+    modifiers: ts.NodeArray<ts.ModifierLike> | undefined,
+    context: VisitNodeContext,
+  ): string {
+    return (
+      modifiers?.map((m) => this.visitNode(m, context) + ' ').join('') ?? ''
+    );
+  }
+
+  protected joinMemberModifiers(
+    node: ts.HasModifiers,
+    context: VisitNodeContext,
+  ): string {
+    // in Haxe class members are private by default unlike in TS
+    const defaultAccessModifier = TsUtils.getAccessModifier(node)
+      ? ''
+      : 'public ';
+    const modifiers = this.joinModifiers(node.modifiers, context);
+    return `${defaultAccessModifier}${modifiers}`;
   }
 
   protected getDeclarationSourceFile(node: ts.Node): ts.SourceFile | undefined {
