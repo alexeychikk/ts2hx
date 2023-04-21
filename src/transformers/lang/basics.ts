@@ -1,5 +1,4 @@
 import ts, { SyntaxKind } from 'typescript';
-import { logger } from '../../Logger';
 import { TsUtils } from '../../TsUtils';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
@@ -186,11 +185,7 @@ export const transformImportDeclaration: TransformerFn = function (
 
   // import * as Foo from './foo';
   if (ts.isNamespaceImport(node.importClause.namedBindings)) {
-    logger.warn(
-      `Namespace import is not supported at`,
-      TsUtils.getNodeSourcePath(node),
-    );
-    return TsUtils.commentOutNode(node);
+    return TsUtils.commentOutNode(node, `Namespace import is not supported at`);
   }
 
   return '';

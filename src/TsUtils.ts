@@ -71,7 +71,7 @@ export class TsUtils {
     return `${sourceFile.fileName}:${line + 1}:${character + 1}`;
   }
 
-  static get todoString(): string {
+  private static get todoString(): string {
     return TsUtils.includeTodos ? `TODO(ts2hx)` : '';
   }
 
@@ -93,6 +93,10 @@ export class TsUtils {
       : '';
   }
 
+  static createTodoComment(): string {
+    return TsUtils.createComment(({ todo }) => todo);
+  }
+
   static getAccessModifier(node: ts.HasModifiers): ts.Modifier | undefined {
     return node.modifiers?.find(
       (modifier) =>
@@ -100,6 +104,13 @@ export class TsUtils {
         modifier.kind === SyntaxKind.ProtectedKeyword ||
         modifier.kind === SyntaxKind.PrivateKeyword,
     ) as ts.Modifier | undefined;
+  }
+
+  static getAccessModifierString(node: ts.HasModifiers): string {
+    const modifier = TsUtils.getAccessModifier(node);
+    return !modifier || modifier.kind === SyntaxKind.PublicKeyword
+      ? 'public'
+      : 'private';
   }
 
   static escapeStringText(text: string): string {
