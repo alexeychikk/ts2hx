@@ -6,6 +6,12 @@ export type MyLiteral = 'foo' | 'bar';
 export type MyEmpty = {};
 export type Coords = { x: number; y: number };
 
+export type GetReturnType<Type> = Type extends (
+  ...args: never[]
+) => infer Return
+  ? Return
+  : never;
+
 export type MyObject = {
   foo: string;
   bar?: MyLiteral;

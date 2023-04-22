@@ -47,6 +47,7 @@ const transformers: TransformerFn[] = [
   lang.transformAsExpression,
   lang.transformTypeofExpression,
   lang.transformTypeParameter,
+  lang.transformConditionalType,
   lang.transformTypeQuery,
   lang.transformRegex,
   lang.transformNotOperator,

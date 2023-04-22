@@ -20,6 +20,7 @@ export const transformKeywords: TransformerFn = function (
     case SyntaxKind.UndefinedKeyword:
       return 'Null<Void>';
     case SyntaxKind.VoidKeyword:
+    case SyntaxKind.NeverKeyword:
       return 'Void';
     // myVar: unknown
     case SyntaxKind.UnknownKeyword:
@@ -32,6 +33,9 @@ export const transformKeywords: TransformerFn = function (
     // (myVar as string)
     case SyntaxKind.AsKeyword:
       return ':';
+    case SyntaxKind.ExportAssignment:
+    case SyntaxKind.ExportDeclaration:
+      return ' ';
     case SyntaxKind.ExportKeyword:
       return '@:export';
     case SyntaxKind.ProtectedKeyword:

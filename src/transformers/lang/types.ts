@@ -136,8 +136,30 @@ export const transformTypeParameter: TransformerFn = function (
   // <T extends string> (without angle brackets)
   if (!ts.isTypeParameterDeclaration(node)) return;
 
-  // TODO: extends keyword
-  return this.traverseChildren(node, context);
+  let constraint = node.constraint
+    ? this.visitNode(node.constraint, context)
+    : undefined;
+  if (!constraint && node.default) {
+    constraint = this.visitNode(node.default, context);
+  }
+  if (constraint) constraint = ` : ${constraint}`;
+
+  return `${node.name.getText()}${constraint ?? ''}`;
+};
+
+export const transformConditionalType: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  // T extends Foo ? string : number
+  if (!ts.isConditionalTypeNode(node)) return;
+
+  const comment = TsUtils.commentOutNode(
+    node,
+    `Conditional type is not supported at`,
+  );
+  return `${comment} Any`;
 };
 
 export const transformTypeQuery: TransformerFn = function (
