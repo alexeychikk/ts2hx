@@ -102,9 +102,7 @@ export const transformMethodSignature: TransformerFn = function (
 
   const isOptional = !!node.questionToken;
   const typeParams = this.joinTypeParameters(node.typeParameters, context);
-  const params = node.parameters
-    ?.map((p) => this.visitNode(p, context))
-    .join(', ');
+  const params = this.joinNodes(node.parameters, context);
   const ret = node.type ? this.visitNode(node.type, context) : 'Void';
 
   return `${

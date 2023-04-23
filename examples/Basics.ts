@@ -118,3 +118,7 @@ function wrapper() {
   // make sure infinite loop is last
   for (;;) console.log('infinite');
 }
+
+function withRestParams(...args: string[]) {}
+
+function withOptionalParams(foo?: string, bar = 4, ...args: Array<number>) {}

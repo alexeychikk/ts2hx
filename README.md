@@ -23,7 +23,7 @@ It just covers syntax differences, basic types and some extra stuff that might c
 - [x] loops
 - [x] dynamic property access/read
 - [x] implicit to explicit boolean condition
-- [ ] classes
-- [ ] types and interfaces
+- [x] classes
+- [x] types and interfaces
 - [ ] switch-case
 - [ ] ...probably many more

@@ -113,6 +113,15 @@ export class TsUtils {
       : 'private';
   }
 
+  static getArrayTypeNode(node: ts.Node): ts.Node | undefined {
+    if (ts.isTypeReferenceNode(node) && node.typeName.getText() === 'Array') {
+      return node.typeArguments?.[0];
+    }
+    if (ts.isArrayTypeNode(node)) {
+      return node.elementType;
+    }
+  }
+
   static escapeStringText(text: string): string {
     return text.replace(/"/g, `\\"`);
   }

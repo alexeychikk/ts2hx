@@ -62,10 +62,30 @@ export const transformConstructor: TransformerFn = function (
     return;
 
   const modifiers = this.joinMemberModifiers(node, context);
-  const params = this.joinNodes(node.parameters, context);
+
+  let propertyDeclarations = '';
+
+  const params = node.parameters
+    .map((param) => {
+      const access = TsUtils.getAccessModifier(param);
+      const code = this.visitNode(param, context);
+      if (access) {
+        propertyDeclarations += `${this.visitNode(
+          access,
+          context,
+        )} var ${code};\n`;
+      }
+      return code;
+    })
+    .join(', ');
+
+  if (propertyDeclarations) {
+    propertyDeclarations += TsUtils.getIndent(node);
+  }
+
   const body = node.body ? this.visitNode(node.body, context) : '{}';
 
-  return `${modifiers}function new(${params})${body}`;
+  return `${propertyDeclarations}${modifiers}function new(${params})${body}`;
 };
 
 export const transformClassPropertyDeclaration: TransformerFn = function (

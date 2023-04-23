@@ -36,6 +36,7 @@ const transformers: TransformerFn[] = [
   lang.transformElementWriteToObject,
   lang.transformGetSet,
   lang.transformMethodOnObject,
+  lang.transformFunctionParameter,
   lang.transformSimpleTemplate,
   lang.transformTemplateExpression,
   lang.transformTemplateParts,
