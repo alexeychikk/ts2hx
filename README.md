@@ -18,12 +18,16 @@ It just covers syntax differences, basic types and some extra stuff that might c
 ## Features
 
 - [x] keywords and syntax tokens
-- [x] basic types
+- [x] basic data types
 - [x] variable declarations
 - [x] loops
+- [x] switch-case
 - [x] dynamic property access/read
 - [x] implicit to explicit boolean condition
+- [x] functions
 - [x] classes
-- [x] types and interfaces
-- [ ] switch-case
+- [x] interfaces and type definitions
+- [x] imports
+- [ ] enums
+- [ ] try-catch
 - [ ] ...probably many more

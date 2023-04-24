@@ -9,7 +9,7 @@ export interface ConverterOptions {
   outputDirPath: string;
 }
 
-// Order here actually matters
+// Order here actually matters (to some extent)
 const transformers: TransformerFn[] = [
   api.transformJsApiAccess,
   api.transformTsLibTypes,
@@ -27,6 +27,7 @@ const transformers: TransformerFn[] = [
   lang.transformForLoop,
   lang.transformForOfLoop,
   lang.transformForInLoop,
+  lang.transformSwitchCase,
   lang.transformPropertySignature,
   lang.transformIndexSignature,
   lang.transformMethodSignature,

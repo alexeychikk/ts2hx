@@ -84,7 +84,7 @@ function wrapper() {
   myObject['0_stringKey'] = [];
   const myArrayAccess = myNumberArray[1];
   const myTypeOf = typeof myImplicitLiteralNumber;
-  void (2 * 2 === 4);
+  void (2 ** 2 === 4);
 
   if (myNumber) {
     console.log('if statement');
@@ -108,17 +108,41 @@ function wrapper() {
   }
 
   for (const num of myNumberArray) {
+    if (myBoolean) continue;
     console.log('for of loop', num);
   }
 
   for (const key in myObject) {
     console.log('for in loop', key, myObject[key]);
+    if (!myBoolean) break;
   }
 
   // make sure infinite loop is last
   for (;;) console.log('infinite');
 }
 
-function withRestParams(...args: string[]) {}
+function withRestParams(...args: string[]) {
+  switch (myImplicitLiteralNumber * 2) {
+    case 10:
+    case 12:
+      console.log('fall through');
+      break;
+    case 14: {
+      const a = 3;
+      console.log('block scoped', a);
+      break;
+    }
+    case myNumber:
+      console.log('no break');
+    case 81:
+      console.log('return');
+      return;
+    case 100:
+    case 1000:
+    default:
+      console.log('default');
+      break;
+  }
+}
 
 function withOptionalParams(foo?: string, bar = 4, ...args: Array<number>) {}

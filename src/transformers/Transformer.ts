@@ -156,11 +156,12 @@ export class Transformer {
     node: ts.Node,
     context: VisitNodeContext,
     comparator: (node: ts.Node) => boolean,
+    separator = '',
   ): string {
     const nodeFullCode = node
       .getChildren()
       .map((node) => (comparator(node) ? this.visitNode(node, context) : ' '))
-      .join('');
+      .join(separator);
 
     return nodeFullCode || node.getFullText();
   }
