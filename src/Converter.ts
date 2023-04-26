@@ -38,6 +38,7 @@ const transformers: TransformerFn[] = [
   lang.transformGetSet,
   lang.transformMethodOnObject,
   lang.transformFunctionParameter,
+  lang.transformPowExpression,
   lang.transformSimpleTemplate,
   lang.transformTemplateExpression,
   lang.transformTemplateParts,

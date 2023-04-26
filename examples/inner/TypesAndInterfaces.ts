@@ -61,3 +61,21 @@ export interface MyInterfaceToImplement {
 export interface MyInterfaceToImplementSecond {
   bar: number;
 }
+
+enum MyNumberEnum {
+  Foo,
+  Bar,
+  Baz,
+}
+
+enum MyStringEnum {
+  Foo = 'foo',
+  Bar = 'bar',
+  Baz = 'baz',
+}
+
+enum MyHybridEnum {
+  Foo = 10,
+  Bar,
+  Baz,
+}

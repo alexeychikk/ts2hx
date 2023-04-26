@@ -56,6 +56,30 @@ export const transformKeywords: TransformerFn = function (
   }
 };
 
+export const transformPowExpression: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  // myNum ** 3
+  if (!ts.isBinaryExpression(node)) return;
+
+  if (node.operatorToken.kind === SyntaxKind.AsteriskAsteriskToken) {
+    return `Math.pow(${this.visitNode(node.left, context)}, ${this.visitNode(
+      node.right,
+      context,
+    )})`;
+  }
+
+  if (node.operatorToken.kind === SyntaxKind.AsteriskAsteriskEqualsToken) {
+    const left = this.visitNode(node.left, context);
+    return `${left} = Math.pow(${left.trim()}, ${this.visitNode(
+      node.right,
+      context,
+    )})`;
+  }
+};
+
 export const transformSimpleTemplate: TransformerFn = function (
   this: Transformer,
   node,

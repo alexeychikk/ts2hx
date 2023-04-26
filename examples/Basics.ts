@@ -84,7 +84,7 @@ function wrapper() {
   myObject['0_stringKey'] = [];
   const myArrayAccess = myNumberArray[1];
   const myTypeOf = typeof myImplicitLiteralNumber;
-  void (2 ** 2 === 4);
+  void (2 * 2 === 4);
 
   if (myNumber) {
     console.log('if statement');
@@ -122,7 +122,8 @@ function wrapper() {
 }
 
 function withRestParams(...args: string[]) {
-  switch (myImplicitLiteralNumber * 2) {
+  myImplicitLiteralNumber **= 1;
+  switch (myImplicitLiteralNumber ** 2) {
     case 10:
     case 12:
       console.log('fall through');
@@ -145,4 +146,10 @@ function withRestParams(...args: string[]) {
   }
 }
 
-function withOptionalParams(foo?: string, bar = 4, ...args: Array<number>) {}
+function withOptionalParams(foo?: string, bar = 4, ...args: Array<number>) {
+  try {
+    throw new Error('foo');
+  } catch (error: unknown) {
+    console.log(error instanceof Error);
+  }
+}
