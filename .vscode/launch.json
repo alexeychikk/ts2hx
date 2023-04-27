@@ -11,7 +11,7 @@
       "program": "${workspaceFolder}/src/cli.ts",
       "preLaunchTask": "tsc: build - tsconfig.json",
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
-      "args": ["./examples/tsconfig.json", "./dist/hx"]
+      "args": ["./examples/tsconfig.json", "./dist/hx", "-c", "-t"]
     }
   ]
 }

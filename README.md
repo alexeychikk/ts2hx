@@ -15,6 +15,21 @@ It just covers syntax differences, basic types and some extra stuff that might c
 2. `npm i`
 3. `npm start -- ./path/to/your/tsconfig.json ./output/folder/path`
 
+```console
+$ node .\dist\src\cli.js -h
+Usage: cli [options] <ts-config-path> <output-dir-path>
+
+Arguments:
+  ts-config-path          path to tsconfig.json of your project
+  output-dir-path         path to directory where to output final Haxe code
+
+Options:
+  -c, --includeComments   whether to include comments generated during transformation
+  -t, --includeTodos      whether to include todos generated during transformation
+  -l, --logLevel <level>  log level (choices: "Log", "Warn", "Error", "None", default: "Log")
+  -h, --help              display help for command
+```
+
 ## Features
 
 - [x] keywords and syntax tokens
@@ -29,5 +44,5 @@ It just covers syntax differences, basic types and some extra stuff that might c
 - [x] interfaces and type definitions
 - [x] imports
 - [ ] enums
-- [ ] try-catch
+- [ ] exceptions
 - [ ] ...probably many more
