@@ -73,7 +73,7 @@ export const transformConstructor: TransformerFn = function (
         propertyDeclarations += `${this.visitNode(
           access,
           context,
-        )} var ${code};\n`;
+        )} ${TsUtils.getDeclarationKeyword(param)} ${code};\n`;
       }
       return code;
     })
@@ -117,7 +117,9 @@ export const transformClassPropertyDeclaration: TransformerFn = function (
     ? `= ${this.visitNode(node.initializer, context)}`
     : '';
 
-  return `${modifiers}var ${node.name.getText()}${type}${initializer};`;
+  return `${modifiers}${TsUtils.getDeclarationKeyword(
+    node,
+  )} ${node.name.getText()}${type}${initializer};`;
 };
 
 export const transformClassMethodDeclaration: TransformerFn = function (

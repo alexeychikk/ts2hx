@@ -69,15 +69,14 @@ export const transformPropertySignature: TransformerFn = function (
   // { foo: string; }
   if (!ts.isPropertySignature(node)) return;
 
-  const isReadonly = node.modifiers?.find(
-    (m) => m.kind === SyntaxKind.ReadonlyKeyword,
-  );
   const isOptional = !!node.questionToken;
   const isInterface = ts.isInterfaceDeclaration(node.parent);
 
-  return `${isOptional && isInterface ? '@:optional ' : ''}public ${
-    isReadonly ? 'final' : 'var'
-  } ${isOptional && !isInterface ? '?' : ''}${node.name.getText()}: ${
+  return `${
+    isOptional && isInterface ? '@:optional ' : ''
+  }public ${TsUtils.getDeclarationKeyword(node)} ${
+    isOptional && !isInterface ? '?' : ''
+  }${node.name.getText()}: ${
     node.type ? this.visitNode(node.type, context) : 'Any'
   };`;
 };

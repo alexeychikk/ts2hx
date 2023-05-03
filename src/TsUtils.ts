@@ -113,6 +113,14 @@ export class TsUtils {
       : 'private';
   }
 
+  static isReadonly(node: ts.HasModifiers): boolean {
+    return !!node.modifiers?.some((m) => m.kind === SyntaxKind.ReadonlyKeyword);
+  }
+
+  static getDeclarationKeyword(node: ts.HasModifiers): string {
+    return TsUtils.isReadonly(node) ? 'final' : 'var';
+  }
+
   static getArrayTypeNode(node: ts.Node): ts.Node | undefined {
     if (ts.isTypeReferenceNode(node) && node.typeName.getText() === 'Array') {
       return node.typeArguments?.[0];

@@ -51,7 +51,7 @@ class Animal {
   private myPrivateBoolean?: boolean;
   myImplicitPublicFunction: () => void;
 
-  protected constructor(public name: string, myPublicString: string) {
+  protected constructor(public readonly name: string, myPublicString: string) {
     this.myPublicString = myPublicString;
     this.myImplicitPublicFunction = () => undefined;
   }
@@ -67,7 +67,7 @@ class Animal {
 
 class Dog extends Animal {
   age: number;
-  public legs = 4;
+  public readonly legs = 4;
 
   constructor(name: string, public breed: string) {
     super(name, 'foo');

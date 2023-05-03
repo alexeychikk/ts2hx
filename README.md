@@ -45,4 +45,5 @@ Options:
 - [x] imports
 - [x] exceptions
 - [x] enums
+- [ ] decorators
 - [ ] ...probably many more
