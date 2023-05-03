@@ -90,3 +90,5 @@ export class Main {
     myDog.sayHello();
   }
 }
+
+class MyError extends Error {}

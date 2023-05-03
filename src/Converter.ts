@@ -12,6 +12,7 @@ export interface ConverterOptions {
 // Order here actually matters (to some extent)
 const transformers: TransformerFn[] = [
   api.transformJsApiAccess,
+  api.transformJsIdentifiers,
   api.transformTsLibTypes,
   lang.transformImportDeclaration,
   lang.transformVariableStatement,

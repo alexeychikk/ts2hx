@@ -12,6 +12,7 @@ export interface VisitNodeContext {}
 export interface SourceFileContext {
   importEitherType?: boolean;
   importDynamicAccess?: boolean;
+  importException?: boolean;
   importTs2hx?: boolean;
   nodesToIgnore: Set<ts.Node>;
   nodesToFullyReplace: Set<ts.Node>;
@@ -52,8 +53,9 @@ export class Transformer {
     let haxeCode = this.visitNode(this.sourceFile, {});
 
     const imports = [
-      this.context.importEitherType && `import haxe.extern.EitherType;`,
+      this.context.importException && `import haxe.Exception;`,
       this.context.importDynamicAccess && `import haxe.DynamicAccess;`,
+      this.context.importEitherType && `import haxe.extern.EitherType;`,
       this.context.importTs2hx && `import ts2hx.Ts2hx;`,
     ].filter(Boolean);
     haxeCode = `${
@@ -291,11 +293,22 @@ export class Transformer {
     return `${defaultAccessModifier}${modifiers}`;
   }
 
-  protected getDeclarationSourceFile(node: ts.Node): ts.SourceFile | undefined {
+  protected getRootSymbol(node: ts.Node): ts.Symbol | undefined {
     const symbol = this.typeChecker.getSymbolAtLocation(node);
     if (!symbol) return;
-    const aliasedSymbol = this.typeChecker.getAliasedSymbol(symbol);
-    return aliasedSymbol?.declarations?.[0].getSourceFile();
+    return symbol.flags & ts.SymbolFlags.Alias
+      ? this.typeChecker.getAliasedSymbol(symbol)
+      : symbol;
+  }
+
+  protected getDeclarationSourceFile(node: ts.Node): ts.SourceFile | undefined {
+    return this.getRootSymbol(node)?.declarations?.[0].getSourceFile();
+  }
+
+  protected isBuiltInNode(node: ts.Node): boolean {
+    return !!this.getRootSymbol(node)?.declarations?.some((dec) =>
+      /node_modules\/typescript\/lib\//gim.test(dec.getSourceFile().fileName),
+    );
   }
 
   protected ignoreNode(node: ts.Node): void {
