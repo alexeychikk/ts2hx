@@ -42,8 +42,9 @@ Options:
 - [x] functions
 - [x] classes
 - [x] interfaces and type definitions
+- [x] enums
 - [x] imports
 - [x] exceptions
-- [x] enums
 - [ ] decorators
+- [ ] async-await
 - [ ] ...probably many more

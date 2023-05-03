@@ -1,6 +1,7 @@
 import path from 'path';
 import ts, { SyntaxKind } from 'typescript';
 import { TsUtils } from '../TsUtils';
+import { logger } from '../Logger';
 
 /**
  * I intended to store indentation level here
@@ -50,6 +51,7 @@ export class Transformer {
   }
 
   run(): string {
+    logger.log('Transforming', this.sourceFile.fileName);
     let haxeCode = this.visitNode(this.sourceFile, {});
 
     const imports = [
