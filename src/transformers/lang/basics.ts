@@ -170,6 +170,26 @@ export const transformTypeofExpression: TransformerFn = function (
   return `Ts2hx.typeof(${this.visitNode(node.expression, context)})`;
 };
 
+export const transformInstanceOfExpression: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  // error instanceof Error
+  if (
+    !(
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === SyntaxKind.InstanceOfKeyword
+    )
+  )
+    return;
+
+  const left = this.visitNode(node.left, context).trim();
+  const right = this.visitNode(node.right, context).trim();
+
+  return `Std.isOfType(${left}, ${right})`;
+};
+
 export const transformImportDeclaration: TransformerFn = function (
   this: Transformer,
   node,
