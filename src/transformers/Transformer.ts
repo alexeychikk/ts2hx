@@ -311,6 +311,19 @@ export class Transformer {
     );
   }
 
+  protected getSimpleTypeString(
+    node: ts.Node,
+  ): 'string' | 'number' | 'boolean' | undefined {
+    const type = this.typeChecker.getTypeAtLocation(node);
+    const baseType = type.isLiteral()
+      ? this.typeChecker.getBaseTypeOfLiteralType(type)
+      : type;
+    const name = this.typeChecker.typeToString(baseType);
+    return ['string', 'number', 'boolean'].includes(name)
+      ? (name as 'string')
+      : undefined;
+  }
+
   protected ignoreNode(node: ts.Node): void {
     this.context.nodesToIgnore.add(node);
   }

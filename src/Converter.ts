@@ -19,6 +19,7 @@ const transformers: TransformerFn[] = [
   lang.transformVariableDeclarationList,
   lang.transformVariableDeclaration,
   lang.transformClassDeclaration,
+  lang.transformEnumDeclaration,
   lang.transformHeritageClause,
   lang.transformConstructor,
   lang.transformClassPropertyDeclaration,

@@ -69,13 +69,13 @@ enum MyNumberEnum {
 }
 
 enum MyStringEnum {
-  Foo = 'foo',
+  Foo = `foo${3}`,
   Bar = 'bar',
   Baz = 'baz',
 }
 
 enum MyHybridEnum {
-  Foo = 10,
+  Foo = 2 + 3,
   Bar,
   Baz,
 }

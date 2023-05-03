@@ -43,6 +43,6 @@ Options:
 - [x] classes
 - [x] interfaces and type definitions
 - [x] imports
-- [ ] enums
-- [ ] exceptions
+- [x] exceptions
+- [x] enums
 - [ ] ...probably many more

@@ -174,3 +174,32 @@ export const transformTypeQuery: TransformerFn = function (
   );
   return `${comment} Any`;
 };
+
+export const transformEnumDeclaration: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  // enum Foo { Bar, Baz }
+  if (!ts.isEnumDeclaration(node)) return;
+
+  const firstInitializer = node.members[0]?.initializer;
+  const underlyingType =
+    !!firstInitializer &&
+    this.getSimpleTypeString(firstInitializer) === 'string'
+      ? 'String'
+      : 'Int';
+
+  const members = node.members
+    .map((member) => {
+      const initializer = member.initializer
+        ? ` = ${this.visitNode(member.initializer, context)}`
+        : '';
+      return `${TsUtils.getIndent(
+        node,
+      )}  var ${member.name.getText()}${initializer};`;
+    })
+    .join('\n');
+
+  return `enum abstract ${node.name.text}(${underlyingType}) from ${underlyingType} to ${underlyingType} {\n${members}\n}`;
+};
