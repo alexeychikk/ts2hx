@@ -167,7 +167,7 @@ export const transformTypeofExpression: TransformerFn = function (
 ) {
   if (!ts.isTypeOfExpression(node)) return;
 
-  this.context.importTs2hx = true;
+  this.imports.ts2hx = true;
   return `Ts2hx.typeof(${this.visitNode(node.expression, context)})`;
 };
 

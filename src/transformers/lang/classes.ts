@@ -15,8 +15,7 @@ export const transformClassDeclaration: TransformerFn = function (
 
   const modifiers = this.utils.joinModifiers(node.modifiers, context);
   const className =
-    node.name?.getText() ??
-    `AnonymousClass_${this.context.anonymousClassCounter++}`;
+    node.name?.getText() ?? `AnonymousClass_${this.anonymousClassCounter++}`;
   const typeParams = this.utils.joinTypeParameters(
     node.typeParameters,
     context,

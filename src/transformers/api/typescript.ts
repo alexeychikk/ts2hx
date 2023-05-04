@@ -18,7 +18,7 @@ export const transformTsLibTypes: TransformerFn = function (
 
   switch (name) {
     case 'Record': {
-      this.context.importDynamicAccess = true;
+      this.imports.dynamicAccess = true;
       return `DynamicAccess<${
         node.typeArguments?.[1]
           ? this.visitNode(node.typeArguments[1], context)

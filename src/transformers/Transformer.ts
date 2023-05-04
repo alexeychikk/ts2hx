@@ -17,16 +17,6 @@ type TransformerUtils = {
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface VisitNodeContext {}
 
-export interface SourceFileContext {
-  importEitherType?: boolean;
-  importDynamicAccess?: boolean;
-  importException?: boolean;
-  importTs2hx?: boolean;
-  nodesToIgnore: Set<ts.Node>;
-  nodesToFullyReplace: Set<ts.Node>;
-  anonymousClassCounter: number;
-}
-
 export type TransformerFn = (
   this: Transformer,
   node: ts.Node,
@@ -39,8 +29,18 @@ export class Transformer {
   typeChecker: ts.TypeChecker;
   compilerOptions: ts.CompilerOptions;
   sourceFile: ts.SourceFile;
-  context: SourceFileContext;
   transformers: TransformerFn[];
+
+  protected nodesToIgnore = new Set<ts.Node>();
+  protected nodesToFullyReplace = new Set<ts.Node>();
+  protected anonymousClassCounter = 0;
+  protected imports: {
+    eitherType?: boolean;
+    dynamicAccess?: boolean;
+    exception?: boolean;
+    ts2hx?: boolean;
+  } = {};
+
   protected utils = mapValues(utils, (fn) => fn.bind(this)) as TransformerUtils;
 
   constructor(options: {
@@ -57,11 +57,6 @@ export class Transformer {
     this.compilerOptions = options.compilerOptions;
     this.sourceFile = options.sourceFile;
     this.transformers = options.transformers;
-    this.context = {
-      nodesToIgnore: new Set(),
-      nodesToFullyReplace: new Set(),
-      anonymousClassCounter: 0,
-    };
   }
 
   run(): string {
@@ -69,10 +64,10 @@ export class Transformer {
     let haxeCode = this.visitNode(this.sourceFile, {});
 
     const imports = [
-      this.context.importException && `import haxe.Exception;`,
-      this.context.importDynamicAccess && `import haxe.DynamicAccess;`,
-      this.context.importEitherType && `import haxe.extern.EitherType;`,
-      this.context.importTs2hx && `import ts2hx.Ts2hx;`,
+      this.imports.exception && `import haxe.Exception;`,
+      this.imports.dynamicAccess && `import haxe.DynamicAccess;`,
+      this.imports.eitherType && `import haxe.extern.EitherType;`,
+      this.imports.ts2hx && `import ts2hx.Ts2hx;`,
     ].filter(Boolean);
     haxeCode = `${
       imports.join('\n') + (imports.length ? '\n\n' : '')
@@ -113,7 +108,7 @@ export class Transformer {
     node: ts.Node | undefined,
     context: VisitNodeContext,
   ): string {
-    if (!node || this.context.nodesToIgnore.has(node)) {
+    if (!node || this.nodesToIgnore.has(node)) {
       return ' ';
     }
 
@@ -183,17 +178,17 @@ export class Transformer {
   }
 
   protected dump(node: ts.Node, code: string): string {
-    return this.context.nodesToFullyReplace.has(node)
+    return this.nodesToFullyReplace.has(node)
       ? code
       : node.getFullText().replace(node.getText(), code);
   }
 
   protected ignoreNode(node: ts.Node): void {
-    this.context.nodesToIgnore.add(node);
+    this.nodesToIgnore.add(node);
   }
 
   protected replaceNodeFully(node: ts.Node): void {
-    this.context.nodesToFullyReplace.add(node);
+    this.nodesToFullyReplace.add(node);
   }
 
   protected ignoreNextNodeOfKind(node: ts.Node, kind: SyntaxKind): void {

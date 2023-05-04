@@ -22,7 +22,7 @@ export const transformJsIdentifiers: TransformerFn = function (
   const code: string | undefined = (() => {
     switch (node.getText()) {
       case 'Error':
-        this.context.importException = true;
+        this.imports.exception = true;
         return 'Exception';
     }
   })();

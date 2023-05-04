@@ -175,7 +175,7 @@ export function toEitherType(
       )
       .join(', ') + '>'.repeat(types.length - 1);
   if (res) {
-    this.context.importEitherType = true;
+    this.imports.eitherType = true;
   }
   return res;
 }
