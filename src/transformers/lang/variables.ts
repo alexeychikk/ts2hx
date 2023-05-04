@@ -1,5 +1,4 @@
 import ts, { SyntaxKind } from 'typescript';
-import { TsUtils } from '../../TsUtils';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
 export const transformVariableStatement: TransformerFn = function (
@@ -27,7 +26,7 @@ export const transformVariableDeclarationList: TransformerFn = function (
   return node.declarations
     .map(
       (dec, i) =>
-        `${i > 0 ? TsUtils.getIndent(dec) : ''}${keyword} ${this.visitNode(
+        `${i > 0 ? this.utils.getIndent(dec) : ''}${keyword} ${this.visitNode(
           dec,
           context,
         ).trimStart()}`,

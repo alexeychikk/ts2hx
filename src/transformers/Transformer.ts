@@ -1,7 +1,14 @@
 import path from 'path';
-import ts, { SyntaxKind } from 'typescript';
-import { TsUtils } from '../TsUtils';
+import type ts from 'typescript';
+import { type SyntaxKind } from 'typescript';
+import { mapValues } from 'lodash';
 import { logger } from '../Logger';
+import * as utils from './utils';
+
+type Utils = typeof utils;
+type TransformerUtils = {
+  [key in keyof Utils]: OmitThisParameter<Utils[key]>;
+};
 
 /**
  * I intended to store indentation level here
@@ -27,18 +34,25 @@ export type TransformerFn = (
 ) => string | undefined;
 
 export class Transformer {
+  includeComments?: boolean;
+  includeTodos?: boolean;
   typeChecker: ts.TypeChecker;
   compilerOptions: ts.CompilerOptions;
   sourceFile: ts.SourceFile;
   context: SourceFileContext;
   transformers: TransformerFn[];
+  protected utils = mapValues(utils, (fn) => fn.bind(this)) as TransformerUtils;
 
   constructor(options: {
     typeChecker: ts.TypeChecker;
     compilerOptions: ts.CompilerOptions;
     sourceFile: ts.SourceFile;
     transformers: TransformerFn[];
+    includeComments?: boolean;
+    includeTodos?: boolean;
   }) {
+    this.includeComments = options.includeComments;
+    this.includeTodos = options.includeTodos;
     this.typeChecker = options.typeChecker;
     this.compilerOptions = options.compilerOptions;
     this.sourceFile = options.sourceFile;
@@ -130,16 +144,6 @@ export class Transformer {
     return nodeFullCode || node.getFullText();
   }
 
-  protected joinNodes<T extends ts.Node>(
-    nodes: ts.NodeArray<T> | undefined,
-    context: VisitNodeContext,
-    separator = ', ',
-  ): string {
-    return (
-      nodes?.map((tp) => this.visitNode(tp, context)).join(separator) ?? ''
-    );
-  }
-
   protected replaceChild(
     node: ts.Node,
     context: VisitNodeContext,
@@ -184,148 +188,6 @@ export class Transformer {
       : node.getFullText().replace(node.getText(), code);
   }
 
-  protected toEitherType(
-    types: ts.NodeArray<ts.TypeNode>,
-    context: VisitNodeContext,
-  ): string | undefined {
-    const res =
-      types
-        .map(
-          (t, i) =>
-            `${i < types.length - 1 ? 'EitherType<' : ''}${this.visitNode(
-              t,
-              context,
-            )}`,
-        )
-        .join(', ') + '>'.repeat(types.length - 1);
-    if (res) {
-      this.context.importEitherType = true;
-    }
-    return res;
-  }
-
-  protected toExplicitBooleanCondition(node: ts.Node): string | undefined {
-    switch (node.kind) {
-      case SyntaxKind.TrueKeyword:
-      case SyntaxKind.FalseKeyword:
-        return node.getText();
-      case SyntaxKind.NullKeyword:
-        return 'false';
-    }
-
-    if (ts.isNumericLiteral(node)) {
-      return node.text === '0' ? 'false' : 'true';
-    }
-    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-      return node.text === '' ? 'false' : 'true';
-    }
-    if (
-      ts.isArrayLiteralExpression(node) ||
-      ts.isObjectLiteralExpression(node)
-    ) {
-      return 'true';
-    }
-
-    if (!ts.isIdentifier(node)) return;
-
-    if (node.text === 'undefined' || node.text === 'NaN') {
-      return 'false';
-    }
-
-    const type = this.typeChecker.getTypeAtLocation(node);
-    if (
-      ts.TypeFlags.Boolean & type.flags ||
-      ts.TypeFlags.BooleanLiteral & type.flags
-    ) {
-      return node.getText();
-    }
-    if (ts.TypeFlags.Number & type.flags) {
-      return `${node.getText()} != 0`;
-    }
-    if (ts.TypeFlags.String & type.flags) {
-      return `${node.getText()} != ""`;
-    }
-    return `${node.getText()} != null`;
-  }
-
-  protected toSeparateStatements(
-    node: ts.Node,
-    context: VisitNodeContext,
-  ): string {
-    if (
-      !(
-        ts.isBinaryExpression(node) &&
-        node.operatorToken.kind === SyntaxKind.CommaToken
-      )
-    ) {
-      return this.visitNode(node, context);
-    }
-    return `${TsUtils.getIndent(node)}${this.visitNode(
-      node.left,
-      context,
-    )};\n${TsUtils.getIndent(node)}${this.visitNode(node.right, context)};\n`;
-  }
-
-  protected joinTypeParameters(
-    typeParameters: ts.NodeArray<ts.TypeParameterDeclaration> | undefined,
-    context: VisitNodeContext,
-  ): string {
-    const typeParams = this.joinNodes(typeParameters, context);
-    return typeParams ? `<${typeParams}>` : '';
-  }
-
-  protected joinModifiers(
-    modifiers: ts.NodeArray<ts.ModifierLike> | undefined,
-    context: VisitNodeContext,
-  ): string {
-    return (
-      modifiers?.map((m) => this.visitNode(m, context) + ' ').join('') ?? ''
-    );
-  }
-
-  protected joinMemberModifiers(
-    node: ts.HasModifiers,
-    context: VisitNodeContext,
-  ): string {
-    // in Haxe class members are private by default unlike in TS
-    const defaultAccessModifier = TsUtils.getAccessModifier(node)
-      ? ''
-      : 'public ';
-    const modifiers = this.joinModifiers(node.modifiers, context);
-    return `${defaultAccessModifier}${modifiers}`;
-  }
-
-  protected getRootSymbol(node: ts.Node): ts.Symbol | undefined {
-    const symbol = this.typeChecker.getSymbolAtLocation(node);
-    if (!symbol) return;
-    return symbol.flags & ts.SymbolFlags.Alias
-      ? this.typeChecker.getAliasedSymbol(symbol)
-      : symbol;
-  }
-
-  protected getDeclarationSourceFile(node: ts.Node): ts.SourceFile | undefined {
-    return this.getRootSymbol(node)?.declarations?.[0].getSourceFile();
-  }
-
-  protected isBuiltInNode(node: ts.Node): boolean {
-    return !!this.getRootSymbol(node)?.declarations?.some((dec) =>
-      /node_modules\/typescript\/lib\//gim.test(dec.getSourceFile().fileName),
-    );
-  }
-
-  protected getSimpleTypeString(
-    node: ts.Node,
-  ): 'string' | 'number' | 'boolean' | undefined {
-    const type = this.typeChecker.getTypeAtLocation(node);
-    const baseType = type.isLiteral()
-      ? this.typeChecker.getBaseTypeOfLiteralType(type)
-      : type;
-    const name = this.typeChecker.typeToString(baseType);
-    return ['string', 'number', 'boolean'].includes(name)
-      ? (name as 'string')
-      : undefined;
-  }
-
   protected ignoreNode(node: ts.Node): void {
     this.context.nodesToIgnore.add(node);
   }
@@ -335,7 +197,7 @@ export class Transformer {
   }
 
   protected ignoreNextNodeOfKind(node: ts.Node, kind: SyntaxKind): void {
-    const nextNode = TsUtils.getNextNode(node);
+    const nextNode = this.utils.getNextNode(node);
     if (nextNode?.kind === kind) {
       this.ignoreNode(nextNode);
     }

@@ -1,5 +1,4 @@
 import ts from 'typescript';
-import { TsUtils } from '../../TsUtils';
 import { logger } from '../../Logger';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
@@ -31,15 +30,15 @@ export const transformTsLibTypes: TransformerFn = function (
     case 'Readonly': {
       logger.warn(
         `${name}<T> type is not supported at`,
-        TsUtils.getNodeSourcePath(typeNode),
+        this.utils.getNodeSourcePath(typeNode),
       );
 
       const typeParam = this.visitNode(node.typeArguments?.[0], context);
 
       return (
-        TsUtils.createComment(({ todo }) => `${todo} ${name}<`) +
+        this.utils.createComment(({ todo }) => `${todo} ${name}<`) +
         typeParam +
-        TsUtils.createComment(() => `>`)
+        this.utils.createComment(() => `>`)
       );
     }
   }

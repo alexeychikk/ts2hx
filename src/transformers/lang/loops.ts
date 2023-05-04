@@ -1,5 +1,4 @@
 import ts from 'typescript';
-import { TsUtils } from '../../TsUtils';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
 export const transformForLoop: TransformerFn = function (
@@ -13,10 +12,10 @@ export const transformForLoop: TransformerFn = function (
   const declarations = node.initializer
     ? `${this.visitNode(node.initializer, context)};\n`
     : '';
-  const indent = node.initializer ? TsUtils.getIndent(node) : '';
+  const indent = node.initializer ? this.utils.getIndent(node) : '';
 
   const condition = node.condition
-    ? this.toExplicitBooleanCondition(node.condition) ?? ''
+    ? this.utils.toExplicitBooleanCondition(node.condition) ?? ''
     : 'true';
 
   const body = ts.isBlock(node.statement)
@@ -24,10 +23,10 @@ export const transformForLoop: TransformerFn = function (
     : this.visitNode(node.statement, context);
 
   const increments = node.incrementor
-    ? `${this.toSeparateStatements(node.incrementor, context)}`
+    ? `${this.utils.toSeparateStatements(node.incrementor, context)}`
     : '';
 
-  return `${declarations}${indent}while(${condition}) {${body}\n${increments}${TsUtils.getIndent(
+  return `${declarations}${indent}while(${condition}) {${body}\n${increments}${this.utils.getIndent(
     node,
   )}}`;
 };

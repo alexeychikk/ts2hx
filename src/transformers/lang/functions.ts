@@ -1,6 +1,5 @@
 import ts from 'typescript';
 import { type Transformer, type TransformerFn } from '../Transformer';
-import { TsUtils } from '../../TsUtils';
 
 export const transformArrowFnToken: TransformerFn = function (
   this: Transformer,
@@ -23,7 +22,7 @@ export const transformFunctionParameter: TransformerFn = function (
   let type = '';
   if (node.type) {
     if (dotDotDotToken) {
-      type = this.visitNode(TsUtils.getArrayTypeNode(node.type), context);
+      type = this.visitNode(this.utils.getArrayTypeNode(node.type), context);
     } else {
       type = this.visitNode(node.type, context);
     }

@@ -1,5 +1,4 @@
 import ts, { type ClassDeclaration, SyntaxKind } from 'typescript';
-import { TsUtils } from '../../TsUtils';
 import { logger } from '../../Logger';
 import {
   type VisitNodeContext,
@@ -14,23 +13,26 @@ export const transformClassDeclaration: TransformerFn = function (
 ) {
   if (!ts.isClassDeclaration(node)) return;
 
-  const modifiers = this.joinModifiers(node.modifiers, context);
+  const modifiers = this.utils.joinModifiers(node.modifiers, context);
   const className =
     node.name?.getText() ??
     `AnonymousClass_${this.context.anonymousClassCounter++}`;
-  const typeParams = this.joinTypeParameters(node.typeParameters, context);
+  const typeParams = this.utils.joinTypeParameters(
+    node.typeParameters,
+    context,
+  );
   const defaultConstructor = node.members.find((m) =>
     ts.isConstructorDeclaration(m),
   )
     ? ''
-    : `\n${TsUtils.getIndent(node)}  public function new() {}\n`;
-  const inheritance = this.joinNodes(node.heritageClauses, context, ' ');
+    : `\n${this.utils.getIndent(node)}  public function new() {}\n`;
+  const inheritance = this.utils.joinNodes(node.heritageClauses, context, ' ');
 
   return (
     `${modifiers}class ${className}${typeParams} ${inheritance} {` +
     defaultConstructor +
-    this.joinNodes(node.members, context, '') +
-    `\n${TsUtils.getIndent(node)}}`
+    this.utils.joinNodes(node.members, context, '') +
+    `\n${this.utils.getIndent(node)}}`
   );
 };
 
@@ -61,26 +63,26 @@ export const transformConstructor: TransformerFn = function (
   )
     return;
 
-  const modifiers = this.joinMemberModifiers(node, context);
+  const modifiers = this.utils.joinMemberModifiers(node, context);
 
   let propertyDeclarations = '';
 
   const params = node.parameters
     .map((param) => {
-      const access = TsUtils.getAccessModifier(param);
+      const access = this.utils.getAccessModifier(param);
       const code = this.visitNode(param, context);
       if (access) {
         propertyDeclarations += `${this.visitNode(
           access,
           context,
-        )} ${TsUtils.getDeclarationKeyword(param)} ${code};\n`;
+        )} ${this.utils.getDeclarationKeyword(param)} ${code};\n`;
       }
       return code;
     })
     .join(', ');
 
   if (propertyDeclarations) {
-    propertyDeclarations += TsUtils.getIndent(node);
+    propertyDeclarations += this.utils.getIndent(node);
   }
 
   const body = node.body ? this.visitNode(node.body, context) : '{}';
@@ -98,13 +100,13 @@ export const transformClassPropertyDeclaration: TransformerFn = function (
     return;
 
   if (ts.isComputedPropertyName(node.name)) {
-    return TsUtils.commentOutNode(
+    return this.utils.commentOutNode(
       node,
       `Computed property name is not supported in class property declaration at`,
     );
   }
 
-  const modifiers = this.joinMemberModifiers(node, context);
+  const modifiers = this.utils.joinMemberModifiers(node, context);
 
   let type = '';
   if (node.type) {
@@ -117,7 +119,7 @@ export const transformClassPropertyDeclaration: TransformerFn = function (
     ? `= ${this.visitNode(node.initializer, context)}`
     : '';
 
-  return `${modifiers}${TsUtils.getDeclarationKeyword(
+  return `${modifiers}${this.utils.getDeclarationKeyword(
     node,
   )} ${node.name.getText()}${type}${initializer};`;
 };
@@ -131,9 +133,12 @@ export const transformClassMethodDeclaration: TransformerFn = function (
   if (!(ts.isMethodDeclaration(node) && ts.isClassDeclaration(node.parent)))
     return;
 
-  const modifiers = this.joinMemberModifiers(node, context);
-  const typeParams = this.joinTypeParameters(node.typeParameters, context);
-  const params = this.joinNodes(node.parameters, context);
+  const modifiers = this.utils.joinMemberModifiers(node, context);
+  const typeParams = this.utils.joinTypeParameters(
+    node.typeParameters,
+    context,
+  );
+  const params = this.utils.joinNodes(node.parameters, context);
   const returnType = node.type ? `: ${this.visitNode(node.type, context)}` : '';
   const body = node.body ? this.visitNode(node.body, context) : ';';
 
@@ -148,7 +153,7 @@ export const transformClassGetter: TransformerFn = function (
   // get prop(): string {}
   if (!(ts.isGetAccessor(node) && ts.isClassDeclaration(node.parent))) return;
 
-  const modifiers = this.joinMemberModifiers(node, context);
+  const modifiers = this.utils.joinMemberModifiers(node, context);
   const type = node.type ? `: ${this.visitNode(node.type, context)}` : '';
   const body = node.body ? this.visitNode(node.body, context) : ';';
   const property = defineHaxeGetSetProperty.call(this, node, context);
@@ -164,8 +169,8 @@ export const transformClassSetter: TransformerFn = function (
   // set prop(value: string) {}
   if (!(ts.isSetAccessor(node) && ts.isClassDeclaration(node.parent))) return;
 
-  const modifiers = this.joinMemberModifiers(node, context);
-  const params = this.joinNodes(node.parameters, context);
+  const modifiers = this.utils.joinMemberModifiers(node, context);
+  const params = this.utils.joinNodes(node.parameters, context);
   const body = node.body ? this.visitNode(node.body, context) : ';';
   const property = defineHaxeGetSetProperty.call(this, node, context);
 
@@ -194,24 +199,28 @@ const defineHaxeGetSetProperty = function (
   const setter = ts.isSetAccessor(node)
     ? node
     : (pairNode as ts.SetAccessorDeclaration | undefined);
-  const getAccess = getter ? TsUtils.getAccessModifierString(node) : undefined;
-  const setAccess = setter ? TsUtils.getAccessModifierString(node) : undefined;
+  const getAccess = getter
+    ? this.utils.getAccessModifierString(node)
+    : undefined;
+  const setAccess = setter
+    ? this.utils.getAccessModifierString(node)
+    : undefined;
   const commonAccess =
     getAccess === 'public' || setAccess === 'public' ? 'public' : 'private';
   const type = getter?.type
     ? this.visitNode(getter.type, context)
     : setter?.parameters[0].type
     ? this.visitNode(setter.parameters[0].type, context)
-    : `${TsUtils.createTodoComment()} Any`;
+    : `${this.utils.createTodoComment()} Any`;
 
   if (type === 'Any') {
     logger.warn(
       `Type of get/set could not be inferred at`,
-      TsUtils.getNodeSourcePath(node),
+      this.utils.getNodeSourcePath(node),
     );
   }
 
   return `${commonAccess} var ${node.name.getText()}(${
     getter ? 'get' : 'never'
-  }, ${setter ? 'set' : 'never'}): ${type};\n${TsUtils.getIndent(node)}`;
+  }, ${setter ? 'set' : 'never'}): ${type};\n${this.utils.getIndent(node)}`;
 };

@@ -1,5 +1,4 @@
 import ts, { SyntaxKind } from 'typescript';
-import { TsUtils } from '../../TsUtils';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
 export const transformLiteralTypes: TransformerFn = function (
@@ -46,7 +45,7 @@ export const transformUnionType: TransformerFn = function (
   // myVar: string | boolean
   if (!ts.isUnionTypeNode(node)) return;
   if (node.types.length > 3) return 'Dynamic';
-  return this.toEitherType(node.types, context);
+  return this.utils.toEitherType(node.types, context);
 };
 
 export const transformTupleType: TransformerFn = function (
@@ -57,7 +56,7 @@ export const transformTupleType: TransformerFn = function (
   // myVar: [number, string]
   if (!ts.isTupleTypeNode(node)) return;
   if (node.elements.length > 3) return 'Dynamic';
-  const res = this.toEitherType(node.elements, context);
+  const res = this.utils.toEitherType(node.elements, context);
   return res ? `Array<${res}>` : undefined;
 };
 
@@ -74,7 +73,7 @@ export const transformPropertySignature: TransformerFn = function (
 
   return `${
     isOptional && isInterface ? '@:optional ' : ''
-  }public ${TsUtils.getDeclarationKeyword(node)} ${
+  }public ${this.utils.getDeclarationKeyword(node)} ${
     isOptional && !isInterface ? '?' : ''
   }${node.name.getText()}: ${
     node.type ? this.visitNode(node.type, context) : 'Any'
@@ -88,7 +87,7 @@ export const transformIndexSignature: TransformerFn = function (
   // { [key: string]: number; }
   if (!ts.isIndexSignatureDeclaration(node)) return;
 
-  return TsUtils.commentOutNode(node, `Index signature is not supported at`);
+  return this.utils.commentOutNode(node, `Index signature is not supported at`);
 };
 
 export const transformMethodSignature: TransformerFn = function (
@@ -100,8 +99,11 @@ export const transformMethodSignature: TransformerFn = function (
   if (!ts.isMethodSignature(node)) return;
 
   const isOptional = !!node.questionToken;
-  const typeParams = this.joinTypeParameters(node.typeParameters, context);
-  const params = this.joinNodes(node.parameters, context);
+  const typeParams = this.utils.joinTypeParameters(
+    node.typeParameters,
+    context,
+  );
+  const params = this.utils.joinNodes(node.parameters, context);
   const ret = node.type ? this.visitNode(node.type, context) : 'Void';
 
   return `${
@@ -119,7 +121,7 @@ export const transformConstructorSignature: TransformerFn = function (
   // { new(): MyClass; }
   if (!ts.isConstructSignatureDeclaration(node)) return;
 
-  return TsUtils.commentOutNode(
+  return this.utils.commentOutNode(
     node,
     `Constructor signature is not supported at`,
   );
@@ -152,7 +154,7 @@ export const transformConditionalType: TransformerFn = function (
   // T extends Foo ? string : number
   if (!ts.isConditionalTypeNode(node)) return;
 
-  const comment = TsUtils.commentOutNode(
+  const comment = this.utils.commentOutNode(
     node,
     `Conditional type is not supported at`,
   );
@@ -167,7 +169,7 @@ export const transformTypeQuery: TransformerFn = function (
   // type T = typeof MY_VAR
   if (!ts.isTypeQueryNode(node)) return;
 
-  const comment = TsUtils.commentOutNode(
+  const comment = this.utils.commentOutNode(
     node,
     `typeof type query is not supported at`,
   );
@@ -185,7 +187,7 @@ export const transformEnumDeclaration: TransformerFn = function (
   const firstInitializer = node.members[0]?.initializer;
   const underlyingType =
     !!firstInitializer &&
-    this.getSimpleTypeString(firstInitializer) === 'string'
+    this.utils.getSimpleTypeString(firstInitializer) === 'string'
       ? 'String'
       : 'Int';
 
@@ -194,7 +196,7 @@ export const transformEnumDeclaration: TransformerFn = function (
       const initializer = member.initializer
         ? ` = ${this.visitNode(member.initializer, context)}`
         : '';
-      return `${TsUtils.getIndent(
+      return `${this.utils.getIndent(
         node,
       )}  var ${member.name.getText()}${initializer};`;
     })

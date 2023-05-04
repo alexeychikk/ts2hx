@@ -2,7 +2,6 @@ import path from 'path';
 import { Command, Option } from 'commander';
 import { Converter } from './Converter';
 import { logger, LogLevel } from './Logger';
-import { TsUtils } from './TsUtils';
 
 void (async () => {
   try {
@@ -37,15 +36,18 @@ void (async () => {
       logLevel: keyof typeof LogLevel;
     }>();
 
-    TsUtils.includeComments = !!options.includeComments;
-    TsUtils.includeTodos = !!options.includeTodos;
     logger.logLevel = LogLevel[options.logLevel];
 
     const [tsConfigPathParam, outputDirPathParam] = command.args;
     const tsconfigPath = path.resolve(process.cwd(), tsConfigPathParam);
     const outputDirPath = path.resolve(process.cwd(), outputDirPathParam);
 
-    const converter = new Converter({ tsconfigPath, outputDirPath });
+    const converter = new Converter({
+      tsconfigPath,
+      outputDirPath,
+      includeComments: options.includeComments,
+      includeTodos: options.includeTodos,
+    });
     await converter.run();
   } catch (error) {
     logger.error(error);

@@ -27,7 +27,7 @@ export const transformJsIdentifiers: TransformerFn = function (
     }
   })();
 
-  if (code === undefined || !this.isBuiltInNode(node)) return;
+  if (code === undefined || !this.utils.isBuiltInNode(node)) return;
 
   return code;
 };

@@ -1,6 +1,5 @@
 import ts, { SyntaxKind } from 'typescript';
 import { logger } from '../../Logger';
-import { TsUtils } from '../../TsUtils';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
 export const transformPropertyAssignment: TransformerFn = function (
@@ -18,11 +17,11 @@ export const transformPropertyAssignment: TransformerFn = function (
   if (ts.isComputedPropertyName(node.name)) {
     logger.warn(
       `Computed property name is not supported at`,
-      TsUtils.getNodeSourcePath(node.name),
+      this.utils.getNodeSourcePath(node.name),
     );
 
     this.ignoreNextNodeOfKind(node, SyntaxKind.CommaToken);
-    return TsUtils.commentOutNode(node);
+    return this.utils.commentOutNode(node);
   }
 };
 
@@ -77,7 +76,7 @@ export const transformGetSet: TransformerFn = function (
   if (!ts.isObjectLiteralExpression(node.parent)) return;
 
   this.ignoreNextNodeOfKind(node, SyntaxKind.CommaToken);
-  return TsUtils.commentOutNode(
+  return this.utils.commentOutNode(
     node,
     `Getters and setters on object literals are not supported at`,
   );

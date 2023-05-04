@@ -1,5 +1,4 @@
 import ts, { SyntaxKind } from 'typescript';
-import { TsUtils } from '../../TsUtils';
 import {
   type VisitNodeContext,
   type Transformer,
@@ -88,7 +87,7 @@ export const transformSimpleTemplate: TransformerFn = function (
 ) {
   // `"Hello"`
   if (!ts.isNoSubstitutionTemplateLiteral(node)) return;
-  return `"${TsUtils.escapeStringText(node.text)}"`;
+  return `"${this.utils.escapeStringText(node.text)}"`;
 };
 
 export const transformTemplateExpression: TransformerFn = function (
@@ -98,7 +97,7 @@ export const transformTemplateExpression: TransformerFn = function (
 ) {
   // `foo ${varX} bar ${varY ? `inner ${varZ} end` : ""} baz`
   if (!ts.isTemplateExpression(node)) return;
-  return `'${TsUtils.escapeTemplateText(node.head.text)}${node.templateSpans
+  return `'${this.utils.escapeTemplateText(node.head.text)}${node.templateSpans
     .map((span) => `\${${this.visitNode(span, context)}`)
     .join('')}'`;
 };
@@ -108,7 +107,7 @@ export const transformTemplateParts: TransformerFn = function (
   node,
 ) {
   if (!ts.isTemplateMiddleOrTemplateTail(node)) return;
-  return `}${TsUtils.escapeTemplateText(node.text)}`;
+  return `}${this.utils.escapeTemplateText(node.text)}`;
 };
 
 export const transformRegex: TransformerFn = function (
@@ -153,7 +152,7 @@ export const transformVoidExpression: TransformerFn = function (
   ) {
     return `null`;
   } else {
-    const comment = TsUtils.commentOutNode(
+    const comment = this.utils.commentOutNode(
       node,
       `void expression is not supported at`,
     );
@@ -201,7 +200,7 @@ export const transformImportDeclaration: TransformerFn = function (
 
   // import './foo';
   if (!node.importClause) {
-    return TsUtils.commentOutNode(
+    return this.utils.commentOutNode(
       node,
       `Side-effect only import is not supported at`,
     );
@@ -226,7 +225,7 @@ export const transformImportDeclaration: TransformerFn = function (
   if (ts.isNamedImports(node.importClause.namedBindings)) {
     return node.importClause.namedBindings.elements
       .map((el) => {
-        const fileName = this.getDeclarationSourceFile(el.name)?.fileName;
+        const fileName = this.utils.getDeclarationSourceFile(el.name)?.fileName;
         if (!fileName) return;
 
         return `import ${this.getImportedPackageName(fileName)}.${
@@ -239,7 +238,10 @@ export const transformImportDeclaration: TransformerFn = function (
 
   // import * as Foo from './foo';
   if (ts.isNamespaceImport(node.importClause.namedBindings)) {
-    return TsUtils.commentOutNode(node, `Namespace import is not supported at`);
+    return this.utils.commentOutNode(
+      node,
+      `Namespace import is not supported at`,
+    );
   }
 
   return '';
@@ -273,11 +275,11 @@ export const transformSwitchCase: TransformerFn = function (
         .map((st) => this.visitNode(st, context))
         .join('');
       if (isBlock) {
-        statements = ` {${statements}\n${TsUtils.getIndent(node)}  }`;
+        statements = ` {${statements}\n${this.utils.getIndent(node)}  }`;
       }
 
       if (ts.isDefaultClause(clause)) {
-        return `${TsUtils.getIndent(node)}  default:${statements}`;
+        return `${this.utils.getIndent(node)}  default:${statements}`;
       }
 
       const fallthroughExpression = fallthroughCases
@@ -293,14 +295,16 @@ export const transformSwitchCase: TransformerFn = function (
       );
       fallthroughCases = [];
 
-      return `${TsUtils.getIndent(
+      return `${this.utils.getIndent(
         node,
       )}  case ${fallthroughExpression}${expression}:${statements}`;
     })
     .filter(Boolean)
     .join('\n');
 
-  return `switch (${expression}) {\n${cases}` + `\n${TsUtils.getIndent(node)}}`;
+  return (
+    `switch (${expression}) {\n${cases}` + `\n${this.utils.getIndent(node)}}`
+  );
 };
 
 const transformCaseExpression = function (

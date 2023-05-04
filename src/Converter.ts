@@ -7,6 +7,8 @@ import { logger } from './Logger';
 export interface ConverterOptions {
   tsconfigPath: string;
   outputDirPath: string;
+  includeComments?: boolean;
+  includeTodos?: boolean;
 }
 
 // Order here actually matters (to some extent)
@@ -67,6 +69,8 @@ export class Converter {
   typeChecker: ts.TypeChecker;
   compilerOptions: ts.CompilerOptions;
   outputDirPath: string;
+  includeComments?: boolean;
+  includeTodos?: boolean;
 
   constructor(options: ConverterOptions) {
     const configFile = ts.readConfigFile(options.tsconfigPath, ts.sys.readFile);
@@ -91,6 +95,8 @@ export class Converter {
     this.outputDirPath = options.outputDirPath;
     this.typeChecker = this.program.getTypeChecker();
     this.compilerOptions = this.program.getCompilerOptions();
+    this.includeComments = options.includeComments;
+    this.includeTodos = options.includeTodos;
 
     if (!this.compilerOptions.rootDir) {
       throw new Error('rootDir must be set in your tsconfig.json');
@@ -115,6 +121,8 @@ export class Converter {
       transformers,
       typeChecker: this.typeChecker,
       compilerOptions: this.compilerOptions,
+      includeComments: this.includeComments,
+      includeTodos: this.includeTodos,
     });
     const haxeCode = transformer.run();
     if (!haxeCode) {

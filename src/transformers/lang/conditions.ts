@@ -1,5 +1,4 @@
 import ts, { SyntaxKind } from 'typescript';
-import { TsUtils } from '../../TsUtils';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
 export const transformNotOperator: TransformerFn = function (
@@ -12,7 +11,7 @@ export const transformNotOperator: TransformerFn = function (
     ts.isPrefixUnaryExpression(node) &&
     node.operator === SyntaxKind.ExclamationToken
   ) {
-    const res = this.toExplicitBooleanCondition(node.operand);
+    const res = this.utils.toExplicitBooleanCondition(node.operand);
     return res ? `!(${res})` : undefined;
   }
 };
@@ -24,12 +23,12 @@ export const transformConditions: TransformerFn = function (
 ) {
   if (
     // myVar ? a : b
-    TsUtils.isOperandOfConditionalExpression(node) ||
+    this.utils.isOperandOfConditionalExpression(node) ||
     // myVar || hisVar > 0
-    TsUtils.isOperandOfBooleanExpression(node) ||
+    this.utils.isOperandOfBooleanExpression(node) ||
     // if (myVar) ; while(myVar) ;
-    TsUtils.isBooleanExpressionOfStatement(node)
+    this.utils.isBooleanExpressionOfStatement(node)
   ) {
-    return this.toExplicitBooleanCondition(node);
+    return this.utils.toExplicitBooleanCondition(node);
   }
 };
