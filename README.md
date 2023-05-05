@@ -26,6 +26,7 @@ Arguments:
 Options:
   -c, --includeComments   whether to include comments generated during transformation
   -t, --includeTodos      whether to include todos generated during transformation
+  -f, --format            whether to format final Haxe code using haxe-formatter (default: true)
   -l, --logLevel <level>  log level (choices: "Log", "Warn", "Error", "None", default: "Log")
   -h, --help              display help for command
 ```
