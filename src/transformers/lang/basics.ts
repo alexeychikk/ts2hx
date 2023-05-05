@@ -40,9 +40,9 @@ export const transformKeywords: TransformerFn = function (
     case SyntaxKind.ExportDeclaration:
       return ' ';
     case SyntaxKind.ExportKeyword:
-      return '@:export';
+      return ' ';
     case SyntaxKind.ReadonlyKeyword:
-      return '';
+      return ' ';
     case SyntaxKind.ProtectedKeyword:
       return 'private';
     case SyntaxKind.Identifier:

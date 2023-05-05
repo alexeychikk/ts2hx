@@ -21,6 +21,11 @@ void (async () => {
         '-t, --includeTodos',
         'whether to include todos generated during transformation',
       )
+      .option(
+        '-f, --format',
+        'whether to format final Haxe code using haxe-formatter',
+        true,
+      )
       .addOption(
         new Option('-l, --logLevel <level>', 'log level')
           .choices(['Log', 'Warn', 'Error', 'None'])
@@ -33,6 +38,7 @@ void (async () => {
     const options = command.opts<{
       includeComments?: boolean;
       includeTodos?: boolean;
+      format?: boolean;
       logLevel: keyof typeof LogLevel;
     }>();
 
@@ -47,6 +53,7 @@ void (async () => {
       outputDirPath,
       includeComments: options.includeComments,
       includeTodos: options.includeTodos,
+      format: options.format,
     });
     await converter.run();
   } catch (error) {

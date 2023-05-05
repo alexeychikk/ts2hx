@@ -1,0 +1,25 @@
+{
+  "wrapping": {
+    "implementsExtends": {
+      "defaultWrap": "onePerLineAfterFirst"
+    },
+    "maxLineLength": 80
+  },
+  "whitespace": {
+    "typeHintColonPolicy": "after",
+    "bracesConfig": {
+      "anonTypeBraces": {
+        "openingPolicy": "around",
+        "closingPolicy": "before"
+      },
+      "objectLiteralBraces": {
+        "openingPolicy": "around",
+        "closingPolicy": "before"
+      },
+      "typedefBraces": {
+        "openingPolicy": "around",
+        "closingPolicy": "before"
+      }
+    }
+  }
+}

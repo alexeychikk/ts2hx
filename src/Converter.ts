@@ -1,15 +1,10 @@
 import ts from 'typescript';
 import fs from 'fs-extra';
 import path from 'path';
+import { haxelib } from 'haxe';
+
 import { Transformer, api, lang, type TransformerFn } from './transformers';
 import { logger } from './Logger';
-
-export interface ConverterOptions {
-  tsconfigPath: string;
-  outputDirPath: string;
-  includeComments?: boolean;
-  includeTodos?: boolean;
-}
 
 // Order here actually matters (to some extent)
 const transformers: TransformerFn[] = [
@@ -64,15 +59,26 @@ const transformers: TransformerFn[] = [
   lang.transformKeywords,
 ];
 
+export interface ConverterOptions {
+  tsconfigPath: string;
+  outputDirPath: string;
+  includeComments?: boolean;
+  includeTodos?: boolean;
+  format?: boolean;
+}
+
 export class Converter {
+  startTime: number;
   program: ts.Program;
   typeChecker: ts.TypeChecker;
   compilerOptions: ts.CompilerOptions;
   outputDirPath: string;
   includeComments?: boolean;
   includeTodos?: boolean;
+  format?: boolean;
 
   constructor(options: ConverterOptions) {
+    this.startTime = Date.now();
     const configFile = ts.readConfigFile(options.tsconfigPath, ts.sys.readFile);
 
     if (configFile.error != null) {
@@ -97,6 +103,7 @@ export class Converter {
     this.compilerOptions = this.program.getCompilerOptions();
     this.includeComments = options.includeComments;
     this.includeTodos = options.includeTodos;
+    this.format = options.format;
 
     if (!this.compilerOptions.rootDir) {
       throw new Error('rootDir must be set in your tsconfig.json');
@@ -107,8 +114,32 @@ export class Converter {
     await Promise.all(
       this.program.getSourceFiles().map(this.convertSourceFile),
     );
+
     const libFiles = path.resolve(process.cwd(), './lib');
     await fs.copy(libFiles, this.outputDirPath);
+
+    if (this.format) {
+      const hxFormat = path.resolve(process.cwd(), './hxformat.json');
+      await fs.copy(hxFormat, path.join(this.outputDirPath, './hxformat.json'));
+
+      await new Promise((resolve, reject) => {
+        logger.log('Formatting output');
+        const childProcess = haxelib(
+          'run',
+          'formatter',
+          '-s',
+          this.outputDirPath,
+        );
+        childProcess.on('close', resolve);
+        childProcess.on('error', reject);
+      });
+    }
+
+    const doneInMs = Date.now() - this.startTime;
+    logger.log(
+      'Done in',
+      doneInMs > 999 ? `${(doneInMs / 1000).toFixed(3)} s` : `${doneInMs} ms`,
+    );
   }
 
   protected convertSourceFile = async (
