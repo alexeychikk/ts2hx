@@ -3,6 +3,15 @@ import { Command, Option } from 'commander';
 import { Converter } from './Converter';
 import { logger, LogLevel } from './Logger';
 
+class BooleanOption extends Option {
+  constructor(flags: string, description?: string) {
+    super(flags, description);
+
+    this.choices(['true', 'false', '1', '0']);
+    this.argParser((value) => !![undefined, '', 'true', '1'].includes(value));
+  }
+}
+
 void (async () => {
   try {
     const command = new Command();
@@ -21,10 +30,11 @@ void (async () => {
         '-t, --includeTodos',
         'whether to include todos generated during transformation',
       )
-      .option(
-        '-f, --format',
-        'whether to format final Haxe code using haxe-formatter',
-        true,
+      .addOption(
+        new BooleanOption(
+          '-f, --format [value]',
+          'whether to format final Haxe code using haxe-formatter',
+        ).default(true),
       )
       .addOption(
         new Option('-l, --logLevel <level>', 'log level')
