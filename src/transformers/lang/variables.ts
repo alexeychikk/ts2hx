@@ -11,7 +11,7 @@ export const transformVariableStatement: TransformerFn = function (
   // For some reason VariableDeclarationList.getFullText() includes text of
   // JSDoc node from parent VariableStatement thus duplicating this comment
   // when a node is finally dumped after transformation
-  this.replaceNodeFully(node);
+  this.replaceNodeFullText(node);
   return this.omitChildrenByKind(node, context, SyntaxKind.JSDoc);
 };
 

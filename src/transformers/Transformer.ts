@@ -32,7 +32,7 @@ export class Transformer {
   transformers: TransformerFn[];
 
   protected nodesToIgnore = new Set<ts.Node>();
-  protected nodesToFullyReplace = new Set<ts.Node>();
+  protected nodesToReplaceFullText = new Set<ts.Node>();
   protected anonymousClassCounter = 0;
   protected imports: {
     eitherType?: boolean;
@@ -130,6 +130,12 @@ export class Transformer {
     }
   }
 
+  protected dump(node: ts.Node, code: string): string {
+    return this.nodesToReplaceFullText.has(node)
+      ? code
+      : node.getFullText().replace(node.getText(), code);
+  }
+
   protected traverseChildren(node: ts.Node, context: VisitNodeContext): string {
     const nodeFullCode = node
       .getChildren()
@@ -177,18 +183,12 @@ export class Transformer {
     return this.filterChildren(node, context, (n) => n.kind !== childKind);
   }
 
-  protected dump(node: ts.Node, code: string): string {
-    return this.nodesToFullyReplace.has(node)
-      ? code
-      : node.getFullText().replace(node.getText(), code);
-  }
-
   protected ignoreNode(node: ts.Node): void {
     this.nodesToIgnore.add(node);
   }
 
-  protected replaceNodeFully(node: ts.Node): void {
-    this.nodesToFullyReplace.add(node);
+  protected replaceNodeFullText(node: ts.Node): void {
+    this.nodesToReplaceFullText.add(node);
   }
 
   protected ignoreNextNodeOfKind(node: ts.Node, kind: SyntaxKind): void {
