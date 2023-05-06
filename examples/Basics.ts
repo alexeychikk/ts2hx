@@ -24,7 +24,7 @@ const myExplicitLiteralBoolean: true = true;
 // Advanced types
 var myUnion: string | number = 'wow';
 let myStringArray: string[] = ['foo', 'bar'];
-let myNumberArray: Array<number> = [2, 3.5];
+let myNumberArray: Array<number> = [2, 3.5, 4, 5];
 type MyMapKey = { key: string };
 type MyMapValue = { value: string };
 let myMap = new Map<MyMapKey, MyMapValue>();
@@ -47,6 +47,7 @@ const myTemplateInterpolation = `Start ${
 const myObject = {
   foo: 'foo',
   bar: 10,
+  inner: { foo: 'bar', lol: 'wow' },
   '0_stringKey': [{}],
   [`${myUnion}`]: myNumberArray,
   get prop() {
@@ -85,6 +86,15 @@ function wrapper() {
   const myArrayAccess = myNumberArray[1];
   const myTypeOf = typeof myImplicitLiteralNumber;
   void (2 * 2 === 4);
+
+  // Destructuring
+  const {
+    foo,
+    bar: barRenamed,
+    inner: { foo: fooRenamed, lol = 'wow', ...restInner },
+    ...restObj
+  } = myObject;
+  let [firstNum, , ...restNums] = myNumberArray;
 
   if (myNumber) {
     console.log('if statement');

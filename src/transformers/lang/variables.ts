@@ -24,13 +24,83 @@ export const transformVariableDeclarationList: TransformerFn = function (
   if (!ts.isVariableDeclarationList(node)) return;
   const keyword = node.flags & ts.NodeFlags.Const ? 'final' : 'var';
   return node.declarations
-    .map(
-      (dec, i) =>
-        `${i > 0 ? this.utils.getIndent(dec) : ''}${keyword} ${this.visitNode(
-          dec,
-          context,
-        ).trimStart()}`,
-    )
+    .map((dec, i) => {
+      const start = `${i > 0 ? this.utils.getIndent(dec) : ''}${keyword} `;
+
+      // { foo: bar = "wow" } = obj
+      if (ts.isObjectBindingPattern(dec.name)) {
+        const transformBinding = (
+          binding: ts.ObjectBindingPattern,
+          parentPath: string,
+        ): string => {
+          return binding.elements
+            .map((el) => {
+              // { foo: { bar: "baz" } } = obj
+              if (ts.isObjectBindingPattern(el.name)) {
+                return transformBinding(
+                  el.name,
+                  `${parentPath}.${this.utils.parenthesize(
+                    el.propertyName!,
+                    context,
+                  )}`,
+                );
+              }
+
+              // { ...rest } = obj
+              if (el.dotDotDotToken) {
+                this.imports.ts2hx = true;
+                const keysToOmit = binding.elements
+                  .filter((e) => e !== el)
+                  .map(
+                    (e) => `'${e.propertyName?.getText() ?? e.name.getText()}'`,
+                  )
+                  .join(', ');
+                return `${start}${el.name.getText()} = Ts2hx.rest(${parentPath}, [${keysToOmit}])`;
+              }
+
+              // { foo: renamed } = bar
+              let init = `${parentPath}.${this.utils.parenthesize(
+                el.propertyName ?? el.name,
+                context,
+              )}`;
+              if (el.initializer) {
+                this.imports.staticExtensions = true;
+                init = `${init}.or(${this.visitNode(el.initializer, context)})`;
+              }
+              return `${start}${el.name.getText()} = ${init}`;
+            })
+            .join(';\n');
+        };
+
+        return transformBinding(
+          dec.name,
+          this.utils.parenthesize(dec.initializer!, context),
+        );
+      }
+
+      // [first, , third, ...rest] = arr
+      if (ts.isArrayBindingPattern(dec.name)) {
+        return dec.name.elements
+          .map((el, index) => {
+            if (ts.isOmittedExpression(el)) return;
+
+            const name = el.name.getText();
+            const init = this.utils.parenthesize(dec.initializer!, context);
+
+            // [...rest] = arr
+            if (el.dotDotDotToken) {
+              return `${start}${name} = ${init}.slice(${index})`;
+            }
+
+            // [first, second] = arr
+            return `${start}${name} = ${init}[${index}]`;
+          })
+          .filter(Boolean)
+          .join(';\n');
+      }
+
+      return `${start} ${this.visitNode(dec, context).trimStart()}`;
+    })
     .join(';\n');
 };
 

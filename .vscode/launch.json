@@ -11,7 +11,7 @@
       "program": "${workspaceFolder}/src/cli.ts",
       "preLaunchTask": "npm: ts",
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
-      "args": ["./examples/tsconfig.json", "./dist/hx", "-c", "-t", "-f=0"]
+      "args": ["./examples/tsconfig.json", "./dist/hx", "-c", "-t"]
     }
   ]
 }

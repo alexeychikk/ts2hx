@@ -17,6 +17,8 @@
 		"postinstall": "haxelib --always install formatter",
 		"start": "node ./dist/src/cli.js",
 		"prestart": "npm run ts",
+		"clean": "rimraf ./dist",
+		"prets": "npm run clean",
 		"ts": "tsc -p tsconfig.json",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
@@ -43,6 +45,7 @@
 		"eslint-plugin-import": "^2.27.5",
 		"eslint-plugin-n": "^15.7.0",
 		"eslint-plugin-promise": "^6.1.1",
-		"prettier": "^2.8.7"
+		"prettier": "^2.8.7",
+		"rimraf": "^5.0.0"
 	}
 }

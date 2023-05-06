@@ -56,3 +56,12 @@ export function escapeStringText(this: Transformer, text: string): string {
 export function escapeTemplateText(this: Transformer, text: string): string {
   return text.replace(/'/g, `\\'`);
 }
+
+export function parenthesize(
+  this: Transformer,
+  node: ts.Node,
+  context: VisitNodeContext,
+): string {
+  const code = this.visitNode(node, context);
+  return ts.isIdentifier(node) ? code : `(${code})`;
+}

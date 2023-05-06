@@ -1,7 +1,7 @@
 package ts2hx;
 
 class Ts2hx {
-	static public function typeof<T>(value:T):String {
+	static public function typeof<T>(value: T): String {
 		switch (Type.typeof(value)) {
 			case TInt, TFloat, TEnum(_):
 				return "number";
@@ -20,5 +20,14 @@ class Ts2hx {
 					return "function";
 				return "object";
 		}
+	}
+
+	static public function rest<T: {}>(obj: T,
+			fields: Array<String>): Dynamic {
+		var result: Dynamic = Reflect.copy(obj);
+		for (field in fields) {
+			Reflect.deleteField(result, field);
+		}
+		return result;
 	}
 }
