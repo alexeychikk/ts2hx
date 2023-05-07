@@ -119,6 +119,7 @@ export const transformConstructor: TransformerFn = function (
   const modifiers = this.utils.joinMemberModifiers(node, context);
 
   let propertyDeclarations = '';
+  let propertyInitializations = '';
 
   const params = node.parameters
     .map((param) => {
@@ -129,6 +130,10 @@ export const transformConstructor: TransformerFn = function (
           access,
           context,
         )} ${this.utils.getDeclarationKeyword(param)} ${code};\n`;
+        const paramName = param.name.getText();
+        propertyInitializations += `${this.utils.getIndent(
+          node,
+        )}  this.${paramName} = ${paramName};\n`;
       }
       return code;
     })
@@ -137,10 +142,31 @@ export const transformConstructor: TransformerFn = function (
   if (propertyDeclarations) {
     propertyDeclarations += this.utils.getIndent(node);
   }
+  if (propertyInitializations) {
+    propertyInitializations = '\n' + propertyInitializations;
+  }
 
-  const body = node.body ? this.visitNode(node.body, context) : '{}';
+  let superCallFound = false;
+  let body = node.body
+    ? node.body.statements
+        .map((statement) => {
+          let code = this.visitNode(statement, context);
+          if (this.utils.isSuperExpression(statement)) {
+            superCallFound = true;
+            code += propertyInitializations;
+          }
+          return code;
+        })
+        .join('\n')
+    : propertyInitializations;
 
-  return `${propertyDeclarations}${modifiers}function new(${params})${body}`;
+  if (!superCallFound) {
+    body = propertyInitializations + body;
+  }
+
+  return `${propertyDeclarations}${modifiers}function new(${params}) {${body}\n${this.utils.getIndent(
+    node,
+  )}}`;
 };
 
 export const transformClassPropertyDeclaration: TransformerFn = function (

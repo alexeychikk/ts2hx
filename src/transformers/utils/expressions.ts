@@ -101,3 +101,11 @@ export function toSeparateStatements(
     context,
   )};\n${this.utils.getIndent(node)}${this.visitNode(node.right, context)};\n`;
 }
+
+export function isSuperExpression(this: Transformer, node: ts.Node): boolean {
+  return (
+    ts.isExpressionStatement(node) &&
+    ts.isCallExpression(node.expression) &&
+    node.expression.expression.kind === SyntaxKind.SuperKeyword
+  );
+}
