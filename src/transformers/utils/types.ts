@@ -60,16 +60,19 @@ export function isBuiltInNode(this: Transformer, node: ts.Node): boolean {
     );
 }
 
-export function getSimpleTypeString(
+export function getNodeTypeString(
   this: Transformer,
   node: ts.Node,
-): 'string' | 'number' | 'boolean' | undefined {
+  context: VisitNodeContext,
+): string {
   const type = this.typeChecker.getTypeAtLocation(node);
   const baseType = type.isLiteral()
     ? this.typeChecker.getBaseTypeOfLiteralType(type)
     : type;
-  const name = this.typeChecker.typeToString(baseType);
-  return ['string', 'number', 'boolean'].includes(name)
-    ? (name as 'string')
-    : undefined;
+  const typeNode = this.typeChecker.typeToTypeNode(
+    baseType,
+    undefined,
+    undefined,
+  );
+  return this.visitNode(typeNode, context);
 }

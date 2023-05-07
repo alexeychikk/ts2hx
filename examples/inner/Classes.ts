@@ -2,6 +2,7 @@ import {
   MyInterfaceToImplement,
   MyInterfaceToImplementSecond,
 } from './TypesAndInterfaces';
+import { SuperParent } from './nested';
 
 export class MyEmptyClass {}
 
@@ -92,3 +93,9 @@ export class Main {
 }
 
 class MyError extends Error {}
+
+class ParentLevel1 extends SuperParent {}
+
+class ParentLevel2 extends ParentLevel1 {}
+
+class Inherited extends ParentLevel2 {}

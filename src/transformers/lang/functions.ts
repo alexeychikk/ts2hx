@@ -27,11 +27,14 @@ export const transformFunctionParameter: TransformerFn = function (
       type = this.visitNode(node.type, context);
     }
     type = `: ${type}`;
+  } else if (context.enforceParameterType) {
+    type = `: ${this.utils.getNodeTypeString(node, context)}`;
   }
 
-  const initializer = node.initializer
-    ? ` = ${this.visitNode(node.initializer, context)}`
-    : '';
+  const initializer =
+    node.initializer && !context.skipParameterInitializer
+      ? ` = ${this.visitNode(node.initializer, context)}`
+      : '';
   const questionToken = node.questionToken ? `?` : '';
 
   return `${dotDotDotToken}${questionToken}${name}${type}${initializer}`;

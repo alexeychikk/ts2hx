@@ -1,4 +1,4 @@
-import ts from 'typescript';
+import ts, { SyntaxKind } from 'typescript';
 import { type VisitNodeContext, type Transformer } from '../Transformer';
 
 export function getNextNode(
@@ -64,4 +64,13 @@ export function parenthesize(
 ): string {
   const code = this.visitNode(node, context);
   return ts.isIdentifier(node) ? code : `(${code})`;
+}
+
+export function getExtendedNode(
+  this: Transformer,
+  node: ts.ClassLikeDeclaration,
+): ts.Node | undefined {
+  return node.heritageClauses?.find(
+    (her) => her.token === SyntaxKind.ExtendsKeyword,
+  )?.types?.[0];
 }

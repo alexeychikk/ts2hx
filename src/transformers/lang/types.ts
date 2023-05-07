@@ -187,7 +187,7 @@ export const transformEnumDeclaration: TransformerFn = function (
   const firstInitializer = node.members[0]?.initializer;
   const underlyingType =
     !!firstInitializer &&
-    this.utils.getSimpleTypeString(firstInitializer) === 'string'
+    this.utils.getNodeTypeString(firstInitializer, context) === 'String'
       ? 'String'
       : 'Int';
 

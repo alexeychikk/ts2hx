@@ -28,6 +28,10 @@ export function isReadonly(this: Transformer, node: ts.HasModifiers): boolean {
   return !!node.modifiers?.some((m) => m.kind === SyntaxKind.ReadonlyKeyword);
 }
 
+export function isAbstract(this: Transformer, node: ts.HasModifiers): boolean {
+  return !!node.modifiers?.some((m) => m.kind === SyntaxKind.AbstractKeyword);
+}
+
 export function getDeclarationKeyword(
   this: Transformer,
   node: ts.HasModifiers,

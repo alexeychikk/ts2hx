@@ -1,4 +1,4 @@
-import ts, { type ClassDeclaration, SyntaxKind } from 'typescript';
+import ts, { SymbolFlags, SyntaxKind } from 'typescript';
 import { logger } from '../../Logger';
 import {
   type VisitNodeContext,
@@ -20,19 +20,73 @@ export const transformClassDeclaration: TransformerFn = function (
     node.typeParameters,
     context,
   );
-  const defaultConstructor = node.members.find((m) =>
-    ts.isConstructorDeclaration(m),
-  )
-    ? ''
-    : `\n${this.utils.getIndent(node)}  public function new() {}\n`;
   const inheritance = this.utils.joinNodes(node.heritageClauses, context, ' ');
 
   return (
     `${modifiers}class ${className}${typeParams} ${inheritance} {` +
-    defaultConstructor +
+    getDefaultConstructor.call(this, node, context) +
     this.utils.joinNodes(node.members, context, '') +
     `\n${this.utils.getIndent(node)}}`
   );
+};
+
+const getDefaultConstructor = function (
+  this: Transformer,
+  node: ts.ClassDeclaration,
+  context: VisitNodeContext,
+): string {
+  if (this.utils.isAbstract(node)) return '';
+
+  const hasConstructor = node.members.find((m) =>
+    ts.isConstructorDeclaration(m),
+  );
+  if (hasConstructor) return '';
+
+  const emptyConstructor = `\n${this.utils.getIndent(
+    node,
+  )}  public function new() {}\n`;
+
+  const baseClass = this.utils.getExtendedNode(node);
+  if (!baseClass) return emptyConstructor;
+
+  const parentConstructor = findParentConstructor.call(this, baseClass);
+  if (!parentConstructor) return emptyConstructor;
+
+  const params = this.utils.joinNodes(parentConstructor.parameters, {
+    ...context,
+    enforceParameterType: true,
+    skipParameterInitializer: true,
+  });
+  const superParams = parentConstructor.parameters
+    .map((p) => p.name.getText())
+    .join(', ');
+  return `\n${this.utils.getIndent(
+    node,
+  )}  public function new(${params}) {\nsuper(${superParams});}\n`;
+};
+
+const findParentConstructor = function (
+  this: Transformer,
+  node: ts.Node,
+): ts.ConstructorDeclaration | undefined {
+  const classType = this.typeChecker.getTypeAtLocation(node);
+  const symbol = classType.aliasSymbol ?? classType.symbol;
+  const members = Array.from(symbol.members?.values() ?? []);
+
+  const constructorSymbol = members.find(
+    (symbol) => symbol.flags & SymbolFlags.Constructor,
+  );
+  if (constructorSymbol) {
+    return constructorSymbol.declarations?.[0] as ts.ConstructorDeclaration;
+  }
+
+  const [declaration] = symbol.declarations ?? [];
+  const baseClass = this.utils.getExtendedNode(
+    declaration as ts.ClassDeclaration,
+  );
+  if (!baseClass) return;
+
+  return findParentConstructor.call(this, baseClass);
 };
 
 export const transformHeritageClause: TransformerFn = function (
@@ -181,7 +235,7 @@ const defineHaxeGetSetProperty = function (
   node: ts.GetAccessorDeclaration | ts.SetAccessorDeclaration,
   context: VisitNodeContext,
 ): string {
-  const classNode = node.parent as ClassDeclaration;
+  const classNode = node.parent as ts.ClassDeclaration;
   const indexInClass = classNode.members.findIndex((el) => el === node);
   const indexOfPair = classNode.members.findIndex(
     (el) => el !== node && el.name?.getText() === node.name.getText(),

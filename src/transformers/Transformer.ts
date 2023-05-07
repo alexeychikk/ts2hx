@@ -10,12 +10,10 @@ type TransformerUtils = {
   [key in keyof Utils]: OmitThisParameter<Utils[key]>;
 };
 
-/**
- * I intended to store indentation level here
- * but seems like this is redundant now
- */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface VisitNodeContext {}
+export interface VisitNodeContext {
+  skipParameterInitializer?: boolean;
+  enforceParameterType?: boolean;
+}
 
 export type TransformerFn = (
   this: Transformer,
@@ -133,7 +131,7 @@ export class Transformer {
   }
 
   protected dump(node: ts.Node, code: string): string {
-    return this.nodesToReplaceFullText.has(node)
+    return node.pos === -1 || this.nodesToReplaceFullText.has(node)
       ? code
       : node.getFullText().replace(node.getText(), code);
   }
@@ -144,7 +142,9 @@ export class Transformer {
       .map((node) => this.visitNode(node, context))
       .join('');
 
-    return nodeFullCode || node.getFullText();
+    return (
+      nodeFullCode || (node.pos === -1 ? nodeFullCode : node.getFullText())
+    );
   }
 
   protected replaceChild(
