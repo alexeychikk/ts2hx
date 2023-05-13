@@ -86,10 +86,14 @@ class Dog extends Animal {
 }
 
 export class Main {
-  public static main() {
+  public static async main() {
     const myDog = new Dog('Fido', 'Labrador');
     myDog.sayHello();
   }
+
+  protected asyncMethod = async () => {
+    return Promise.resolve(5);
+  };
 }
 
 class MyError extends Error {}

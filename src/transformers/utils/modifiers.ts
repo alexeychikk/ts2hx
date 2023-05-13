@@ -1,5 +1,6 @@
 import type ts from 'typescript';
 import { SyntaxKind } from 'typescript';
+import { sortBy } from 'lodash';
 import { type VisitNodeContext, type Transformer } from '../Transformer';
 
 export function getAccessModifier(
@@ -39,12 +40,20 @@ export function getDeclarationKeyword(
   return this.utils.isReadonly(node) ? 'final' : 'var';
 }
 
+const MODIFIERS_PRIORITY: Partial<Record<SyntaxKind, number>> = {
+  [SyntaxKind.AsyncKeyword]: 0,
+};
+
 export function joinModifiers(
   this: Transformer,
   modifiers: ts.NodeArray<ts.ModifierLike> | undefined,
   context: VisitNodeContext,
 ): string {
-  return modifiers?.map((m) => this.visitNode(m, context) + ' ').join('') ?? '';
+  if (!modifiers) return '';
+
+  return sortBy(modifiers, (m) => MODIFIERS_PRIORITY[m.kind] ?? 999)
+    .map((m) => this.visitNode(m, context) + ' ')
+    .join('');
 }
 
 export function joinMemberModifiers(
