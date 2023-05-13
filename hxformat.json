@@ -1,9 +1,63 @@
 {
+  "indentation": {
+    "character": "  "
+  },
   "wrapping": {
+    "maxLineLength": 80,
     "implementsExtends": {
-      "defaultWrap": "onePerLineAfterFirst"
+      "defaultWrap": "fillLine",
+      "rules": [
+        {
+          "type": "onePerLineAfterFirst",
+          "conditions": [{ "cond": "exceedsMaxLineLength" }]
+        }
+      ]
     },
-    "maxLineLength": 80
+    "methodChain": {
+      "defaultWrap": "fillLine",
+      "rules": [
+        {
+          "type": "onePerLineAfterFirst",
+          "conditions": [{ "cond": "exceedsMaxLineLength" }]
+        }
+      ]
+    },
+    "callParameter": {
+      "defaultWrap": "fillLine",
+      "rules": [
+        {
+          "type": "onePerLine",
+          "conditions": [{ "cond": "exceedsMaxLineLength" }]
+        }
+      ]
+    },
+    "functionSignature": {
+      "defaultWrap": "fillLine",
+      "rules": [
+        {
+          "type": "onePerLine",
+          "conditions": [{ "cond": "exceedsMaxLineLength" }]
+        }
+      ]
+    },
+    "anonFunctionSignature": {
+      "defaultWrap": "fillLine",
+      "rules": [
+        {
+          "type": "onePerLine",
+          "conditions": [{ "cond": "exceedsMaxLineLength" }]
+        }
+      ]
+    },
+    "typeParameter": {
+      "defaultWrap": "fillLine",
+      "rules": [
+        {
+          "type": "onePerLine",
+          "conditions": [{ "cond": "exceedsMaxLineLength" }]
+        }
+      ]
+    }
   },
   "whitespace": {
     "typeHintColonPolicy": "after",

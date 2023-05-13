@@ -1,10 +1,13 @@
 import ts from 'typescript';
 import fs from 'fs-extra';
 import path from 'path';
-import { haxelib } from 'haxe';
+import { promisify } from 'util';
+import { exec } from 'child_process';
 
 import { Transformer, api, lang, type TransformerFn } from './transformers';
 import { logger } from './Logger';
+
+const execAsync = promisify(exec);
 
 // Order here actually matters (to some extent)
 const transformers: TransformerFn[] = [
@@ -122,17 +125,8 @@ export class Converter {
       const hxFormat = path.resolve(process.cwd(), './hxformat.json');
       await fs.copy(hxFormat, path.join(this.outputDirPath, './hxformat.json'));
 
-      await new Promise((resolve, reject) => {
-        logger.log('Formatting output');
-        const childProcess = haxelib(
-          'run',
-          'formatter',
-          '-s',
-          this.outputDirPath,
-        );
-        childProcess.on('close', resolve);
-        childProcess.on('error', reject);
-      });
+      logger.log('Formatting output');
+      await execAsync(`npm run prettify:hx -- -s ${this.outputDirPath}`);
     }
 
     const doneInMs = Date.now() - this.startTime;

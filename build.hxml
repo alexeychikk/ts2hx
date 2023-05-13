@@ -1,1 +1,4 @@
--cp dist/hx
+--class-path dist/hx
+--library tink_core
+--library tink_await
+--main Basics

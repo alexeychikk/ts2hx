@@ -7,11 +7,16 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Launch Program",
+      "name": "Convert",
       "program": "${workspaceFolder}/src/cli.ts",
       "preLaunchTask": "npm: ts",
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
       "args": ["./examples/tsconfig.json", "./dist/hx", "-c", "-t"]
+    },
+    {
+      "name": "Run Haxe",
+      "type": "haxe-eval",
+      "request": "launch"
     }
   ]
 }
