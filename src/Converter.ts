@@ -1,6 +1,7 @@
 import ts from 'typescript';
 import fs from 'fs-extra';
 import path from 'path';
+import os from 'os';
 import { promisify } from 'util';
 import { exec } from 'child_process';
 
@@ -126,7 +127,11 @@ export class Converter {
       await fs.copy(hxFormat, path.join(this.outputDirPath, './hxformat.json'));
 
       logger.log('Formatting output');
-      await execAsync(`npm run prettify:hx -- -s ${this.outputDirPath}`);
+      const lixPath = path.resolve(
+        process.cwd(),
+        './node_modules/.bin/lix' + (os.platform() === 'win32' ? '.cmd' : ''),
+      );
+      await execAsync(`${lixPath} run formatter -s ${this.outputDirPath}`);
     }
 
     const doneInMs = Date.now() - this.startTime;
