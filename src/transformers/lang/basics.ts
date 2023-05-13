@@ -21,7 +21,7 @@ export const transformKeywords: TransformerFn = function (
       return 'Bool';
     // myVar: undefined
     case SyntaxKind.UndefinedKeyword:
-      return 'Null<Void>';
+      return 'Null<Any>';
     case SyntaxKind.VoidKeyword:
     case SyntaxKind.NeverKeyword:
       return 'Void';
@@ -36,6 +36,10 @@ export const transformKeywords: TransformerFn = function (
     // (myVar as string)
     case SyntaxKind.AsKeyword:
       return ':';
+    case SyntaxKind.AsyncKeyword:
+      return '@async';
+    case SyntaxKind.AwaitKeyword:
+      return '@await';
     case SyntaxKind.ExportAssignment:
     case SyntaxKind.ExportDeclaration:
       return ' ';
@@ -167,7 +171,6 @@ export const transformTypeofExpression: TransformerFn = function (
 ) {
   if (!ts.isTypeOfExpression(node)) return;
 
-  this.imports.ts2hx = true;
   return `Ts2hx.typeof(${this.visitNode(node.expression, context)})`;
 };
 

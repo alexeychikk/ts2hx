@@ -36,8 +36,6 @@ export class Transformer {
     eitherType?: boolean;
     dynamicAccess?: boolean;
     exception?: boolean;
-    ts2hx?: boolean;
-    staticExtensions?: boolean;
   } = {};
 
   protected utils = mapValues(utils, (fn) => fn.bind(this)) as TransformerUtils;
@@ -66,8 +64,6 @@ export class Transformer {
       this.imports.exception && `import haxe.Exception;`,
       this.imports.dynamicAccess && `import haxe.DynamicAccess;`,
       this.imports.eitherType && `import haxe.extern.EitherType;`,
-      this.imports.ts2hx && `import ts2hx.Ts2hx;`,
-      this.imports.staticExtensions && `using ts2hx.StaticExtensions;`,
     ].filter(Boolean);
     haxeCode = `${
       imports.join('\n') + (imports.length ? '\n\n' : '')

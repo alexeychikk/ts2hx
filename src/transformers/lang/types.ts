@@ -23,7 +23,7 @@ export const transformLiteralTypes: TransformerFn = function (
   }
   // myVar: null
   if (node.literal.kind === SyntaxKind.NullKeyword) {
-    return 'Null<Void>';
+    return 'Null<Any>';
   }
 };
 

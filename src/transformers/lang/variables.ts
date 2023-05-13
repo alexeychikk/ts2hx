@@ -48,7 +48,6 @@ export const transformVariableDeclarationList: TransformerFn = function (
 
               // { ...rest } = obj
               if (el.dotDotDotToken) {
-                this.imports.ts2hx = true;
                 const keysToOmit = binding.elements
                   .filter((e) => e !== el)
                   .map(
@@ -64,7 +63,6 @@ export const transformVariableDeclarationList: TransformerFn = function (
                 context,
               )}`;
               if (el.initializer) {
-                this.imports.staticExtensions = true;
                 init = `${init}.or(${this.visitNode(el.initializer, context)})`;
               }
               return `${start}${el.name.getText()} = ${init}`;
