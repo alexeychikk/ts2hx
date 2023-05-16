@@ -92,6 +92,7 @@ Foo 'Bar'!`;
       const myTypeOf = typeof myImplicitLiteralNumber;
       void (2 * 2 === 4);
       let chaining = myObject?.inner?.foo;
+      let coalescing = myObject?.foo ?? 'bar';
 
       // Destructuring
       const {
