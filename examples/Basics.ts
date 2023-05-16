@@ -45,7 +45,7 @@ Foo 'Bar'!`;
     const myTemplateInterpolation = `Start ${
       myExplicitLiteralBoolean
         ? `inner "start" ${myImplicitLiteralBoolean} end`
-        : myNumber
+        : myNumber + ''
     } End`;
 
     // Objects
@@ -170,9 +170,10 @@ Foo 'Bar'!`;
     }
 
     async function sleep(ms = 0): Promise<null> {
-      return new Promise((resolve, reject) =>
-        setTimeout(() => resolve(null), ms),
-      );
+      return new Promise((resolve, reject) => {
+        setTimeout(() => resolve(null), ms);
+        return null;
+      });
     }
 
     async function myAsyncFn() {

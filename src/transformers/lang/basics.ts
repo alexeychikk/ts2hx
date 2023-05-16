@@ -49,6 +49,8 @@ export const transformKeywords: TransformerFn = function (
       return ' ';
     case SyntaxKind.ProtectedKeyword:
       return 'private';
+    case SyntaxKind.EqualsGreaterThanToken:
+      return '->';
     case SyntaxKind.Identifier:
       switch (node.getText()) {
         // myVar = undefined

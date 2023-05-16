@@ -40,6 +40,7 @@ const transformers: TransformerFn[] = [
   lang.transformElementWriteToObject,
   lang.transformGetSet,
   lang.transformMethodOnObject,
+  lang.transformArrowFunction,
   lang.transformFunctionParameter,
   lang.transformPowExpression,
   lang.transformInstanceOfExpression,
@@ -59,7 +60,6 @@ const transformers: TransformerFn[] = [
   lang.transformRegex,
   lang.transformNotOperator,
   lang.transformConditions,
-  lang.transformArrowFnToken,
   lang.transformKeywords,
 ];
 
