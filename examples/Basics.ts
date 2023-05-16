@@ -91,6 +91,7 @@ Foo 'Bar'!`;
       const myArrayAccess = myNumberArray[1];
       const myTypeOf = typeof myImplicitLiteralNumber;
       void (2 * 2 === 4);
+      let chaining = myObject?.inner?.foo;
 
       // Destructuring
       const {
