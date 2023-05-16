@@ -1,5 +1,6 @@
 package ts2hx;
 
+import haxe.ds.IntMap;
 import haxe.Timer;
 
 class Ts2hx {
@@ -18,8 +19,7 @@ class Ts2hx {
         // in Haxe, we convert JS's `undefined` to Haxe's `null`.
         return "undefined";
       case _:
-        if (Type.getClassName((value : Dynamic)) != null)
-          return "function";
+        if (Type.getClassName((value : Dynamic)) != null) return "function";
         return "object";
     }
   }
@@ -32,7 +32,42 @@ class Ts2hx {
     return result;
   }
 
-  static public function setTimeout(cb: () -> Void, ms = 0): Void {
-    Timer.delay(cb, ms);
+  static var timeoutCounter = 0;
+  static var timeouts: IntMap<Timer> = new IntMap();
+
+  static public function setTimeout(cb: () -> Void, ms = 0): Int {
+    var timer = Timer.delay(cb, ms);
+    Ts2hx.timeouts.set(timeoutCounter, timer);
+    return Ts2hx.timeoutCounter++;
+  }
+
+  static public function clearTimeout(timeoutId: Int): Void {
+    var timer = Ts2hx.timeouts.get(timeoutId);
+    if (timer == null) return;
+    timer.stop();
+    Ts2hx.timeouts.remove(timeoutId);
+  }
+
+  static var intervalCounter = 0;
+  static var intervals: IntMap<Timer> = new IntMap();
+
+  static public function setInterval(cb: () -> Void, ms = 0): Int {
+    var intervalId = Ts2hx.intervalCounter;
+
+    function recursiveCallback() {
+      cb();
+      Ts2hx.intervals.set(intervalId, Timer.delay(recursiveCallback, ms));
+    };
+    var timer = Timer.delay(recursiveCallback, ms);
+    Ts2hx.intervals.set(intervalId, timer);
+
+    return Ts2hx.intervalCounter++;
+  }
+
+  static public function clearInterval(intervalId: Int): Void {
+    var timer = Ts2hx.intervals.get(intervalId);
+    if (timer == null) return;
+    timer.stop();
+    Ts2hx.intervals.remove(intervalId);
   }
 }

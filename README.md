@@ -46,6 +46,6 @@ Options:
 - [x] enums
 - [x] imports
 - [x] exceptions
+- [x] async-await (more or less, using tink_core, tink_await, compatibility suffers)
 - [ ] decorators
-- [ ] async-await
 - [ ] ...probably many more

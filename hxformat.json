@@ -59,6 +59,10 @@
       ]
     }
   },
+  "sameLine": {
+    "ifBody": "same",
+    "elseBody": "same"
+  },
   "whitespace": {
     "typeHintColonPolicy": "after",
     "bracesConfig": {
