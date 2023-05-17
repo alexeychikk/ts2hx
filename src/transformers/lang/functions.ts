@@ -82,5 +82,8 @@ export const transformCallExpression: TransformerFn = function (
     );
   }
 
-  return `${expression}${typeArgs}(${args})`;
+  const code = `${expression}${typeArgs}(${args})`;
+  return node.questionDotToken
+    ? `(${expression} != null ? ${code} : null)`
+    : code;
 };
