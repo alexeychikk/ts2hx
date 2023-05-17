@@ -42,6 +42,7 @@ const transformers: TransformerFn[] = [
   lang.transformMethodOnObject,
   lang.transformArrowFunction,
   lang.transformFunctionParameter,
+  lang.transformCallExpression,
   lang.transformPowExpression,
   lang.transformInstanceOfExpression,
   lang.transformSimpleTemplate,

@@ -59,3 +59,28 @@ export const transformFunctionParameter: TransformerFn = function (
 
   return `${dotDotDotToken}${questionToken}${name}${type}${initializer}`;
 };
+
+export const transformCallExpression: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  if (!ts.isCallExpression(node)) return;
+
+  const expression = this.visitNode(node.expression, context);
+  const args = this.utils.joinNodes(node.arguments, context);
+
+  let typeArgs = '';
+  if (node.typeArguments) {
+    logger.warn(
+      `Call expression cannot have type arguments at`,
+      this.utils.getNodeSourcePath(node),
+    );
+    typeArgs = this.utils.createComment(
+      ({ todo }) =>
+        `${todo} <${this.utils.joinNodes(node.typeArguments, context)}>`,
+    );
+  }
+
+  return `${expression}${typeArgs}(${args})`;
+};

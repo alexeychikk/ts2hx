@@ -21,6 +21,13 @@ class MySimpleClass {
   myEmptyMethod() {}
 
   protected myProtectedMethod() {
+    function generic<T>(foo: T) {
+      return console.log(foo);
+    }
+
+    generic<number>(4);
+    this.myGenericMethod<Record<string, never>>('foo', {});
+
     return 4 * 5;
   }
 
