@@ -53,11 +53,13 @@ export function getDeclarationSourceFile(
 }
 
 export function isBuiltInNode(this: Transformer, node: ts.Node): boolean {
-  return !!this.utils
-    .getRootSymbol(node)
-    ?.declarations?.some((dec) =>
-      /node_modules\/typescript\/lib\//gim.test(dec.getSourceFile().fileName),
+  return !!this.utils.getRootSymbol(node)?.declarations?.some((dec) => {
+    const { fileName } = dec.getSourceFile();
+    return (
+      /node_modules\/typescript\/lib\//gim.test(fileName) ||
+      /node_modules\/@types\/node\//gim.test(fileName)
     );
+  });
 }
 
 export function getNodeTypeString(

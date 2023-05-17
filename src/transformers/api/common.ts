@@ -6,10 +6,16 @@ export const transformJsApiAccess: TransformerFn = function (
   node,
 ) {
   if (!ts.isPropertyAccessExpression(node)) return;
-  switch (node.getText()) {
-    case 'console.log':
-      return 'trace';
-  }
+
+  const code: string | undefined = (() => {
+    switch (node.getText()) {
+      case 'console.log':
+        return 'trace';
+    }
+  })();
+
+  if (code === undefined || !this.utils.isBuiltInNode(node.expression)) return;
+  return code;
 };
 
 export const transformJsIdentifiers: TransformerFn = function (
