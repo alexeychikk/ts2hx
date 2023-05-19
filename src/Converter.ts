@@ -36,7 +36,7 @@ const transformers: TransformerFn[] = [
   lang.transformMethodSignature,
   lang.transformConstructorSignature,
   lang.transformPropertyAssignment,
-  lang.transformElementAccessOfObject,
+  lang.transformElementAccess,
   lang.transformElementWriteToObject,
   lang.transformGetSet,
   lang.transformMethodOnObject,

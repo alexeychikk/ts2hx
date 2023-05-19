@@ -30,7 +30,7 @@ export const transformPropertyAssignment: TransformerFn = function (
   }
 };
 
-export const transformElementAccessOfObject: TransformerFn = function (
+export const transformElementAccess: TransformerFn = function (
   this: Transformer,
   node,
   context,
@@ -38,7 +38,14 @@ export const transformElementAccessOfObject: TransformerFn = function (
   // myObj[myKey]
   if (!ts.isElementAccessExpression(node)) return;
   const type = this.typeChecker.getTypeAtLocation(node.expression);
-  if (this.typeChecker.isArrayLikeType(type)) return;
+
+  if (this.typeChecker.isArrayLikeType(type)) {
+    if (!node.questionDotToken) return;
+    const expression = this.visitNode(node.expression, context);
+    const arg = this.visitNode(node.argumentExpression, context);
+    return `(${expression} != null ? ${expression}[${arg}] : null)`;
+  }
+
   if (type.flags & ts.TypeFlags.Object) {
     return `Reflect.field(${this.visitNode(
       node.expression,

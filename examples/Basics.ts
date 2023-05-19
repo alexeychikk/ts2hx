@@ -88,7 +88,7 @@ Foo 'Bar'!`;
         myObjectStringAccess = myObject['foo'];
       myObject.foo = 'not foo';
       myObject['0_stringKey'] = [];
-      const myArrayAccess = myNumberArray[1];
+      const myArrayAccess = myNumberArray?.[1];
       const myTypeOf = typeof myImplicitLiteralNumber;
       void (2 * 2 === 4);
       let chaining = myObject?.inner?.foo;
