@@ -11,7 +11,12 @@ export const transformPropertyAssignment: TransformerFn = function (
   if (!ts.isObjectLiteralExpression(node.parent)) return;
   // { 10: "bar" }
   if (ts.isNumericLiteral(node.name)) {
-    return this.replaceChild(node, context, node.name, `"${node.name.text}"`);
+    return this.utils.replaceChild(
+      node,
+      context,
+      node.name,
+      `"${node.name.text}"`,
+    );
   }
   // { [myVar]: "bar" }
   if (ts.isComputedPropertyName(node.name)) {
@@ -20,7 +25,7 @@ export const transformPropertyAssignment: TransformerFn = function (
       this.utils.getNodeSourcePath(node.name),
     );
 
-    this.ignoreNextNodeOfKind(node, SyntaxKind.CommaToken);
+    this.utils.ignoreNextNodeOfKind(node, SyntaxKind.CommaToken);
     return this.utils.commentOutNode(node);
   }
 };
@@ -75,7 +80,7 @@ export const transformGetSet: TransformerFn = function (
   if (!(ts.isGetAccessor(node) || ts.isSetAccessor(node))) return;
   if (!ts.isObjectLiteralExpression(node.parent)) return;
 
-  this.ignoreNextNodeOfKind(node, SyntaxKind.CommaToken);
+  this.utils.ignoreNextNodeOfKind(node, SyntaxKind.CommaToken);
   return this.utils.commentOutNode(
     node,
     `Getters and setters on object literals are not supported at`,
@@ -90,7 +95,7 @@ export const transformMethodOnObject: TransformerFn = function (
   // { methodOnObject() {} }
   if (!ts.isMethodDeclaration(node)) return;
   if (!ts.isObjectLiteralExpression(node.parent)) return;
-  return this.replaceChild(
+  return this.utils.replaceChild(
     node,
     context,
     node.name,

@@ -46,7 +46,7 @@ const MODIFIERS_PRIORITY: Partial<Record<SyntaxKind, number>> = {
 
 export function joinModifiers(
   this: Transformer,
-  modifiers: ts.NodeArray<ts.ModifierLike> | undefined,
+  modifiers: ts.NodeArray<ts.ModifierLike> | ts.ModifierLike[] | undefined,
   context: VisitNodeContext,
 ): string {
   if (!modifiers) return '';

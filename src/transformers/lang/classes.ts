@@ -250,7 +250,29 @@ export const transformClassSetter: TransformerFn = function (
 
   const modifiers = this.utils.joinMemberModifiers(node, context);
   const params = this.utils.joinNodes(node.parameters, context);
-  const body = node.body ? this.visitNode(node.body, context) : ';';
+
+  let body = ';'; // abstract setters do not have body
+  if (node.body) {
+    const hasReturn = node.body.statements.some((st) =>
+      ts.isReturnStatement(st),
+    );
+    if (hasReturn) {
+      // unlikely, compiler prevents this
+      body = this.visitNode(node.body, context);
+    } else {
+      const lastStatement =
+        node.body.statements[node.body.statements.length - 1];
+      this.utils.ignoreChildrenOfKind(lastStatement, SyntaxKind.SemicolonToken);
+      body = node.body.statements
+        .map((st) => {
+          const code = this.visitNode(st, context);
+          return st === lastStatement ? `return (${code});` : code;
+        })
+        .join('\n');
+      body = `{${body}}`;
+    }
+  }
+
   const property = defineHaxeGetSetProperty.call(this, node, context);
 
   return `${property}${modifiers}function set_${node.name.getText()}(${params})${body}`;

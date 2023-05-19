@@ -1,6 +1,5 @@
 import path from 'path';
 import type ts from 'typescript';
-import { type SyntaxKind } from 'typescript';
 import { mapValues } from 'lodash';
 import { logger } from '../Logger';
 import * as utils from './utils';
@@ -143,56 +142,11 @@ export class Transformer {
     );
   }
 
-  protected replaceChild(
-    node: ts.Node,
-    context: VisitNodeContext,
-    childToReplace: ts.Node,
-    code: string,
-  ): string {
-    const nodeFullCode = node
-      .getChildren()
-      .map((node) =>
-        node === childToReplace ? code : this.visitNode(node, context),
-      )
-      .join('');
-
-    return nodeFullCode || node.getFullText();
-  }
-
-  protected filterChildren(
-    node: ts.Node,
-    context: VisitNodeContext,
-    comparator: (node: ts.Node) => boolean,
-    separator = '',
-  ): string {
-    const nodeFullCode = node
-      .getChildren()
-      .map((node) => (comparator(node) ? this.visitNode(node, context) : ' '))
-      .join(separator);
-
-    return nodeFullCode || node.getFullText();
-  }
-
-  protected omitChildrenByKind(
-    node: ts.Node,
-    context: VisitNodeContext,
-    childKind: SyntaxKind,
-  ): string {
-    return this.filterChildren(node, context, (n) => n.kind !== childKind);
-  }
-
-  protected ignoreNode(node: ts.Node): void {
-    this.nodesToIgnore.add(node);
-  }
-
   protected replaceNodeFullText(node: ts.Node): void {
     this.nodesToReplaceFullText.add(node);
   }
 
-  protected ignoreNextNodeOfKind(node: ts.Node, kind: SyntaxKind): void {
-    const nextNode = this.utils.getNextNode(node);
-    if (nextNode?.kind === kind) {
-      this.ignoreNode(nextNode);
-    }
+  protected ignoreNode(node: ts.Node): void {
+    this.nodesToIgnore.add(node);
   }
 }

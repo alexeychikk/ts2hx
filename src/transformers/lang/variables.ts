@@ -12,7 +12,7 @@ export const transformVariableStatement: TransformerFn = function (
   // JSDoc node from parent VariableStatement thus duplicating this comment
   // when a node is finally dumped after transformation
   this.replaceNodeFullText(node);
-  return this.omitChildrenByKind(node, context, SyntaxKind.JSDoc);
+  return this.utils.omitChildrenByKind(node, context, SyntaxKind.JSDoc);
 };
 
 export const transformVariableDeclarationList: TransformerFn = function (

@@ -15,6 +15,7 @@ class MySimpleClass {
   }
 
   set prop(value: string) {
+    this.myEmptyMethod();
     this.myString = value;
   }
 

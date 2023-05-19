@@ -31,9 +31,71 @@ export function getNodeSourcePath(this: Transformer, node: ts.Node): string {
   return `${sourceFile.fileName}:${line + 1}:${character + 1}`;
 }
 
+export function replaceChild(
+  this: Transformer,
+  node: ts.Node,
+  context: VisitNodeContext,
+  childToReplace: ts.Node,
+  code: string,
+): string {
+  const nodeFullCode = node
+    .getChildren()
+    .map((node) =>
+      node === childToReplace ? code : this.visitNode(node, context),
+    )
+    .join('');
+
+  return nodeFullCode || node.getFullText();
+}
+
+export function filterChildren(
+  this: Transformer,
+  node: ts.Node,
+  context: VisitNodeContext,
+  comparator: (node: ts.Node) => boolean,
+  separator = '',
+): string {
+  const nodeFullCode = node
+    .getChildren()
+    .map((node) => (comparator(node) ? this.visitNode(node, context) : ' '))
+    .join(separator);
+
+  return nodeFullCode || node.getFullText();
+}
+
+export function omitChildrenByKind(
+  this: Transformer,
+  node: ts.Node,
+  context: VisitNodeContext,
+  childKind: SyntaxKind,
+): string {
+  return this.utils.filterChildren(node, context, (n) => n.kind !== childKind);
+}
+
+export function ignoreNextNodeOfKind(
+  this: Transformer,
+  node: ts.Node,
+  kind: SyntaxKind,
+): void {
+  const nextNode = this.utils.getNextNode(node);
+  if (nextNode?.kind === kind) {
+    this.ignoreNode(nextNode);
+  }
+}
+
+export function ignoreChildrenOfKind(
+  this: Transformer,
+  node: ts.Node,
+  kind: SyntaxKind,
+): void {
+  node.getChildren().forEach((child) => {
+    if (child.kind === kind) this.ignoreNode(child);
+  });
+}
+
 export function joinNodes<T extends ts.Node>(
   this: Transformer,
-  nodes: ts.NodeArray<T> | undefined,
+  nodes: ts.NodeArray<T> | T[] | undefined,
   context: VisitNodeContext,
   separator = ', ',
 ): string {
@@ -42,7 +104,10 @@ export function joinNodes<T extends ts.Node>(
 
 export function joinTypeParameters(
   this: Transformer,
-  typeParameters: ts.NodeArray<ts.TypeParameterDeclaration> | undefined,
+  typeParameters:
+    | ts.NodeArray<ts.TypeParameterDeclaration>
+    | ts.TypeParameterDeclaration[]
+    | undefined,
   context: VisitNodeContext,
 ): string {
   const typeParams = this.utils.joinNodes(typeParameters, context);
