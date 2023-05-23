@@ -67,9 +67,17 @@ const transformers: TransformerFn[] = [
 export interface ConverterOptions {
   tsconfigPath: string;
   outputDirPath: string;
+  flags?: ConverterFlags;
+}
+
+export interface ConverterFlags {
+  clean?: boolean;
+  copyFormatJson?: boolean;
+  copyLibFiles?: boolean;
+  format?: boolean;
+  ignoreFormatError?: boolean;
   includeComments?: boolean;
   includeTodos?: boolean;
-  format?: boolean;
 }
 
 export class Converter {
@@ -78,9 +86,7 @@ export class Converter {
   typeChecker: ts.TypeChecker;
   compilerOptions: ts.CompilerOptions;
   outputDirPath: string;
-  includeComments?: boolean;
-  includeTodos?: boolean;
-  format?: boolean;
+  flags: ConverterFlags;
 
   constructor(options: ConverterOptions) {
     this.startTime = Date.now();
@@ -106,9 +112,7 @@ export class Converter {
     this.outputDirPath = options.outputDirPath;
     this.typeChecker = this.program.getTypeChecker();
     this.compilerOptions = this.program.getCompilerOptions();
-    this.includeComments = options.includeComments;
-    this.includeTodos = options.includeTodos;
-    this.format = options.format;
+    this.flags = options.flags ?? {};
 
     if (!this.compilerOptions.rootDir) {
       throw new Error('rootDir must be set in your tsconfig.json');
@@ -116,23 +120,28 @@ export class Converter {
   }
 
   async run(): Promise<void> {
+    if (this.flags.clean) {
+      logger.log('Cleaning output dir');
+      await fs.emptyDir(this.outputDirPath);
+    }
+
     await Promise.all(
       this.program.getSourceFiles().map(this.convertSourceFile),
     );
 
-    const libFiles = path.resolve(process.cwd(), './lib');
-    await fs.copy(libFiles, this.outputDirPath);
+    if (this.flags.copyLibFiles) {
+      logger.log('Copying ts2hx lib files');
+      await this.copyFromCwdToOutput('./lib');
+    }
 
-    if (this.format) {
-      const hxFormat = path.resolve(process.cwd(), './hxformat.json');
-      await fs.copy(hxFormat, path.join(this.outputDirPath, './hxformat.json'));
+    if (this.flags.copyFormatJson) {
+      logger.log('Copying hxformat.json');
+      await this.copyFromCwdToOutput('./hxformat.json', './hxformat.json');
+    }
 
+    if (this.flags.format) {
       logger.log('Formatting output');
-      const lixPath = path.resolve(
-        process.cwd(),
-        './node_modules/.bin/lix' + (os.platform() === 'win32' ? '.cmd' : ''),
-      );
-      await execAsync(`${lixPath} run formatter -s ${this.outputDirPath}`);
+      await this.formatOutput();
     }
 
     const doneInMs = Date.now() - this.startTime;
@@ -140,6 +149,33 @@ export class Converter {
       'Done in',
       doneInMs > 999 ? `${(doneInMs / 1000).toFixed(3)} s` : `${doneInMs} ms`,
     );
+  }
+
+  async formatOutput(): Promise<void> {
+    try {
+      const lixPath = path.resolve(
+        process.cwd(),
+        './node_modules/.bin/lix' + (os.platform() === 'win32' ? '.cmd' : ''),
+      );
+      await execAsync(`${lixPath} run formatter -s ${this.outputDirPath}`);
+    } catch (error) {
+      if (this.flags.ignoreFormatError) return;
+      throw new Error(
+        'Failed to format output.\n' +
+          'This usually happens when syntax of the resulting Haxe code is incorrect.',
+      );
+    }
+  }
+
+  protected async copyFromCwdToOutput(
+    relativePath: string,
+    outputPath?: string,
+  ): Promise<void> {
+    const absolutePath = path.resolve(process.cwd(), relativePath);
+    const finalPath = outputPath
+      ? path.join(this.outputDirPath, outputPath)
+      : this.outputDirPath;
+    await fs.copy(absolutePath, finalPath);
   }
 
   protected convertSourceFile = async (
@@ -152,8 +188,8 @@ export class Converter {
       transformers,
       typeChecker: this.typeChecker,
       compilerOptions: this.compilerOptions,
-      includeComments: this.includeComments,
-      includeTodos: this.includeTodos,
+      includeComments: this.flags.includeComments,
+      includeTodos: this.flags.includeTodos,
     });
     const haxeCode = transformer.run();
     if (!haxeCode) {

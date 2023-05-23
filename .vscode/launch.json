@@ -11,7 +11,14 @@
       "program": "${workspaceFolder}/src/cli.ts",
       "preLaunchTask": "npm: ts",
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
-      "args": ["./examples/tsconfig.json", "./dist/hx", "-c", "-t"]
+      "args": [
+        "./examples/tsconfig.json",
+        "./dist/hx",
+        "--includeComments",
+        "--includeTodos",
+        "--format",
+        "0"
+      ]
     },
     {
       "name": "Run Haxe",
