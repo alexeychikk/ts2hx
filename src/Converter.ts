@@ -197,17 +197,14 @@ export class Converter {
       return;
     }
 
-    await this.writeOutputFile(transformer.getRelativeFilePath(), haxeCode);
+    await this.writeOutputFile(transformer.getHaxeFilePath(), haxeCode);
   };
 
   protected async writeOutputFile(
     fileName: string,
     code: string,
   ): Promise<void> {
-    const haxeFileName = path.join(
-      this.outputDirPath,
-      fileName.replace(/\.ts$/i, '.hx'),
-    );
+    const haxeFileName = path.join(this.outputDirPath, fileName);
     await fs.outputFile(haxeFileName, code);
   }
 }

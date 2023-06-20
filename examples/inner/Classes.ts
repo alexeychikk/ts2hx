@@ -1,7 +1,7 @@
 import {
   MyInterfaceToImplement,
   MyInterfaceToImplementSecond,
-} from './TypesAndInterfaces';
+} from './types-and-interfaces.dto';
 import { SuperParent } from './nested';
 
 export class MyEmptyClass {}

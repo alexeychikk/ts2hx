@@ -80,8 +80,22 @@ export class Transformer {
     return dirPath.replace(/[\\/]/g, '.');
   }
 
-  getModuleFilePath(fileName = this.sourceFile.fileName): string {
+  getHaxeFilePath(fileName = this.sourceFile.fileName): string {
     const filePath = this.getRelativeFilePath(fileName);
+    const baseName = path.basename(filePath);
+    let newBaseName = baseName
+      .replace(/\.ts(x)?$/i, '')
+      .replace(/^([^a-zA-Z]+)/, 'X_$1')
+      .replace(/[^a-zA-Z0-9_]/gim, '_');
+    newBaseName =
+      newBaseName === 'import'
+        ? newBaseName
+        : newBaseName[0].toUpperCase() + newBaseName.slice(1);
+    return filePath.slice(0, -baseName.length) + newBaseName + '.hx';
+  }
+
+  getModuleFilePath(fileName = this.sourceFile.fileName): string {
+    const filePath = this.getHaxeFilePath(fileName);
     const fileExt = path.extname(filePath);
     return filePath.slice(0, -fileExt.length);
   }
@@ -93,9 +107,9 @@ export class Transformer {
   getImportedPackageName(fileName: string): string {
     const modulePath = this.getModuleFilePath(fileName);
     const relativeFileName =
-      path.basename(modulePath) === 'index'
+      path.basename(modulePath) === 'Index'
         ? modulePath
-        : path.join(modulePath, './index.ts');
+        : path.join(modulePath, './Index.hx');
     return this.getPackageName(relativeFileName);
   }
 
