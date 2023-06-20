@@ -24,25 +24,30 @@ export const transformVariableDeclarationList: TransformerFn = function (
   if (!ts.isVariableDeclarationList(node)) return;
   const keyword = node.flags & ts.NodeFlags.Const ? 'final' : 'var';
   return node.declarations
-    .map((dec, i) => {
-      const start = `${i > 0 ? this.utils.getIndent(dec) : ''}${keyword} `;
-
+    .map((dec, declarationIndex) => {
       // { foo: bar = "wow" } = obj
       if (ts.isObjectBindingPattern(dec.name)) {
         const transformBinding = (
           binding: ts.ObjectBindingPattern,
           parentPath: string,
+          bindingIndex = 0,
         ): string => {
           return binding.elements
-            .map((el) => {
+            .map((el, elIndex) => {
+              const start = `${
+                declarationIndex + bindingIndex + elIndex > 0
+                  ? this.utils.getIndent(dec)
+                  : ''
+              }${keyword} `;
+
               // { foo: { bar: "baz" } } = obj
               if (ts.isObjectBindingPattern(el.name)) {
                 return transformBinding(
                   el.name,
-                  `${parentPath}.${this.utils.parenthesize(
-                    el.propertyName!,
-                    context,
-                  )}`,
+                  `${parentPath}.${this.utils
+                    .parenthesize(el.propertyName!, context)
+                    .trimStart()}`,
+                  bindingIndex + 1,
                 );
               }
 
@@ -58,10 +63,9 @@ export const transformVariableDeclarationList: TransformerFn = function (
               }
 
               // { foo: renamed } = bar
-              let init = `${parentPath}.${this.utils.parenthesize(
-                el.propertyName ?? el.name,
-                context,
-              )}`;
+              let init = `${parentPath}.${this.utils
+                .parenthesize(el.propertyName ?? el.name, context)
+                .trimStart()}`;
               if (el.initializer) {
                 init = `${init}.or(${this.visitNode(el.initializer, context)})`;
               }
@@ -79,7 +83,10 @@ export const transformVariableDeclarationList: TransformerFn = function (
       // [first, , third, ...rest] = arr
       if (ts.isArrayBindingPattern(dec.name)) {
         return dec.name.elements
-          .map((el, index) => {
+          .map((el, elIndex) => {
+            const start = `${
+              declarationIndex + elIndex > 0 ? this.utils.getIndent(dec) : ''
+            }${keyword} `;
             if (ts.isOmittedExpression(el)) return;
 
             const name = el.name.getText();
@@ -87,16 +94,19 @@ export const transformVariableDeclarationList: TransformerFn = function (
 
             // [...rest] = arr
             if (el.dotDotDotToken) {
-              return `${start}${name} = ${init}.slice(${index})`;
+              return `${start}${name} = ${init}.slice(${elIndex})`;
             }
 
             // [first, second] = arr
-            return `${start}${name} = ${init}[${index}]`;
+            return `${start}${name} = ${init}[${elIndex}]`;
           })
           .filter(Boolean)
           .join(';\n');
       }
 
+      const start = `${
+        declarationIndex > 0 ? this.utils.getIndent(dec) : ''
+      }${keyword} `;
       return `${start} ${this.visitNode(dec, context).trimStart()}`;
     })
     .join(';\n');
