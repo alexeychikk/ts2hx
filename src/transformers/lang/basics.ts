@@ -51,6 +51,10 @@ export const transformKeywords: TransformerFn = function (
       return 'private';
     case SyntaxKind.EqualsGreaterThanToken:
       return '->';
+    case SyntaxKind.EqualsEqualsEqualsToken:
+      return '==';
+    case SyntaxKind.ExclamationEqualsEqualsToken:
+      return '!=';
     case SyntaxKind.Identifier:
       switch (node.getText()) {
         // myVar = undefined
@@ -158,11 +162,7 @@ export const transformVoidExpression: TransformerFn = function (
   ) {
     return `null`;
   } else {
-    const comment = this.utils.commentOutNode(
-      node,
-      `void expression is not supported at`,
-    );
-    return `${comment} null`;
+    return `(function() {${this.visitNode(node.expression, context)};})()`;
   }
 };
 
