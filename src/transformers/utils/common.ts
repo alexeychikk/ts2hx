@@ -139,3 +139,16 @@ export function getExtendedNode(
     (her) => her.token === SyntaxKind.ExtendsKeyword,
   )?.types?.[0];
 }
+
+export function renameSymbol(
+  this: Transformer,
+  node: ts.Node,
+  renameTo: string,
+): string {
+  const oldName = node.getText();
+  const symbolsMap = this.symbolsToRename[oldName] ?? new Map();
+  this.symbolsToRename[oldName] = symbolsMap;
+  const name = symbolsMap.size > 0 ? `${renameTo}${symbolsMap.size}` : renameTo;
+  symbolsMap.set(this.typeChecker.getSymbolAtLocation(node)!, name);
+  return name;
+}

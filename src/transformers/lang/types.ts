@@ -204,3 +204,24 @@ export const transformEnumDeclaration: TransformerFn = function (
 
   return `enum abstract ${node.name.text}(${underlyingType}) from ${underlyingType} to ${underlyingType} {\n${members}\n}`;
 };
+
+export const transformAsExpression: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  if (!ts.isAsExpression(node)) return;
+
+  // as const
+  if (
+    ts.isTypeReferenceNode(node.type) &&
+    node.type.typeName.getText() === 'const'
+  ) {
+    return this.visitNode(node.expression, context);
+  }
+
+  // myVar = hisVar as T
+  if (!ts.isParenthesizedExpression(node.parent)) {
+    return `(${this.traverseChildren(node, context)})`;
+  }
+};

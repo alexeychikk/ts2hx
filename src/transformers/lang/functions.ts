@@ -36,7 +36,10 @@ export const transformFunctionParameter: TransformerFn = function (
 ) {
   if (!ts.isParameter(node)) return;
 
-  const name = node.name.getText();
+  let name = node.name.getText();
+  if (name === 'this') {
+    name = this.utils.renameSymbol(node.name, '_this');
+  }
   const dotDotDotToken = node.dotDotDotToken ? '...' : '';
 
   let type = '';

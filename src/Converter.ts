@@ -62,6 +62,7 @@ const transformers: TransformerFn[] = [
   lang.transformNotOperator,
   lang.transformConditions,
   lang.transformKeywords,
+  lang.transformRenameSymbol,
 ];
 
 export interface ConverterOptions {

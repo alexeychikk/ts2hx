@@ -16,19 +16,25 @@ It just covers syntax differences, basic types and some extra stuff that might c
 3. `npm start -- ./path/to/your/tsconfig.json ./output/folder/path`
 
 ```console
-$ node .\dist\src\cli.js -h
+$ npm start -- -h
 Usage: cli [options] <ts-config-path> <output-dir-path>
 
 Arguments:
-  ts-config-path          path to tsconfig.json of your project
-  output-dir-path         path to directory where to output final Haxe code
+  ts-config-path                    path to tsconfig.json of your project
+  output-dir-path                   path to directory where to output final Haxe code
 
 Options:
-  -c, --includeComments   whether to include comments generated during transformation
-  -t, --includeTodos      whether to include todos generated during transformation
-  -f, --format            whether to format final Haxe code using haxe-formatter (default: true)
-  -l, --logLevel <level>  log level (choices: "Log", "Warn", "Error", "None", default: "Log")
-  -h, --help              display help for command
+  -c, --clean [bool]                empty output directory before converting (choices: "true", "false", "1", "0")
+  -cfj, --copyFormatJson [bool]     copy hxformat.json file into output directory (contains Prettier-like settings for Haxe formatter
+                                    https://github.com/HaxeCheckstyle/haxe-formatter) (choices: "true", "false", "1", "0", default: true)
+  -clf, --copyLibFiles [bool]       copy ts2hx lib files into output directory (contains helper functions and static extensions which improve compatibility with
+                                    TS) (choices: "true", "false", "1", "0", default: true)
+  -f, --format [bool]               format final Haxe code using haxe-formatter (choices: "true", "false", "1", "0", default: true)
+  -ife, --ignoreFormatError [bool]  prevents exit code 1 when Haxe formatter fails (choices: "true", "false", "1", "0")
+  -ic, --includeComments [bool]     include comments generated during transformation (choices: "true", "false", "1", "0")
+  -it, --includeTodos [bool]        include todos generated during transformation (choices: "true", "false", "1", "0")
+  -l, --logLevel <level>            log level (choices: "Log", "Warn", "Error", "None", default: "Log")
+  -h, --help                        display help for command
 ```
 
 ## Features

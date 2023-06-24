@@ -50,7 +50,7 @@ export interface MyConstructorHolder {
   new (foo: string): { bar: number };
 }
 
-export interface MyOtherInterface extends Partial<MyInterface>, Error {
+export interface MyOtherInterface extends Partial<MyInterface> /* , Error */ {
   lol: string;
 }
 

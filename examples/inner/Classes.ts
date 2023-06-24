@@ -102,6 +102,24 @@ export class Main {
   protected asyncMethod = async () => {
     return Promise.resolve(5);
   };
+
+  private thisParameter() {
+    function foo(this: Dog) {
+      console.log(this.age);
+
+      const bar = (x: number) => {
+        console.log(x + this.age);
+      };
+      bar(4);
+
+      function baz(this: MyExtendedClass) {
+        console.log(this.bar);
+      }
+      baz.call(new MyExtendedClass());
+    }
+
+    foo.call(new Dog('foo', 'bar'));
+  }
 }
 
 class MyError extends Error {}

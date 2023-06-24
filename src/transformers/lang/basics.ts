@@ -129,27 +129,6 @@ export const transformRegex: TransformerFn = function (
   return `~${node.text}`;
 };
 
-export const transformAsExpression: TransformerFn = function (
-  this: Transformer,
-  node,
-  context,
-) {
-  if (!ts.isAsExpression(node)) return;
-
-  // as const
-  if (
-    ts.isTypeReferenceNode(node.type) &&
-    node.type.typeName.getText() === 'const'
-  ) {
-    return this.visitNode(node.expression, context);
-  }
-
-  // myVar = hisVar as T
-  if (!ts.isParenthesizedExpression(node.parent)) {
-    return `(${this.traverseChildren(node, context)})`;
-  }
-};
-
 export const transformVoidExpression: TransformerFn = function (
   this: Transformer,
   node,
@@ -252,72 +231,18 @@ export const transformImportDeclaration: TransformerFn = function (
   return '';
 };
 
-export const transformSwitchCase: TransformerFn = function (
+export const transformRenameSymbol: TransformerFn = function (
   this: Transformer,
   node,
-  context,
-) {
-  if (!ts.isSwitchStatement(node)) return;
-
-  const expression = this.visitNode(node.expression, context);
-
-  let fallthroughCases: ts.CaseClause[] = [];
-  const cases = node.caseBlock.clauses
-    .map((clause) => {
-      if (!clause.statements.length) {
-        fallthroughCases.push(clause as ts.CaseClause);
-        return;
-      }
-
-      const isBlock =
-        clause.statements.length === 1 && ts.isBlock(clause.statements[0]);
-      const statementNodes = isBlock
-        ? (clause.statements[0] as ts.Block).statements
-        : clause.statements;
-
-      let statements = statementNodes
-        .filter((st) => !ts.isBreakStatement(st))
-        .map((st) => this.visitNode(st, context))
-        .join('');
-      if (isBlock) {
-        statements = ` {${statements}\n${this.utils.getIndent(node)}  }`;
-      }
-
-      if (ts.isDefaultClause(clause)) {
-        return `${this.utils.getIndent(node)}  default:${statements}`;
-      }
-
-      const fallthroughExpression = fallthroughCases
-        .map(
-          (el) =>
-            `${transformCaseExpression.call(this, el.expression, context)}, `,
-        )
-        .join('');
-      const expression = transformCaseExpression.call(
-        this,
-        clause.expression,
-        context,
-      );
-      fallthroughCases = [];
-
-      return `${this.utils.getIndent(
-        node,
-      )}  case ${fallthroughExpression}${expression}:${statements}`;
-    })
-    .filter(Boolean)
-    .join('\n');
-
-  return (
-    `switch (${expression}) {\n${cases}` + `\n${this.utils.getIndent(node)}}`
-  );
-};
-
-const transformCaseExpression = function (
-  this: Transformer,
-  node: ts.Node,
   context: VisitNodeContext,
-): string {
-  if (ts.isLiteralExpression(node)) return this.visitNode(node, context);
+) {
+  const symbolsMap = this.symbolsToRename[node.getText()];
+  if (!symbolsMap) return;
+  const symbol = this.typeChecker.getSymbolAtLocation(node);
+  if (!symbol) return;
 
-  return `_ == ${this.visitNode(node, context)} => true`;
+  const renameTo = symbolsMap.get(symbol);
+  if (renameTo === undefined) return;
+
+  return renameTo;
 };

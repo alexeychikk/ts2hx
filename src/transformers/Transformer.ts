@@ -30,6 +30,7 @@ export class Transformer {
 
   protected nodesToIgnore = new Set<ts.Node>();
   protected nodesToReplaceFullText = new Set<ts.Node>();
+  protected symbolsToRename: Record<string, Map<ts.Symbol, string>> = {};
   protected anonymousClassCounter = 0;
   protected imports: {
     eitherType?: boolean;
