@@ -4,10 +4,10 @@ module.exports = {
     node: true,
   },
   extends: ['standard-with-typescript', 'prettier'],
-  ignorePatterns: ['node_modules', 'dist', 'examples'],
+  ignorePatterns: ['node_modules', 'dist', 'examples', 'haxe_libraries', 'lib'],
   overrides: [],
   parserOptions: {
-    project: ['tsconfig.json'],
+    project: ['tsconfig.eslint.json'],
     ecmaVersion: 'latest',
     sourceType: 'module',
   },
@@ -17,5 +17,6 @@ module.exports = {
     '@typescript-eslint/no-extraneous-class': 'off',
     'no-fallthrough': 'off',
     'array-callback-return': 'off',
+    'no-template-curly-in-string': 'off',
   },
 };

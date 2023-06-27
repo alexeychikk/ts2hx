@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": [
+    "**/*.spec.ts",
+    "tests/**/*.ts",
+    ".vscode",
+    "dist",
+    "examples",
+    "haxe_libraries",
+    "lib",
+    "node_modules"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {},
+  "include": ["**/*.ts"],
+  "exclude": [".vscode", "dist", "haxe_libraries", "lib", "node_modules"]
+}

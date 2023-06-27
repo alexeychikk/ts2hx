@@ -5,65 +5,10 @@ import os from 'os';
 import { promisify } from 'util';
 import { exec } from 'child_process';
 
-import { Transformer, api, lang, type TransformerFn } from './transformers';
+import { Transformer, TRANSFORMERS } from './transformers';
 import { logger } from './Logger';
 
 const execAsync = promisify(exec);
-
-// Order here actually matters (to some extent)
-const transformers: TransformerFn[] = [
-  api.transformJsApiAccess,
-  api.transformJsIdentifiers,
-  api.transformTsLibTypes,
-  lang.transformImportDeclaration,
-  lang.transformVariableStatement,
-  lang.transformVariableDeclarationList,
-  lang.transformVariableDeclaration,
-  lang.transformClassDeclaration,
-  lang.transformEnumDeclaration,
-  lang.transformHeritageClause,
-  lang.transformConstructor,
-  lang.transformClassPropertyDeclaration,
-  lang.transformClassMethodDeclaration,
-  lang.transformClassGetter,
-  lang.transformClassSetter,
-  lang.transformForLoop,
-  lang.transformForOfLoop,
-  lang.transformForInLoop,
-  lang.transformSwitchCase,
-  lang.transformPropertySignature,
-  lang.transformIndexSignature,
-  lang.transformMethodSignature,
-  lang.transformConstructorSignature,
-  lang.transformPropertyAssignment,
-  lang.transformElementAccess,
-  lang.transformElementWriteToObject,
-  lang.transformGetSet,
-  lang.transformMethodOnObject,
-  lang.transformArrowFunction,
-  lang.transformFunctionParameter,
-  lang.transformCallExpression,
-  lang.transformPowExpression,
-  lang.transformInstanceOfExpression,
-  lang.transformSimpleTemplate,
-  lang.transformTemplateExpression,
-  lang.transformTemplateParts,
-  lang.transformLiteralTypes,
-  lang.transformArrayType,
-  lang.transformUnionType,
-  lang.transformTupleType,
-  lang.transformVoidExpression,
-  lang.transformAsExpression,
-  lang.transformTypeofExpression,
-  lang.transformTypeParameter,
-  lang.transformConditionalType,
-  lang.transformTypeQuery,
-  lang.transformRegex,
-  lang.transformNotOperator,
-  lang.transformConditions,
-  lang.transformKeywords,
-  lang.transformRenameSymbol,
-];
 
 export interface ConverterOptions {
   tsconfigPath: string;
@@ -186,7 +131,7 @@ export class Converter {
 
     const transformer = new Transformer({
       sourceFile,
-      transformers,
+      transformers: TRANSFORMERS,
       typeChecker: this.typeChecker,
       compilerOptions: this.compilerOptions,
       includeComments: this.flags.includeComments,
