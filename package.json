@@ -22,7 +22,8 @@
 		"ts": "tsc -p tsconfig.lib.json",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
-		"prettify": "npx prettier --write ."
+		"prettify": "npx prettier --write .",
+		"test": "jest"
 	},
 	"author": "",
 	"license": "ISC",
