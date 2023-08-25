@@ -21,6 +21,20 @@
       ]
     },
     {
+      "type": "node",
+      "request": "launch",
+      "name": "Evolution",
+      "program": "${workspaceFolder}/src/cli.ts",
+      "preLaunchTask": "npm: ts",
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "args": [
+        "../evolution/libs/core/tsconfig.lib.json",
+        "../evo-haxe",
+        "--includeComments",
+        "--includeTodos"
+      ]
+    },
+    {
       "name": "Run Haxe",
       "type": "haxe-eval",
       "request": "launch"

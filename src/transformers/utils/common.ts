@@ -170,9 +170,9 @@ export function renameSymbol(
   node: ts.Node,
   renameTo: string,
 ): string {
-  const oldName = node.getText();
-  const symbolsMap = this.symbolsToRename[oldName] ?? new Map();
-  this.symbolsToRename[oldName] = symbolsMap;
+  const key = Buffer.from(node.getText()).toString('base64');
+  const symbolsMap = this.symbolsToRename[key] ?? new Map();
+  this.symbolsToRename[key] = symbolsMap;
   const name = symbolsMap.size > 0 ? `${renameTo}${symbolsMap.size}` : renameTo;
   symbolsMap.set(this.typeChecker.getSymbolAtLocation(node)!, name);
   return name;
