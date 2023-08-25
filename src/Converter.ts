@@ -22,6 +22,7 @@ export interface ConverterFlags {
   copyLibFiles?: boolean;
   format?: boolean;
   ignoreFormatError?: boolean;
+  ignoreErrors?: boolean;
   includeComments?: boolean;
   includeTodos?: boolean;
 }
@@ -134,6 +135,7 @@ export class Converter {
       transformers: TRANSFORMERS,
       typeChecker: this.typeChecker,
       compilerOptions: this.compilerOptions,
+      ignoreErrors: this.flags.ignoreErrors,
       includeComments: this.flags.includeComments,
       includeTodos: this.flags.includeTodos,
     });

@@ -22,7 +22,6 @@ void (async () => {
         '<output-dir-path>',
         'path to directory where to output final Haxe code',
       )
-
       .addOption(
         new BooleanOption(
           '-c, --clean [bool]',
@@ -53,6 +52,12 @@ void (async () => {
         new BooleanOption(
           '-ife, --ignoreFormatError [bool]',
           `prevents exit code 1 when Haxe formatter fails`,
+        ),
+      )
+      .addOption(
+        new BooleanOption(
+          '-ie, --ignoreErrors [bool]',
+          `prevents exit code 1 when internal ts2hx error happens`,
         ),
       )
       .addOption(
@@ -97,6 +102,7 @@ void (async () => {
         copyLibFiles: options.copyLibFiles,
         format: options.format,
         ignoreFormatError: options.ignoreFormatError,
+        ignoreErrors: options.ignoreErrors,
         includeComments: options.includeComments,
         includeTodos: options.includeTodos,
       },

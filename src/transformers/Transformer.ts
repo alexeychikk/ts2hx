@@ -21,6 +21,7 @@ export type TransformerFn = (
 ) => string | undefined;
 
 export class Transformer {
+  ignoreErrors?: boolean;
   includeComments?: boolean;
   includeTodos?: boolean;
   typeChecker: ts.TypeChecker;
@@ -45,15 +46,17 @@ export class Transformer {
     compilerOptions: ts.CompilerOptions;
     sourceFile: ts.SourceFile;
     transformers: TransformerFn[];
+    ignoreErrors?: boolean;
     includeComments?: boolean;
     includeTodos?: boolean;
   }) {
-    this.includeComments = options.includeComments;
-    this.includeTodos = options.includeTodos;
     this.typeChecker = options.typeChecker;
     this.compilerOptions = options.compilerOptions;
     this.sourceFile = options.sourceFile;
     this.transformers = options.transformers;
+    this.ignoreErrors = options.ignoreErrors;
+    this.includeComments = options.includeComments;
+    this.includeTodos = options.includeTodos;
   }
 
   run(): string {
@@ -135,8 +138,17 @@ export class Transformer {
     context: VisitNodeContext,
   ): string | undefined {
     for (const fn of this.transformers) {
-      const result = fn.call(this, node, context);
-      if (result != null) return result;
+      try {
+        const result = fn.call(this, node, context);
+        if (result != null) return result;
+      } catch (error) {
+        if (!this.ignoreErrors) throw error;
+        logger.error(error);
+        return (
+          this.utils.createComment(({ todo }) => `${todo} INTERNAL_ERROR`) +
+          node.getFullText()
+        );
+      }
     }
   }
 
