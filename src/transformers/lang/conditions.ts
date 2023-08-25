@@ -11,12 +11,8 @@ export const transformNotOperator: TransformerFn = function (
   context,
 ) {
   // !myVar
-  if (
-    ts.isPrefixUnaryExpression(node) &&
-    node.operator === SyntaxKind.ExclamationToken
-  ) {
-    const res = this.utils.toExplicitBooleanCondition(node.operand);
-    return res ? `!(${res})` : undefined;
+  if (this.utils.isBooleanNotExpression(node)) {
+    return `!${this.utils.toExplicitBooleanCondition(node.operand, context)}`;
   }
 };
 
@@ -26,16 +22,38 @@ export const transformConditions: TransformerFn = function (
   context,
 ) {
   if (
-    // myVar ? a : b
-    this.utils.isOperandOfConditionalExpression(node) ||
-    // myVar || hisVar > 0
-    this.utils.isOperandOfBooleanExpression(node) ||
-    // if (myVar) ; while(myVar) ;
-    this.utils.isBooleanExpressionOfStatement(node)
-  ) {
-    return this.utils.toExplicitBooleanCondition(node);
-  }
+    !(
+      //  myVar ? a : b
+      (
+        this.utils.isOperandOfConditionalExpression(node) ||
+        // myVar || hisVar > 0
+        this.utils.isOperandOfBooleanExpression(node) ||
+        // if (myVar) ; while(myVar) ;
+        this.utils.isBooleanExpressionOfStatement(node)
+      )
+    )
+  )
+    return;
+
+  if (this.utils.isBooleanExpressionOfVariableDeclaration(node.parent)) return;
+
+  return this.utils.toExplicitBooleanCondition(node, context);
 };
+
+export const transformBooleanOperatorInVariableDeclaration: TransformerFn =
+  function (this: Transformer, node, context) {
+    if (!this.utils.isBooleanExpressionOfVariableDeclaration(node)) return;
+
+    const operator =
+      node.operatorToken.kind === SyntaxKind.AmpersandAmpersandToken
+        ? 'and'
+        : 'or';
+
+    return `${this.utils.visitParenthesized(
+      node.left,
+      context,
+    )}.${operator}(${this.visitNode(node.right, context)})`;
+  };
 
 export const transformSwitchCase: TransformerFn = function (
   this: Transformer,

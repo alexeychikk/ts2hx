@@ -75,6 +75,7 @@ Foo 'Bar'!`;
     function wrapper() {
       // Expressions
       myImplicitLiteralNumber = 5.5;
+      myString = '';
       const myMathExpression = 4 + (myNumber * 2) / (10 - myHexNumber);
       const myComplexBinaryExpression =
         (!1 || 0 || !myNumber) &&

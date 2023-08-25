@@ -10,8 +10,8 @@ type TransformerUtils = {
 };
 
 export interface VisitNodeContext {
-  skipParameterInitializer?: boolean;
   enforceParameterType?: boolean;
+  skipParameterInitializer?: boolean;
 }
 
 export type TransformerFn = (

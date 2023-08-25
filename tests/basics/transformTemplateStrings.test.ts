@@ -16,6 +16,6 @@ test('transforms template string literal expression', () => {
       'let myLiteral = `foo ${varX} bar ${varY ? `inner ${varZ} end` : ""} baz`;',
     ),
   ).toEqual(
-    "var  myLiteral =  'foo ${varX} bar ${varY != null ? 'inner ${varZ} end' : \"\"} baz';",
+    "var  myLiteral =  'foo ${varX} bar ${(varY != null) ? 'inner ${varZ} end' : \"\"} baz';",
   );
 });

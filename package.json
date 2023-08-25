@@ -23,7 +23,8 @@
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
 		"prettify": "npx prettier --write .",
-		"test": "jest"
+		"test": "jest",
+		"test:coverage": "jest --coverage"
 	},
 	"author": "",
 	"license": "ISC",

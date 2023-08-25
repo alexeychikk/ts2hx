@@ -87,6 +87,9 @@ export const transformCallExpression: TransformerFn = function (
 
   const code = `${expression}${typeArgs}(${args})`;
   return node.questionDotToken
-    ? `(${expression} != null ? ${code} : null)`
+    ? this.utils.parenthesizeCode(
+        node,
+        `${expression} != null ? ${code} : null`,
+      )
     : code;
 };

@@ -1,6 +1,48 @@
 import ts, { SyntaxKind } from 'typescript';
 import { type VisitNodeContext, type Transformer } from '../Transformer';
 
+export function isBooleanNotExpression(
+  node: ts.Node,
+): node is ts.PrefixUnaryExpression {
+  return (
+    ts.isPrefixUnaryExpression(node) &&
+    node.operator === SyntaxKind.ExclamationToken
+  );
+}
+
+export function isBooleanBinaryExpression(
+  node: ts.Node,
+): node is ts.BinaryExpression {
+  return (
+    ts.isBinaryExpression(node) &&
+    [SyntaxKind.AmpersandAmpersandToken, SyntaxKind.BarBarToken].includes(
+      node.operatorToken.kind,
+    )
+  );
+}
+
+export function isBooleanAndExpression(
+  node: ts.Node,
+): node is ts.BinaryExpression {
+  return (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === SyntaxKind.AmpersandAmpersandToken
+  );
+}
+
+export function isBooleanOrExpression(
+  node: ts.Node,
+): node is ts.BinaryExpression {
+  return (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === SyntaxKind.BarBarToken
+  );
+}
+
+export function isBooleanExpression(node: ts.Node): node is ts.Expression {
+  return isBooleanNotExpression(node) || isBooleanBinaryExpression(node);
+}
+
 export function isOperandOfConditionalExpression(
   this: Transformer,
   node: ts.Node,
@@ -18,11 +60,8 @@ export function isOperandOfBooleanExpression(
 ): boolean {
   return (
     !!node.parent &&
-    ts.isBinaryExpression(node.parent) &&
-    (node.parent.left === node || node.parent.right === node) &&
-    [SyntaxKind.AmpersandAmpersandToken, SyntaxKind.BarBarToken].includes(
-      node.parent.operatorToken.kind,
-    )
+    this.utils.isBooleanBinaryExpression(node.parent) &&
+    (node.parent.left === node || node.parent.right === node)
   );
 }
 
@@ -39,10 +78,32 @@ export function isBooleanExpressionOfStatement(
   );
 }
 
+export function isBooleanExpressionOfVariableDeclaration(
+  node: ts.Node,
+): node is ts.BinaryExpression {
+  if (!isBooleanBinaryExpression(node)) return false;
+
+  let parent = node.parent;
+  while (!ts.isVariableDeclaration(parent)) {
+    if (
+      !(
+        isBooleanBinaryExpression(parent) ||
+        ts.isParenthesizedExpression(parent)
+      )
+    ) {
+      return false;
+    }
+    parent = parent.parent;
+  }
+
+  return true;
+}
+
 export function toExplicitBooleanCondition(
   this: Transformer,
   node: ts.Node,
-): string | undefined {
+  context: VisitNodeContext,
+): string {
   switch (node.kind) {
     case SyntaxKind.TrueKeyword:
     case SyntaxKind.FalseKeyword:
@@ -57,30 +118,59 @@ export function toExplicitBooleanCondition(
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
     return node.text === '' ? 'false' : 'true';
   }
-  if (ts.isArrayLiteralExpression(node) || ts.isObjectLiteralExpression(node)) {
+  if (
+    ts.isArrayLiteralExpression(node) ||
+    ts.isObjectLiteralExpression(node) ||
+    ts.isFunctionLike(node)
+  ) {
     return 'true';
   }
 
-  if (!ts.isIdentifier(node)) return;
-
-  if (node.text === 'undefined' || node.text === 'NaN') {
+  if (
+    ts.isIdentifier(node) &&
+    (node.text === 'undefined' || node.text === 'NaN')
+  ) {
     return 'false';
   }
+
+  if (ts.isParenthesizedExpression(node)) {
+    return `(${this.utils.toExplicitBooleanCondition(
+      node.expression,
+      context,
+    )})`;
+  }
+  if (isBooleanBinaryExpression(node)) {
+    return this.traverseChildren(node, context);
+  }
+  if (isBooleanNotExpression(node)) {
+    return this.visitNode(node, context);
+  }
+
+  let result = this.traverseChildren(node, context);
 
   const type = this.typeChecker.getTypeAtLocation(node);
   if (
     ts.TypeFlags.Boolean & type.flags ||
     ts.TypeFlags.BooleanLiteral & type.flags
   ) {
-    return node.getText();
+    return result;
   }
-  if (ts.TypeFlags.Number & type.flags) {
-    return `${node.getText()} != 0`;
+
+  if (
+    ts.TypeFlags.Number & type.flags ||
+    ts.TypeFlags.NumberLiteral & type.flags
+  ) {
+    result = `${result} != 0`;
+  } else if (
+    ts.TypeFlags.String & type.flags ||
+    ts.TypeFlags.StringLiteral & type.flags
+  ) {
+    result = `${result} != ""`;
+  } else {
+    result = `${result} != null`;
   }
-  if (ts.TypeFlags.String & type.flags) {
-    return `${node.getText()} != ""`;
-  }
-  return `${node.getText()} != null`;
+
+  return this.utils.parenthesizeCode(node, result);
 }
 
 export function toSeparateStatements(

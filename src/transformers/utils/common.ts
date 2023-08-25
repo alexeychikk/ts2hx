@@ -10,6 +10,15 @@ export function getNextNode(
   const nodeIndex = parent.getChildren().findIndex((n) => n === node);
   return parent.getChildAt(nodeIndex + 1);
 }
+export function getPrevNode(
+  this: Transformer,
+  node: ts.Node,
+  parent = this.utils.getDirectParent(node),
+): ts.Node | undefined {
+  if (!parent) return;
+  const nodeIndex = parent.getChildren().findIndex((n) => n === node);
+  return parent.getChildAt(nodeIndex - 1);
+}
 
 export function getDirectParent(
   this: Transformer,
@@ -122,13 +131,29 @@ export function escapeTemplateText(this: Transformer, text: string): string {
   return text.replace(/'/g, `\\'`);
 }
 
-export function parenthesize(
+export function visitParenthesized(
   this: Transformer,
   node: ts.Node,
   context: VisitNodeContext,
 ): string {
   const code = this.visitNode(node, context);
   return ts.isIdentifier(node) ? code : `(${code})`;
+}
+
+export function isParenthesized(this: Transformer, node: ts.Node): boolean {
+  return (
+    ts.isParenthesizedExpression(node) ||
+    (this.utils.getPrevNode(node)?.kind === SyntaxKind.OpenParenToken &&
+      this.utils.getNextNode(node)?.kind === SyntaxKind.CloseParenToken)
+  );
+}
+
+export function parenthesizeCode(
+  this: Transformer,
+  node: ts.Node,
+  code: string,
+): string {
+  return this.utils.isParenthesized(node) ? code : `(${code})`;
 }
 
 export function getExtendedNode(

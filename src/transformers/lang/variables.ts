@@ -45,7 +45,7 @@ export const transformVariableDeclarationList: TransformerFn = function (
                 return transformBinding(
                   el.name,
                   `${parentPath}.${this.utils
-                    .parenthesize(el.propertyName!, context)
+                    .visitParenthesized(el.propertyName!, context)
                     .trimStart()}`,
                   bindingIndex + 1,
                 );
@@ -64,10 +64,10 @@ export const transformVariableDeclarationList: TransformerFn = function (
 
               // { foo: renamed } = bar
               let init = `${parentPath}.${this.utils
-                .parenthesize(el.propertyName ?? el.name, context)
+                .visitParenthesized(el.propertyName ?? el.name, context)
                 .trimStart()}`;
               if (el.initializer) {
-                init = `${init}.or(${this.visitNode(el.initializer, context)})`;
+                init = `${init} ?? ${this.visitNode(el.initializer, context)}`;
               }
               return `${start}${el.name.getText()} = ${init}`;
             })
@@ -76,7 +76,7 @@ export const transformVariableDeclarationList: TransformerFn = function (
 
         return transformBinding(
           dec.name,
-          this.utils.parenthesize(dec.initializer!, context),
+          this.utils.visitParenthesized(dec.initializer!, context),
         );
       }
 
@@ -90,7 +90,10 @@ export const transformVariableDeclarationList: TransformerFn = function (
             if (ts.isOmittedExpression(el)) return;
 
             const name = el.name.getText();
-            const init = this.utils.parenthesize(dec.initializer!, context);
+            const init = this.utils.visitParenthesized(
+              dec.initializer!,
+              context,
+            );
 
             // [...rest] = arr
             if (el.dotDotDotToken) {

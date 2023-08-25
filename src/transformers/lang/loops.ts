@@ -15,7 +15,7 @@ export const transformForLoop: TransformerFn = function (
   const indent = node.initializer ? this.utils.getIndent(node) : '';
 
   const condition = node.condition
-    ? this.utils.toExplicitBooleanCondition(node.condition) ?? ''
+    ? this.utils.toExplicitBooleanCondition(node.condition, context)
     : 'true';
 
   const body = ts.isBlock(node.statement)
