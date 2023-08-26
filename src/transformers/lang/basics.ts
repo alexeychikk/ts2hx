@@ -200,7 +200,7 @@ export const transformImportDeclaration: TransformerFn = function (
     const fileName = aliasedSymbol?.declarations?.[0].getSourceFile().fileName;
     if (!fileName) return '';
 
-    return `import ${this.getImportedPackageName(fileName)}.${
+    return `import ${this.utils.getImportedPackageName(fileName)}.${
       aliasedSymbol.name
     }${symbol.name !== aliasedSymbol.name ? ` as ${symbol.name}` : ''};`;
   }
@@ -212,7 +212,7 @@ export const transformImportDeclaration: TransformerFn = function (
         const fileName = this.utils.getDeclarationSourceFile(el.name)?.fileName;
         if (!fileName) return;
 
-        return `import ${this.getImportedPackageName(fileName)}.${
+        return `import ${this.utils.getImportedPackageName(fileName)}.${
           el.propertyName?.text ?? el.name.text
         }${el.propertyName ? ` as ${el.name.text}` : ''};`;
       })

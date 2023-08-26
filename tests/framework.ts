@@ -47,6 +47,9 @@ export class Ts2hx {
 
     const originalReadFile = host.readFile.bind(host);
     const originalFileExists = host.fileExists.bind(host);
+    const originalReadDirectory = host.readDirectory?.bind(host);
+    const originalDirectoryExists = host.directoryExists?.bind(host);
+
     host.readFile = (fileName: string): string | undefined => {
       const filePath = path.normalize(fileName);
       const fakeFile = this.sourceFiles.find(
@@ -62,6 +65,29 @@ export class Ts2hx {
       return fakeFile ? true : originalFileExists(fileName);
     };
     host.writeFile = () => undefined;
+    host.readDirectory = (rootDir, extensions, excludes, includes, depth) => {
+      // TODO: this doesn't seem to be called at all
+      return (
+        originalReadDirectory?.(
+          rootDir,
+          extensions,
+          excludes,
+          includes,
+          depth,
+        ) ?? []
+      );
+    };
+    host.directoryExists = (directoryName) => {
+      const directoryPath = path.normalize(directoryName);
+      const fakeFile = this.sourceFiles.find((sf) =>
+        path
+          .join(process.cwd(), path.dirname(sf.fileName))
+          .includes(directoryPath),
+      );
+      return fakeFile
+        ? true
+        : originalDirectoryExists?.(directoryName) ?? false;
+    };
 
     return host;
   }

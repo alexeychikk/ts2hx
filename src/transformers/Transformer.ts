@@ -1,4 +1,3 @@
-import path from 'path';
 import type ts from 'typescript';
 import { mapValues } from 'lodash';
 import { logger } from '../Logger';
@@ -39,7 +38,7 @@ export class Transformer {
     exception?: boolean;
   } = {};
 
-  protected utils = mapValues(utils, (fn) => fn.bind(this)) as TransformerUtils;
+  utils = mapValues(utils, (fn) => fn.bind(this)) as TransformerUtils;
 
   constructor(options: {
     typeChecker: ts.TypeChecker;
@@ -72,49 +71,10 @@ export class Transformer {
       imports.join('\n') + (imports.length ? '\n\n' : '')
     }${haxeCode}`;
 
-    const packageName = this.getPackageName();
+    const packageName = this.utils.getPackageName();
     haxeCode = `${packageName ? `package ${packageName};\n\n` : ''}${haxeCode}`;
 
     return haxeCode;
-  }
-
-  getPackageName(filePath = this.getRelativeFilePath()): string {
-    const dirPath = path.dirname(filePath);
-    if (dirPath === '.') return '';
-    return dirPath.replace(/[\\/]/g, '.');
-  }
-
-  getHaxeFilePath(fileName = this.sourceFile.fileName): string {
-    const filePath = this.getRelativeFilePath(fileName);
-    const baseName = path.basename(filePath);
-    let newBaseName = baseName
-      .replace(/\.ts(x)?$/i, '')
-      .replace(/^([^a-zA-Z]+)/, 'X_$1')
-      .replace(/[^a-zA-Z0-9_]/gim, '_');
-    newBaseName =
-      newBaseName === 'import'
-        ? newBaseName
-        : newBaseName[0].toUpperCase() + newBaseName.slice(1);
-    return filePath.slice(0, -baseName.length) + newBaseName + '.hx';
-  }
-
-  getModuleFilePath(fileName = this.sourceFile.fileName): string {
-    const filePath = this.getHaxeFilePath(fileName);
-    const fileExt = path.extname(filePath);
-    return filePath.slice(0, -fileExt.length);
-  }
-
-  getRelativeFilePath(fileName = this.sourceFile.fileName): string {
-    return path.relative(this.compilerOptions.rootDir!, fileName);
-  }
-
-  getImportedPackageName(fileName: string): string {
-    const modulePath = this.getModuleFilePath(fileName);
-    const relativeFileName =
-      path.basename(modulePath) === 'Index'
-        ? modulePath
-        : path.join(modulePath, './Index.hx');
-    return this.getPackageName(relativeFileName);
   }
 
   protected visitNode(

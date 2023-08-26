@@ -152,7 +152,7 @@ export class Converter {
       return;
     }
 
-    await this.writeOutputFile(transformer.getHaxeFilePath(), haxeCode);
+    await this.writeOutputFile(transformer.utils.getHaxeFilePath(), haxeCode);
   };
 
   protected async writeOutputFile(
