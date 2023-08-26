@@ -51,6 +51,12 @@ void (async () => {
       )
       .addOption(
         new BooleanOption(
+          '-cbh, --createBuildHxml [bool]',
+          `create build.hxml file`,
+        ),
+      )
+      .addOption(
+        new BooleanOption(
           '-f, --format [bool]',
           'format final Haxe code using haxe-formatter',
         ).default(true),
@@ -108,6 +114,7 @@ void (async () => {
         copyFormatJson: options.copyFormatJson,
         copyHaxeLibraries: options.copyHaxeLibraries,
         copyLibFiles: options.copyLibFiles,
+        createBuildHxml: options.createBuildHxml,
         format: options.format,
         ignoreFormatError: options.ignoreFormatError,
         ignoreErrors: options.ignoreErrors,

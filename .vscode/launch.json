@@ -30,9 +30,11 @@
       "args": [
         "../evolution/libs/core/tsconfig.lib.json",
         "../evo-haxe",
+        "--clean",
+        "--createBuildHxml",
         "--includeComments",
         "--includeTodos",
-        "--clean"
+        "--ignoreFormatError"
       ]
     },
     {

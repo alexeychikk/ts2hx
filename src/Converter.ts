@@ -21,6 +21,7 @@ export interface ConverterFlags {
   copyFormatJson?: boolean;
   copyHaxeLibraries?: boolean;
   copyLibFiles?: boolean;
+  createBuildHxml?: boolean;
   format?: boolean;
   ignoreFormatError?: boolean;
   ignoreErrors?: boolean;
@@ -29,12 +30,14 @@ export interface ConverterFlags {
 }
 
 export class Converter {
-  startTime: number;
   program: ts.Program;
   typeChecker: ts.TypeChecker;
   compilerOptions: ts.CompilerOptions;
   outputDirPath: string;
   flags: ConverterFlags;
+
+  protected startTime: number;
+  protected rootFolderNames = new Set<string>();
 
   constructor(options: ConverterOptions) {
     this.startTime = Date.now();
@@ -93,6 +96,11 @@ export class Converter {
       await this.copyFromCwdToOutput('./hxformat.json', './hxformat.json');
     }
 
+    if (this.flags.createBuildHxml) {
+      logger.log('Creating build.hxml');
+      await this.createBuildHxml();
+    }
+
     if (this.flags.format) {
       logger.log('Formatting output');
       await this.formatOutput();
@@ -113,12 +121,29 @@ export class Converter {
       );
       await execAsync(`${lixPath} run formatter -s ${this.outputDirPath}`);
     } catch (error) {
-      if (this.flags.ignoreFormatError) return;
-      throw new Error(
+      const errorMessage =
         'Failed to format output.\n' +
-          'This usually happens when syntax of the resulting Haxe code is incorrect.',
-      );
+        'This usually happens when syntax of the resulting Haxe code is incorrect.';
+
+      if (this.flags.ignoreFormatError) {
+        logger.warn(errorMessage);
+        return;
+      }
+      throw new Error(errorMessage);
     }
+  }
+
+  async createBuildHxml(): Promise<void> {
+    const buildHxmlPath = path.join(this.outputDirPath, './build.hxml');
+    await fs.outputFile(
+      buildHxmlPath,
+      `${Array.from(this.rootFolderNames)
+        .map((name) => `--class-path ${name}`)
+        .join('\n')}
+--library tink_core
+--library tink_await
+`,
+    );
   }
 
   protected async copyFromCwdToOutput(
@@ -136,6 +161,13 @@ export class Converter {
     sourceFile: ts.SourceFile,
   ): Promise<void> => {
     if (sourceFile.isDeclarationFile) return;
+
+    const relativePath = path.relative(
+      this.compilerOptions.rootDir!,
+      sourceFile.fileName,
+    );
+    const rootDir = relativePath.split(path.sep)[0];
+    this.rootFolderNames.add(rootDir);
 
     const transformer = new Transformer({
       sourceFile,
