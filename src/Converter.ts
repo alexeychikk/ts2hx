@@ -19,6 +19,7 @@ export interface ConverterOptions {
 export interface ConverterFlags {
   clean?: boolean;
   copyFormatJson?: boolean;
+  copyHaxeLibraries?: boolean;
   copyLibFiles?: boolean;
   format?: boolean;
   ignoreFormatError?: boolean;
@@ -79,6 +80,12 @@ export class Converter {
     if (this.flags.copyLibFiles) {
       logger.log('Copying ts2hx lib files');
       await this.copyFromCwdToOutput('./lib');
+    }
+
+    if (this.flags.copyHaxeLibraries) {
+      logger.log('Copying haxe libraries');
+      await this.copyFromCwdToOutput('./haxe_libraries', './haxe_libraries');
+      await this.copyFromCwdToOutput('./.haxerc', './.haxerc');
     }
 
     if (this.flags.copyFormatJson) {

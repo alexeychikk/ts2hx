@@ -31,7 +31,8 @@
         "../evolution/libs/core/tsconfig.lib.json",
         "../evo-haxe",
         "--includeComments",
-        "--includeTodos"
+        "--includeTodos",
+        "--clean"
       ]
     },
     {

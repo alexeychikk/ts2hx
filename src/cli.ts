@@ -37,6 +37,13 @@ void (async () => {
       )
       .addOption(
         new BooleanOption(
+          '-chl, --copyHaxeLibraries [bool]',
+          `copy haxe_libraries and .haxerc files into output directory` +
+            ` (see lix package manager https://github.com/lix-pm/lix.client)`,
+        ).default(true),
+      )
+      .addOption(
+        new BooleanOption(
           '-clf, --copyLibFiles [bool]',
           `copy ts2hx lib files into output directory` +
             ` (contains helper functions and static extensions which improve compatibility with TS)`,
@@ -99,6 +106,7 @@ void (async () => {
       flags: {
         clean: options.clean,
         copyFormatJson: options.copyFormatJson,
+        copyHaxeLibraries: options.copyHaxeLibraries,
         copyLibFiles: options.copyLibFiles,
         format: options.format,
         ignoreFormatError: options.ignoreFormatError,
