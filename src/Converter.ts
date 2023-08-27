@@ -82,7 +82,8 @@ export class Converter {
 
     if (this.flags.copyLibFiles) {
       logger.log('Copying ts2hx lib files');
-      await this.copyFromCwdToOutput('./lib');
+      await this.copyFromCwdToOutput('./lib/ts2hx', './ts2hx');
+      await this.copyImportHxFiles();
     }
 
     if (this.flags.copyHaxeLibraries) {
@@ -137,12 +138,24 @@ export class Converter {
     const buildHxmlPath = path.join(this.outputDirPath, './build.hxml');
     await fs.outputFile(
       buildHxmlPath,
-      `${Array.from(this.rootFolderNames)
-        .map((name) => `--class-path ${name}`)
-        .join('\n')}
+      `--class-path ts2hx
+${Array.from(this.rootFolderNames)
+  .map((name) => `--class-path ${name}`)
+  .join('\n')}
 --library tink_core
 --library tink_await
 `,
+    );
+  }
+
+  async copyImportHxFiles(): Promise<void> {
+    await Promise.all(
+      Array.from(this.rootFolderNames).map(async (rootName) => {
+        await this.copyFromCwdToOutput(
+          './lib/import.hx',
+          `./${rootName}/import.hx`,
+        );
+      }),
     );
   }
 
