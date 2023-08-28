@@ -17,6 +17,12 @@
         "--includeComments",
         "--includeTodos",
         "--format",
+        "0",
+        "--copyLibFiles",
+        "0",
+        "--copyHaxeLibraries",
+        "0",
+        "--copyFormatJson",
         "0"
       ]
     },

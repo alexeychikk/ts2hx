@@ -21,6 +21,7 @@ export interface ConverterFlags {
   copyFormatJson?: boolean;
   copyHaxeLibraries?: boolean;
   copyLibFiles?: boolean;
+  copyImportHx?: boolean;
   createBuildHxml?: boolean;
   format?: boolean;
   ignoreFormatError?: boolean;
@@ -37,7 +38,6 @@ export class Converter {
   flags: ConverterFlags;
 
   protected startTime: number;
-  protected rootFolderNames = new Set<string>();
 
   constructor(options: ConverterOptions) {
     this.startTime = Date.now();
@@ -83,7 +83,11 @@ export class Converter {
     if (this.flags.copyLibFiles) {
       logger.log('Copying ts2hx lib files');
       await this.copyFromCwdToOutput('./lib/ts2hx', './ts2hx');
-      await this.copyImportHxFiles();
+    }
+
+    if (this.flags.copyImportHx) {
+      logger.log('Copying import.hx file into source roots');
+      await this.copyFromCwdToOutput('./lib/import.hx', './src/import.hx');
     }
 
     if (this.flags.copyHaxeLibraries) {
@@ -139,23 +143,10 @@ export class Converter {
     await fs.outputFile(
       buildHxmlPath,
       `--class-path ts2hx
-${Array.from(this.rootFolderNames)
-  .map((name) => `--class-path ${name}`)
-  .join('\n')}
+--class-path src
 --library tink_core
 --library tink_await
 `,
-    );
-  }
-
-  async copyImportHxFiles(): Promise<void> {
-    await Promise.all(
-      Array.from(this.rootFolderNames).map(async (rootName) => {
-        await this.copyFromCwdToOutput(
-          './lib/import.hx',
-          `./${rootName}/import.hx`,
-        );
-      }),
     );
   }
 
@@ -174,13 +165,6 @@ ${Array.from(this.rootFolderNames)
     sourceFile: ts.SourceFile,
   ): Promise<void> => {
     if (sourceFile.isDeclarationFile) return;
-
-    const relativePath = path.relative(
-      this.compilerOptions.rootDir!,
-      sourceFile.fileName,
-    );
-    const rootDir = relativePath.split(path.sep)[0];
-    this.rootFolderNames.add(rootDir);
 
     const transformer = new Transformer({
       sourceFile,
@@ -204,7 +188,7 @@ ${Array.from(this.rootFolderNames)
     fileName: string,
     code: string,
   ): Promise<void> {
-    const haxeFileName = path.join(this.outputDirPath, fileName);
+    const haxeFileName = path.join(this.outputDirPath, './src', fileName);
     await fs.outputFile(haxeFileName, code);
   }
 }

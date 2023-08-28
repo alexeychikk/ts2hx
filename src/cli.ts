@@ -51,6 +51,12 @@ void (async () => {
       )
       .addOption(
         new BooleanOption(
+          '-cih, --copyImportHx [bool]',
+          `copy import.hx file into root folders of output`,
+        ).default(true),
+      )
+      .addOption(
+        new BooleanOption(
           '-cbh, --createBuildHxml [bool]',
           `create build.hxml file`,
         ),
@@ -114,6 +120,7 @@ void (async () => {
         copyFormatJson: options.copyFormatJson,
         copyHaxeLibraries: options.copyHaxeLibraries,
         copyLibFiles: options.copyLibFiles,
+        copyImportHx: options.copyImportHx,
         createBuildHxml: options.createBuildHxml,
         format: options.format,
         ignoreFormatError: options.ignoreFormatError,
