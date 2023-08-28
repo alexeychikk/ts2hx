@@ -35,6 +35,7 @@ export const TRANSFORMERS: TransformerFn[] = [
   lang.transformMethodSignature,
   lang.transformConstructorSignature,
   lang.transformPropertyAssignment,
+  lang.transformShorthandPropertyAssignment,
   lang.transformElementAccess,
   lang.transformElementWriteToObject,
   lang.transformGetSet,

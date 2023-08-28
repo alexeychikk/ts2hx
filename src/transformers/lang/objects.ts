@@ -30,6 +30,17 @@ export const transformPropertyAssignment: TransformerFn = function (
   }
 };
 
+export const transformShorthandPropertyAssignment: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  if (!ts.isShorthandPropertyAssignment(node)) return;
+  if (!ts.isObjectLiteralExpression(node.parent)) return;
+  // { myVar }
+  return `${node.name.text}: ${this.visitNode(node.name, context)}`;
+};
+
 export const transformElementAccess: TransformerFn = function (
   this: Transformer,
   node,
