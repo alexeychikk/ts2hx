@@ -7,17 +7,8 @@ export function escapeHaxeModuleName(
 ): string {
   return fileName
     .replace(/(\.d)?\.(j|t)s(x)?$/i, '')
-    .replace(/^([^a-zA-Z\\/.]+)/, 'X_$1')
-    .replace(/[^a-zA-Z0-9_\\/.]/gim, '_');
-}
-
-export function getPackageName(
-  this: Transformer,
-  filePath = this.utils.getRelativeFilePath(),
-): string {
-  const dirPath = path.dirname(filePath);
-  if (dirPath === '.') return '';
-  return dirPath.replace(/[\\/]/g, '.');
+    .replace(/^([^a-zA-Z\\/]+)/, 'X_$1')
+    .replace(/[^a-zA-Z0-9_\\/]/gim, '_');
 }
 
 export function getHaxeFilePath(
@@ -31,18 +22,14 @@ export function getHaxeFilePath(
     newBaseName === 'import'
       ? newBaseName
       : newBaseName[0].toUpperCase() + newBaseName.slice(1);
-  return this.utils.escapeHaxeModuleName(
-    filePath.slice(0, -baseName.length) + newBaseName + '.hx',
-  );
-}
-
-export function getModuleFilePath(
-  this: Transformer,
-  fileName = this.sourceFile.fileName,
-): string {
-  const filePath = this.utils.getHaxeFilePath(fileName);
-  const fileExt = path.extname(filePath);
-  return filePath.slice(0, -fileExt.length);
+  const dirPath = this.utils
+    .escapeHaxeModuleName(filePath.slice(0, -baseName.length))
+    .split(path.sep)
+    .map((folderName) =>
+      folderName ? folderName[0].toLowerCase() + folderName.slice(1) : '',
+    )
+    .join(path.sep);
+  return dirPath + newBaseName + '.hx';
 }
 
 export function getRelativeFilePath(
@@ -52,14 +39,20 @@ export function getRelativeFilePath(
   return path.relative(this.compilerOptions.rootDir!, fileName);
 }
 
+export function getPackageName(
+  this: Transformer,
+  fileName: string = this.sourceFile.fileName,
+): string {
+  const haxeFilePath = this.utils.getHaxeFilePath(fileName);
+  const dirname = path.dirname(haxeFilePath);
+  if (dirname === '.') return '';
+  return dirname.replace(/[\\/]/gim, '.');
+}
+
 export function getImportedPackageName(
   this: Transformer,
-  fileName: string,
+  fileName: string = this.sourceFile.fileName,
 ): string {
-  const modulePath = this.utils.getModuleFilePath(fileName);
-  const relativeFileName =
-    path.basename(modulePath) === 'Index'
-      ? modulePath
-      : path.join(modulePath, './Index.hx');
-  return this.utils.getPackageName(relativeFileName);
+  const haxeFilePath = this.utils.getHaxeFilePath(fileName);
+  return haxeFilePath.replace(/\.hx$/gim, '').replace(/[\\/]/gim, '.');
 }

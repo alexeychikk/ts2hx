@@ -53,24 +53,36 @@ import type { Class } from 'utility-types';
       .run(),
   ).toMatchInlineSnapshot(`
     "
-    import node_modules.utility_types.Class;
+    import node_modules.utility_types.Index.Class;
       "
   `);
 });
 
 test('transforms long and complex import name', () => {
   expect(
-    new Ts2hx(`
-import { Class } from './utility-types/hello-world/foo-bar';
-  `)
+    new Ts2hx(
+      `
+import { Class } from './utility-types/Hello-world.com/foo-bar.dto';
+import { type HelloWorld } from '../../hello/world';
+  `,
+      './foo/bar/baz.ts',
+    )
       .addSourceFile(
-        './utility-types/hello-world/foo-bar.d.ts',
+        './foo/bar/utility-types/Hello-world.com/foo-bar.dto.ts',
         `export type Class = { foo: string }; export {};`,
       )
+      .addSourceFile(
+        './hello/world/HelloWorld.ts',
+        `export type HelloWorld = { hello: "world" }; export {};`,
+      )
+      .addSourceFile('./hello/world/index.ts', `export * from './HelloWorld';`)
       .run(),
   ).toMatchInlineSnapshot(`
-    "
-    import utility_types.hello_world.Foo_bar.Class;
+    "package foo.bar;
+
+
+    import foo.bar.utility_types.hello_world_com.Foo_bar_dto.Class;
+    import hello.world.HelloWorld.HelloWorld;
       "
   `);
 });

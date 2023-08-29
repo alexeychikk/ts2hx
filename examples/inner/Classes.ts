@@ -2,7 +2,7 @@ import {
   MyInterfaceToImplement,
   MyInterfaceToImplementSecond,
 } from './types-and-interfaces.dto';
-import { SuperParent } from './nested';
+import { SuperParent } from './Nested';
 
 export class MyEmptyClass {}
 

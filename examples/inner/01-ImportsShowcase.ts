@@ -1,8 +1,8 @@
-import { A, type B } from './nested';
-import type { D as Foo } from './nested';
-import CRenamed from './nested/VariousExports';
-import * as AllImports from './nested';
-import './nested';
+import { A, type B } from './Nested';
+import type { D as Foo } from './Nested';
+import CRenamed from './Nested/VariousExports';
+import * as AllImports from './Nested';
+import './Nested';
 
 export class ImportsShowcase {
   static main() {
