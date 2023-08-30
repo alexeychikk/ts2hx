@@ -62,13 +62,13 @@ test('transforms long and complex import name', () => {
   expect(
     new Ts2hx(
       `
-import { Class } from './utility-types/Hello-world.com/foo-bar.dto';
+import { Class } from './utility-types/01_Hello-world.com/02_foo-bar.dto';
 import { type HelloWorld } from '../../hello/world';
   `,
       './foo/bar/baz.ts',
     )
       .addSourceFile(
-        './foo/bar/utility-types/Hello-world.com/foo-bar.dto.ts',
+        './foo/bar/utility-types/01_Hello-world.com/02_foo-bar.dto.ts',
         `export type Class = { foo: string }; export {};`,
       )
       .addSourceFile(
@@ -81,7 +81,7 @@ import { type HelloWorld } from '../../hello/world';
     "package foo.bar;
 
 
-    import foo.bar.utility_types.hello_world_com.Foo_bar_dto.Class;
+    import foo.bar.utility_types.x_01_Hello_world_com.X_02_foo_bar_dto.Class;
     import hello.world.HelloWorld.HelloWorld;
       "
   `);

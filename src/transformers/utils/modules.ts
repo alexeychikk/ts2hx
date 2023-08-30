@@ -22,12 +22,14 @@ export function getHaxeFilePath(
     newBaseName === 'import'
       ? newBaseName
       : newBaseName[0].toUpperCase() + newBaseName.slice(1);
-  const dirPath = this.utils
-    .escapeHaxeModuleName(filePath.slice(0, -baseName.length))
+  const dirPath = filePath
+    .slice(0, -baseName.length)
     .split(path.sep)
-    .map((folderName) =>
-      folderName ? folderName[0].toLowerCase() + folderName.slice(1) : '',
-    )
+    .map((folderName) => {
+      if (!folderName) return '';
+      const escaped = this.utils.escapeHaxeModuleName(folderName);
+      return escaped[0].toLowerCase() + escaped.slice(1);
+    })
     .join(path.sep);
   return dirPath + newBaseName + '.hx';
 }
