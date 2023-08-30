@@ -30,6 +30,7 @@ export const TRANSFORMERS: TransformerFn[] = [
   lang.transformSwitchCase,
   lang.transformNotOperator,
   lang.transformConditions,
+  lang.transformObjectLiteralExpression,
   lang.transformPropertySignature,
   lang.transformIndexSignature,
   lang.transformMethodSignature,

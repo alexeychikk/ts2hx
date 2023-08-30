@@ -2,6 +2,60 @@ import ts, { SyntaxKind } from 'typescript';
 import { logger } from '../../Logger';
 import { type Transformer, type TransformerFn } from '../Transformer';
 
+export const transformObjectLiteralExpression: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  if (!ts.isObjectLiteralExpression(node)) return;
+  if (!node.properties.some((prop) => ts.isSpreadAssignment(prop))) return;
+
+  let result = ``;
+  let isPrevSpread = false;
+  let isParenOpened = false;
+
+  const closeParen = (): void => {
+    if (!isParenOpened) return;
+    result += `)`;
+    isParenOpened = false;
+  };
+
+  node.properties.forEach((prop, index) => {
+    if (index === 0) {
+      result += ts.isSpreadAssignment(prop)
+        ? this.visitNode(prop.expression, context)
+        : `{${this.visitNode(prop, context)}`;
+      isPrevSpread = ts.isSpreadAssignment(prop);
+      return;
+    }
+
+    if (ts.isSpreadAssignment(prop)) {
+      if (!isPrevSpread) result += `}`;
+      closeParen();
+      result += `.combine(${this.visitNode(prop.expression, context)})`;
+      isPrevSpread = true;
+      return;
+    }
+
+    if (isPrevSpread) {
+      result += `.combine({`;
+      isParenOpened = true;
+    } else {
+      result += `,`;
+    }
+    result += this.visitNode(prop, context);
+
+    if (index === node.properties.length - 1) {
+      result += `}`;
+      closeParen();
+    }
+
+    isPrevSpread = false;
+  });
+
+  return result;
+};
+
 export const transformPropertyAssignment: TransformerFn = function (
   this: Transformer,
   node,
