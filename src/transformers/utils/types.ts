@@ -76,5 +76,13 @@ export function getNodeTypeString(
     undefined,
     undefined,
   );
-  return this.visitNode(typeNode, context);
+  if (!typeNode) return 'Void';
+  const result = this.visitNode(typeNode, context);
+  return (
+    result ||
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+    type.aliasSymbol?.name ||
+    this.visitNode(type.symbol.declarations?.[0], context) ||
+    'Void'
+  );
 }

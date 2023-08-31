@@ -119,14 +119,14 @@ export class Transformer {
   }
 
   protected traverseChildren(node: ts.Node, context: VisitNodeContext): string {
+    if (node.pos === -1) return '';
+
     const nodeFullCode = node
       .getChildren()
       .map((node) => this.visitNode(node, context))
       .join('');
 
-    return (
-      nodeFullCode || (node.pos === -1 ? nodeFullCode : node.getFullText())
-    );
+    return nodeFullCode || node.getFullText();
   }
 
   protected replaceNodeFullText(node: ts.Node): void {

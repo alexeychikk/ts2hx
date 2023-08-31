@@ -236,6 +236,8 @@ export const transformRenameSymbol: TransformerFn = function (
   node,
   context: VisitNodeContext,
 ) {
+  if (node.pos === -1) return;
+
   const key = Buffer.from(node.getText()).toString('base64');
   const symbolsMap = this.symbolsToRename[key];
   if (!symbolsMap) return;

@@ -205,6 +205,17 @@ export const transformEnumDeclaration: TransformerFn = function (
   return `enum abstract ${node.name.text}(${underlyingType}) from ${underlyingType} to ${underlyingType} {\n${members}\n}`;
 };
 
+export const transformIndexedAccessType: TransformerFn = function (
+  this: Transformer,
+  node,
+  context,
+) {
+  // type FooBar = Foo['bar'];
+  if (!ts.isIndexedAccessTypeNode(node)) return;
+
+  return this.utils.getNodeTypeString(node, context);
+};
+
 export const transformAsExpression: TransformerFn = function (
   this: Transformer,
   node,

@@ -18,6 +18,7 @@ export const TRANSFORMERS: TransformerFn[] = [
   lang.transformBooleanOperatorInVariableDeclaration,
   lang.transformClassDeclaration,
   lang.transformEnumDeclaration,
+  lang.transformIndexedAccessType,
   lang.transformHeritageClause,
   lang.transformConstructor,
   lang.transformClassPropertyDeclaration,
