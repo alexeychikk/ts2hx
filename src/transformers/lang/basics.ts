@@ -42,9 +42,7 @@ export const transformKeywords: TransformerFn = function (
       return '@await';
     case SyntaxKind.ExportAssignment:
     case SyntaxKind.ExportDeclaration:
-      return ' ';
     case SyntaxKind.ExportKeyword:
-      return ' ';
     case SyntaxKind.ReadonlyKeyword:
       return ' ';
     case SyntaxKind.ProtectedKeyword:

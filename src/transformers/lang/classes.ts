@@ -11,7 +11,7 @@ export const transformClassDeclaration: TransformerFn = function (
   node,
   context,
 ) {
-  if (!ts.isClassDeclaration(node)) return;
+  if (!ts.isClassLike(node)) return;
 
   const modifiers = this.utils.joinModifiers(node.modifiers, context);
   const className =
@@ -32,7 +32,7 @@ export const transformClassDeclaration: TransformerFn = function (
 
 const getDefaultConstructor = function (
   this: Transformer,
-  node: ts.ClassDeclaration,
+  node: ts.ClassLikeDeclaration,
   context: VisitNodeContext,
 ): string {
   if (this.utils.isAbstract(node)) return '';
@@ -82,7 +82,7 @@ const findParentConstructor = function (
 
   const [declaration] = symbol.declarations ?? [];
   const baseClass = this.utils.getExtendedNode(
-    declaration as ts.ClassDeclaration,
+    declaration as ts.ClassLikeDeclaration,
   );
   if (!baseClass) return;
 
@@ -111,9 +111,7 @@ export const transformConstructor: TransformerFn = function (
   context,
 ) {
   // constructor() {}
-  if (
-    !(ts.isConstructorDeclaration(node) && ts.isClassDeclaration(node.parent))
-  )
+  if (!(ts.isConstructorDeclaration(node) && ts.isClassLike(node.parent)))
     return;
 
   const modifiers = this.utils.joinMemberModifiers(node, context);
@@ -175,8 +173,7 @@ export const transformClassPropertyDeclaration: TransformerFn = function (
   context,
 ) {
   // foo?: string = "bar";
-  if (!(ts.isPropertyDeclaration(node) && ts.isClassDeclaration(node.parent)))
-    return;
+  if (!(ts.isPropertyDeclaration(node) && ts.isClassLike(node.parent))) return;
 
   if (ts.isComputedPropertyName(node.name)) {
     return this.utils.commentOutNode(
@@ -209,8 +206,7 @@ export const transformClassMethodDeclaration: TransformerFn = function (
   context,
 ) {
   // public static main(): void {}
-  if (!(ts.isMethodDeclaration(node) && ts.isClassDeclaration(node.parent)))
-    return;
+  if (!(ts.isMethodDeclaration(node) && ts.isClassLike(node.parent))) return;
 
   const modifiers = this.utils.joinMemberModifiers(node, context);
   const typeParams = this.utils.joinTypeParameters(
@@ -230,7 +226,7 @@ export const transformClassGetter: TransformerFn = function (
   context,
 ) {
   // get prop(): string {}
-  if (!(ts.isGetAccessor(node) && ts.isClassDeclaration(node.parent))) return;
+  if (!(ts.isGetAccessor(node) && ts.isClassLike(node.parent))) return;
 
   const modifiers = this.utils.joinMemberModifiers(node, context);
   const type = node.type ? `: ${this.visitNode(node.type, context)}` : '';
@@ -246,7 +242,7 @@ export const transformClassSetter: TransformerFn = function (
   context,
 ) {
   // set prop(value: string) {}
-  if (!(ts.isSetAccessor(node) && ts.isClassDeclaration(node.parent))) return;
+  if (!(ts.isSetAccessor(node) && ts.isClassLike(node.parent))) return;
 
   const modifiers = this.utils.joinMemberModifiers(node, context);
   const params = this.utils.joinNodes(node.parameters, context);
@@ -283,7 +279,7 @@ const defineHaxeGetSetProperty = function (
   node: ts.GetAccessorDeclaration | ts.SetAccessorDeclaration,
   context: VisitNodeContext,
 ): string {
-  const classNode = node.parent as ts.ClassDeclaration;
+  const classNode = node.parent as ts.ClassLikeDeclaration;
   const indexInClass = classNode.members.findIndex((el) => el === node);
   const indexOfPair = classNode.members.findIndex(
     (el) => el !== node && el.name?.getText() === node.name.getText(),

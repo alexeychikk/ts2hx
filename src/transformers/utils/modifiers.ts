@@ -43,6 +43,7 @@ export function getDeclarationKeyword(
 const MODIFIERS_PRIORITY: Partial<Record<SyntaxKind, number>> = {
   [SyntaxKind.AsyncKeyword]: 0,
 };
+const MODIFIERS_TO_EXCLUDE = new Set([SyntaxKind.DefaultKeyword]);
 
 export function joinModifiers(
   this: Transformer,
@@ -51,7 +52,10 @@ export function joinModifiers(
 ): string {
   if (!modifiers) return '';
 
-  return sortBy(modifiers, (m) => MODIFIERS_PRIORITY[m.kind] ?? 999)
+  return sortBy(
+    modifiers.filter((m) => !MODIFIERS_TO_EXCLUDE.has(m.kind)),
+    (m) => MODIFIERS_PRIORITY[m.kind] ?? 999,
+  )
     .map((m) => this.visitNode(m, context) + ' ')
     .join('');
 }
