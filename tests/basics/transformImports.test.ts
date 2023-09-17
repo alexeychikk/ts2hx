@@ -1,7 +1,7 @@
 import { Ts2hx } from '@tests/framework';
 
-test('transforms imports', () => {
-  expect(
+test('transforms imports', async () => {
+  await expect(
     new Ts2hx(`
 import './side-effect';
 import defaultImport from './defaultExport';
@@ -16,7 +16,7 @@ import * as allImports from './namedExports';
          export const bar = { bar: "bar" };`,
       )
       .run(),
-  ).toMatchInlineSnapshot(`
+  ).resolves.toMatchInlineSnapshot(`
     "
     /* import './side-effect'; */
     import DefaultExport.default as defaultImport;
@@ -27,22 +27,22 @@ import * as allImports from './namedExports';
   `);
 });
 
-test('transforms module names in local imports', () => {
-  expect(
+test('transforms module names in local imports', async () => {
+  await expect(
     new Ts2hx(`
 import { Class } from './utility-types';
   `)
       .addSourceFile('./utility-types.ts', `export type Class = {};`)
       .run(),
-  ).toMatchInlineSnapshot(`
+  ).resolves.toMatchInlineSnapshot(`
     "
     import Utility_types.Class;
       "
   `);
 });
 
-test('transforms module names in node_module imports', () => {
-  expect(
+test('transforms module names in node_module imports', async () => {
+  await expect(
     new Ts2hx(`
 import type { Class } from 'utility-types';
   `)
@@ -51,15 +51,15 @@ import type { Class } from 'utility-types';
         `export type Class = { foo: string };`,
       )
       .run(),
-  ).toMatchInlineSnapshot(`
+  ).resolves.toMatchInlineSnapshot(`
     "
     import node_modules.utility_types.Index.Class;
       "
   `);
 });
 
-test('transforms long and complex import name', () => {
-  expect(
+test('transforms long and complex import name', async () => {
+  await expect(
     new Ts2hx(
       `
 import { Class } from './utility-types/01_Hello-world.com/02_foo-bar.dto';
@@ -77,7 +77,7 @@ import { type HelloWorld } from '../../hello/world';
       )
       .addSourceFile('./hello/world/index.ts', `export * from './HelloWorld';`)
       .run(),
-  ).toMatchInlineSnapshot(`
+  ).resolves.toMatchInlineSnapshot(`
     "package foo.bar;
 
 

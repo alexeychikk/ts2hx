@@ -14,12 +14,12 @@ export interface VisitNodeContext {
 }
 
 export type TransformerFn = (
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   context: VisitNodeContext,
 ) => string | undefined;
 
-export class Transformer {
+export class Transpiler {
   ignoreErrors?: boolean;
   includeComments?: boolean;
   includeTodos?: boolean;
@@ -27,6 +27,7 @@ export class Transformer {
   compilerOptions: ts.CompilerOptions;
   sourceFile: ts.SourceFile;
   transformers: TransformerFn[];
+  haxeCode?: string;
 
   protected nodesToIgnore = new Set<ts.Node>();
   protected nodesToReplaceFullText = new Set<ts.Node>();
@@ -58,8 +59,11 @@ export class Transformer {
     this.includeTodos = options.includeTodos;
   }
 
-  run(): string {
-    logger.log('Transforming', this.sourceFile.fileName);
+  runTsTransformers(): void {
+    // TODO
+  }
+
+  emit(): string {
     let haxeCode = this.visitNode(this.sourceFile, {});
 
     const imports = [
@@ -74,6 +78,7 @@ export class Transformer {
     const packageName = this.utils.getPackageName();
     haxeCode = `${packageName ? `package ${packageName};\n\n` : ''}${haxeCode}`;
 
+    this.haxeCode = haxeCode;
     return haxeCode;
   }
 

@@ -1,9 +1,9 @@
 import ts, { SyntaxKind } from 'typescript';
 import { logger } from '../../Logger';
-import { type Transformer, type TransformerFn } from '../Transformer';
+import { type Transpiler, type TransformerFn } from '../Transpiler';
 
 export const transformObjectLiteralExpression: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -57,7 +57,7 @@ export const transformObjectLiteralExpression: TransformerFn = function (
 };
 
 export const transformPropertyAssignment: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -85,7 +85,7 @@ export const transformPropertyAssignment: TransformerFn = function (
 };
 
 export const transformShorthandPropertyAssignment: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -96,7 +96,7 @@ export const transformShorthandPropertyAssignment: TransformerFn = function (
 };
 
 export const transformElementAccess: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -120,7 +120,7 @@ export const transformElementAccess: TransformerFn = function (
 };
 
 export const transformElementWriteToObject: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -145,7 +145,7 @@ export const transformElementWriteToObject: TransformerFn = function (
 };
 
 export const transformGetSet: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
 ) {
   // { get prop() {}, set prop(value) {} }
@@ -160,7 +160,7 @@ export const transformGetSet: TransformerFn = function (
 };
 
 export const transformMethodOnObject: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {

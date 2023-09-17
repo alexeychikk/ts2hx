@@ -1,11 +1,11 @@
 import { ts2hx } from '@tests/framework';
 
-test('transforms instanceof expression', () => {
-  expect(ts2hx`
+test('transforms instanceof expression', async () => {
+  await expect(ts2hx`
 class Foo {}
 let myFoo = new Foo();
 let myInstanceof = myFoo instanceof Foo;
-`).toMatchInlineSnapshot(`
+`).resolves.toMatchInlineSnapshot(`
     "
     class Foo  {
       public function new() {}

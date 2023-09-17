@@ -1,45 +1,50 @@
 import ts from 'typescript';
 import path from 'path';
-import { TRANSFORMERS, Transformer } from '@src/transformers';
+import { Converter } from '@src/Converter';
 
-export function ts2hx(strings: TemplateStringsArray | string): string {
+export async function ts2hx(
+  strings: TemplateStringsArray | string,
+): Promise<string> {
   const code = typeof strings === 'string' ? strings : strings.join('');
-  return new Ts2hx(code).run();
+  return await new Ts2hx(code).run();
 }
 
 export class Ts2hx {
-  program?: ts.Program;
-  transformer?: Transformer;
-  sourceFiles: Array<{ fileName: string; code: string }> = [];
+  converter?: Converter;
+  sourceFiles: FakeSourceFile[] = [];
 
   constructor(code: string, fileName = './main.ts') {
     this.addSourceFile(fileName, code);
   }
 
   addSourceFile(fileName: string, code: string): Ts2hx {
-    this.sourceFiles.push({ fileName, code });
+    this.sourceFiles.push(new FakeSourceFile(fileName, code));
     return this;
   }
 
-  run(): string {
+  async run(): Promise<string> {
     const program = ts.createProgram(
       this.sourceFiles.map((s) => path.join(process.cwd(), s.fileName)),
       { rootDir: '.' },
       this.createCompilerHost(),
     );
-    this.program = program;
 
-    const typeChecker = program.getTypeChecker();
-    const transformer = new Transformer({
-      compilerOptions: program.getCompilerOptions(),
-      sourceFile: program.getSourceFile(this.sourceFiles[0].fileName)!,
-      transformers: TRANSFORMERS,
-      typeChecker,
-      includeComments: true,
+    this.converter = new Converter({
+      program,
+      flags: { includeComments: true },
     });
-    this.transformer = transformer;
 
-    return this.transformer.run();
+    await this.converter.run();
+
+    const transpiler = Array.from(
+      this.converter.sourceFileTranspilers.values(),
+    ).find(
+      (transpiler) =>
+        path.normalize(transpiler.sourceFile.fileName) ===
+        this.sourceFiles[0].filePath,
+    )!;
+
+    return transpiler.haxeCode!;
   }
 
   protected createCompilerHost(): ts.CompilerHost {
@@ -52,16 +57,12 @@ export class Ts2hx {
 
     host.readFile = (fileName: string): string | undefined => {
       const filePath = path.normalize(fileName);
-      const fakeFile = this.sourceFiles.find(
-        (sf) => path.join(process.cwd(), sf.fileName) === filePath,
-      );
+      const fakeFile = this.sourceFiles.find((sf) => sf.filePath === filePath);
       return fakeFile ? fakeFile.code : originalReadFile(fileName);
     };
     host.fileExists = (fileName: string): boolean => {
       const filePath = path.normalize(fileName);
-      const fakeFile = this.sourceFiles.find(
-        (sf) => path.join(process.cwd(), sf.fileName) === filePath,
-      );
+      const fakeFile = this.sourceFiles.find((sf) => sf.filePath === filePath);
       return fakeFile ? true : originalFileExists(fileName);
     };
     host.writeFile = () => undefined;
@@ -80,9 +81,7 @@ export class Ts2hx {
     host.directoryExists = (directoryName) => {
       const directoryPath = path.normalize(directoryName);
       const fakeFile = this.sourceFiles.find((sf) =>
-        path
-          .join(process.cwd(), path.dirname(sf.fileName))
-          .includes(directoryPath),
+        sf.dirPath.includes(directoryPath),
       );
       return fakeFile
         ? true
@@ -90,5 +89,15 @@ export class Ts2hx {
     };
 
     return host;
+  }
+}
+
+export class FakeSourceFile {
+  readonly filePath: string;
+  readonly dirPath: string;
+
+  constructor(readonly fileName: string, readonly code: string) {
+    this.filePath = path.join(process.cwd(), this.fileName);
+    this.dirPath = path.join(process.cwd(), path.dirname(this.fileName));
   }
 }

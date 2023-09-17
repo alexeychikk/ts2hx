@@ -1,7 +1,7 @@
 import { ts2hx } from '@tests/framework';
 
-test('transforms spread assignment in object literal expression', () => {
-  expect(ts2hx`
+test('transforms spread assignment in object literal expression', async () => {
+  await expect(ts2hx`
 let fooBar = { foo: "bar" };
 let barFoo = { bar: "x", foo: "y" };
 let single = { ...fooBar };
@@ -12,7 +12,7 @@ let last = { foo: 'bar', bar: "baz", ...fooBar, ...barFoo };
 let changing = { ...fooBar, foo: 'bar', ...barFoo, bar: "baz", ...barFoo };
 let inverted = { foo: 'bar', ...fooBar, bar: "baz", ...barFoo, tuz: "qax" };
 let pairs = { foo: 'bar', bar: "baz", ...fooBar, ...barFoo, tuz: "qax", sha: "hoo" };
-  `).toMatchInlineSnapshot(`
+  `).resolves.toMatchInlineSnapshot(`
     "
     var  fooBar =  { foo: "bar" };
     var  barFoo =  { bar: "x", foo: "y" };
@@ -28,10 +28,10 @@ let pairs = { foo: 'bar', bar: "baz", ...fooBar, ...barFoo, tuz: "qax", sha: "ho
   `);
 });
 
-test('transforms spread assignment of object literal expression', () => {
-  expect(ts2hx`
+test('transforms spread assignment of object literal expression', async () => {
+  await expect(ts2hx`
 let fooBar = { foo: 'bar', ...({ hello: "world" }),  bar: "baz" };
-  `).toMatchInlineSnapshot(`
+  `).resolves.toMatchInlineSnapshot(`
     "
     var  fooBar =  { foo: 'bar'}.combine(({ hello: "world" })).combine({  bar: "baz"});
       "

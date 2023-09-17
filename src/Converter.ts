@@ -5,14 +5,25 @@ import os from 'os';
 import { promisify } from 'util';
 import { exec } from 'child_process';
 
-import { Transformer, TRANSFORMERS } from './transformers';
+import { Transpiler, TRANSFORMERS } from './transformers';
 import { logger } from './Logger';
+import { mapPromises } from './utils';
 
 const execAsync = promisify(exec);
 
-export interface ConverterOptions {
+export type ConverterOptions =
+  | ConverterOptionsTsConfig
+  | ConverterOptionsProgram;
+
+export interface ConverterOptionsTsConfig {
   tsconfigPath: string;
-  outputDirPath: string;
+  outputDirPath?: string;
+  flags?: ConverterFlags;
+}
+
+export interface ConverterOptionsProgram {
+  program: ts.Program;
+  outputDirPath?: string;
   flags?: ConverterFlags;
 }
 
@@ -34,32 +45,16 @@ export class Converter {
   program: ts.Program;
   typeChecker: ts.TypeChecker;
   compilerOptions: ts.CompilerOptions;
-  outputDirPath: string;
+  outputDirPath?: string;
   flags: ConverterFlags;
+  sourceFileTranspilers = new Map<ts.SourceFile, Transpiler>();
 
   protected startTime: number;
 
   constructor(options: ConverterOptions) {
     this.startTime = Date.now();
-    const configFile = ts.readConfigFile(options.tsconfigPath, ts.sys.readFile);
-
-    if (configFile.error != null) {
-      logger.error(configFile.error.messageText);
-      process.exit(1);
-    }
-
-    const config = ts.parseJsonConfigFileContent(
-      configFile.config,
-      ts.sys,
-      path.dirname(options.tsconfigPath),
-    );
-
-    const program = ts.createProgram({
-      rootNames: config.fileNames,
-      options: config.options,
-    });
-
-    this.program = program;
+    this.program =
+      'program' in options ? options.program : this.createProgram(options);
     this.outputDirPath = options.outputDirPath;
     this.typeChecker = this.program.getTypeChecker();
     this.compilerOptions = this.program.getCompilerOptions();
@@ -71,42 +66,44 @@ export class Converter {
   }
 
   async run(): Promise<void> {
-    if (this.flags.clean) {
+    if (this.flags.clean && this.outputDirPath) {
       logger.log('Cleaning output dir');
       await fs.emptyDir(this.outputDirPath);
     }
 
-    await Promise.all(
-      this.program.getSourceFiles().map(this.convertSourceFile),
-    );
+    logger.log('Running TS transformers');
+    await this.runTsTransformers();
 
-    if (this.flags.copyLibFiles) {
+    logger.log('Emitting Haxe code');
+    await this.emitHaxeCode();
+
+    if (this.flags.copyLibFiles && this.outputDirPath) {
       logger.log('Copying ts2hx lib files');
       await this.copyFromCwdToOutput('./lib/ts2hx', './ts2hx');
     }
 
-    if (this.flags.copyImportHx) {
+    if (this.flags.copyImportHx && this.outputDirPath) {
       logger.log('Copying import.hx file into source roots');
       await this.copyFromCwdToOutput('./lib/import.hx', './src/import.hx');
     }
 
-    if (this.flags.copyHaxeLibraries) {
+    if (this.flags.copyHaxeLibraries && this.outputDirPath) {
       logger.log('Copying haxe libraries');
       await this.copyFromCwdToOutput('./haxe_libraries', './haxe_libraries');
       await this.copyFromCwdToOutput('./.haxerc', './.haxerc');
     }
 
-    if (this.flags.copyFormatJson) {
+    if (this.flags.copyFormatJson && this.outputDirPath) {
       logger.log('Copying hxformat.json');
       await this.copyFromCwdToOutput('./hxformat.json', './hxformat.json');
     }
 
-    if (this.flags.createBuildHxml) {
+    if (this.flags.createBuildHxml && this.outputDirPath) {
       logger.log('Creating build.hxml');
       await this.createBuildHxml();
     }
 
-    if (this.flags.format) {
+    if (this.flags.format && this.outputDirPath) {
       logger.log('Formatting output');
       await this.formatOutput();
     }
@@ -120,6 +117,7 @@ export class Converter {
 
   async formatOutput(): Promise<void> {
     try {
+      if (!this.outputDirPath) return;
       const lixPath = path.resolve(
         process.cwd(),
         './node_modules/.bin/lix' + (os.platform() === 'win32' ? '.cmd' : ''),
@@ -139,6 +137,7 @@ export class Converter {
   }
 
   async createBuildHxml(): Promise<void> {
+    if (!this.outputDirPath) return;
     const buildHxmlPath = path.join(this.outputDirPath, './build.hxml');
     await fs.outputFile(
       buildHxmlPath,
@@ -150,10 +149,34 @@ export class Converter {
     );
   }
 
+  protected createProgram(options: ConverterOptionsTsConfig): ts.Program {
+    const configFile = ts.readConfigFile(options.tsconfigPath, ts.sys.readFile);
+
+    if (configFile.error != null) {
+      throw new Error(
+        typeof configFile.error.messageText === 'string'
+          ? configFile.error.messageText
+          : JSON.stringify(configFile.error.messageText, null, 2),
+      );
+    }
+
+    const config = ts.parseJsonConfigFileContent(
+      configFile.config,
+      ts.sys,
+      path.dirname(options.tsconfigPath),
+    );
+
+    return ts.createProgram({
+      rootNames: config.fileNames,
+      options: config.options,
+    });
+  }
+
   protected async copyFromCwdToOutput(
     relativePath: string,
     outputPath?: string,
   ): Promise<void> {
+    if (!this.outputDirPath) return;
     const absolutePath = path.resolve(process.cwd(), relativePath);
     const finalPath = outputPath
       ? path.join(this.outputDirPath, outputPath)
@@ -161,33 +184,47 @@ export class Converter {
     await fs.copy(absolutePath, finalPath);
   }
 
-  protected convertSourceFile = async (
-    sourceFile: ts.SourceFile,
-  ): Promise<void> => {
-    if (sourceFile.isDeclarationFile) return;
+  protected runTsTransformers = async (): Promise<void> => {
+    await mapPromises(
+      this.program.getSourceFiles(),
+      async (sourceFile) => {
+        if (sourceFile.isDeclarationFile) return;
 
-    const transformer = new Transformer({
-      sourceFile,
-      transformers: TRANSFORMERS,
-      typeChecker: this.typeChecker,
-      compilerOptions: this.compilerOptions,
-      ignoreErrors: this.flags.ignoreErrors,
-      includeComments: this.flags.includeComments,
-      includeTodos: this.flags.includeTodos,
-    });
-    const haxeCode = transformer.run();
-    if (!haxeCode) {
-      logger.warn(`Transformed file is empty`, sourceFile.fileName);
-      return;
-    }
+        const transpiler = new Transpiler({
+          sourceFile,
+          transformers: TRANSFORMERS,
+          typeChecker: this.typeChecker,
+          compilerOptions: this.compilerOptions,
+          ignoreErrors: this.flags.ignoreErrors,
+          includeComments: this.flags.includeComments,
+          includeTodos: this.flags.includeTodos,
+        });
+        this.sourceFileTranspilers.set(sourceFile, transpiler);
+        transpiler.runTsTransformers();
+      },
+      { concurrency: 100 },
+    );
+  };
 
-    await this.writeOutputFile(transformer.utils.getHaxeFilePath(), haxeCode);
+  protected emitHaxeCode = async (): Promise<void> => {
+    await mapPromises(
+      this.sourceFileTranspilers.values(),
+      async (transpiler) => {
+        const haxeCode = transpiler.emit();
+        await this.writeOutputFile(
+          transpiler.utils.getHaxeFilePath(),
+          haxeCode,
+        );
+      },
+      { concurrency: 100 },
+    );
   };
 
   protected async writeOutputFile(
     fileName: string,
     code: string,
   ): Promise<void> {
+    if (!this.outputDirPath) return;
     const haxeFileName = path.join(this.outputDirPath, './src', fileName);
     await fs.outputFile(haxeFileName, code);
   }

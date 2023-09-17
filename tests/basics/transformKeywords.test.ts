@@ -1,7 +1,7 @@
 import { ts2hx } from '@tests/framework';
 
-test('transforms keywords and syntax tokens', () => {
-  expect(
+test('transforms keywords and syntax tokens', async () => {
+  await expect(
     ts2hx`
 let myNumber: number;
 let myString: string;
@@ -30,7 +30,7 @@ let myExEqEqToken = 3 !== "3";
 let myUndefinedValue = undefined;
 let myNaN = NaN;
 `,
-  ).toMatchInlineSnapshot(`
+  ).resolves.toMatchInlineSnapshot(`
     "
     var  myNumber:  Float;
     var  myString:  String;

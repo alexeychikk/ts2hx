@@ -1,8 +1,8 @@
 import path from 'path';
-import { type Transformer } from '../Transformer';
+import { type Transpiler } from '../Transpiler';
 
 export function escapeHaxeModuleName(
-  this: Transformer,
+  this: Transpiler,
   fileName: string,
 ): string {
   return fileName
@@ -12,7 +12,7 @@ export function escapeHaxeModuleName(
 }
 
 export function getHaxeFilePath(
-  this: Transformer,
+  this: Transpiler,
   fileName = this.sourceFile.fileName,
 ): string {
   const filePath = this.utils.getRelativeFilePath(fileName);
@@ -35,14 +35,14 @@ export function getHaxeFilePath(
 }
 
 export function getRelativeFilePath(
-  this: Transformer,
+  this: Transpiler,
   fileName = this.sourceFile.fileName,
 ): string {
   return path.relative(this.compilerOptions.rootDir!, fileName);
 }
 
 export function getPackageName(
-  this: Transformer,
+  this: Transpiler,
   fileName: string = this.sourceFile.fileName,
 ): string {
   const haxeFilePath = this.utils.getHaxeFilePath(fileName);
@@ -52,7 +52,7 @@ export function getPackageName(
 }
 
 export function getImportedPackageName(
-  this: Transformer,
+  this: Transpiler,
   fileName: string = this.sourceFile.fileName,
 ): string {
   const haxeFilePath = this.utils.getHaxeFilePath(fileName);

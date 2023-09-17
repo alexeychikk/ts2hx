@@ -1,8 +1,8 @@
 import ts from 'typescript';
-import { type Transformer, type TransformerFn } from '../Transformer';
+import { type Transpiler, type TransformerFn } from '../Transpiler';
 
 export const transformJsApiAccess: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
 ) {
   if (!ts.isPropertyAccessExpression(node)) return;
@@ -19,7 +19,7 @@ export const transformJsApiAccess: TransformerFn = function (
 };
 
 export const transformJsIdentifiers: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
 ) {
   if (!ts.isIdentifier(node)) return;

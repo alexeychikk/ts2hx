@@ -1,9 +1,9 @@
 import ts from 'typescript';
-import { type Transformer, type TransformerFn } from '../Transformer';
+import { type Transpiler, type TransformerFn } from '../Transpiler';
 import { logger } from '../../Logger';
 
 export const transformArrowFunction: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -30,7 +30,7 @@ export const transformArrowFunction: TransformerFn = function (
 };
 
 export const transformFunctionParameter: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -64,7 +64,7 @@ export const transformFunctionParameter: TransformerFn = function (
 };
 
 export const transformCallExpression: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {

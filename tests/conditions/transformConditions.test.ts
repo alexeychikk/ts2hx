@@ -1,14 +1,14 @@
 import { ts2hx } from '@tests/framework';
 
 describe('transforms implicit cast to boolean in conditional expressions into explicit', () => {
-  test('handles literals', () => {
-    expect(ts2hx`
+  test('handles literals', async () => {
+    await expect(ts2hx`
 if (true) {} else if (false) {} else if (null) {}
 if (0) {} else if (1) {} else if (-5 * 0) {}
 if ('') {} else if ("foo") {} else if (\`\`) {} else if ("".repeat(2)) {}
 if ([]) {} else if ({}) {} else if (() => 0) {}
 if (undefined) {} else if (NaN) {}
-`).toMatchInlineSnapshot(`
+`).resolves.toMatchInlineSnapshot(`
       "
       if (true) {} else if (false) {} else if (false) {}
       if (false) {} else if (true) {} else if (-5 * 0 != 0) {}
@@ -19,8 +19,8 @@ if (undefined) {} else if (NaN) {}
     `);
   });
 
-  test('handles variables', () => {
-    expect(ts2hx`
+  test('handles variables', async () => {
+    await expect(ts2hx`
 const myBoolean: boolean = true;
 const myTrue: true = true;
 const myFalse: false = false;
@@ -40,7 +40,7 @@ if (myNumber) {} else if (myString) {}
 if (myTen) {} else if (myBar) {} else if (myUnion) {}
 if (myObject) {} else if (myArray) {} else if (myFunction) {}
 if (Foo) {} else if (myFoo) {}
-`).toMatchInlineSnapshot(`
+`).resolves.toMatchInlineSnapshot(`
       "import haxe.extern.EitherType;
 
 
@@ -70,11 +70,11 @@ if (Foo) {} else if (myFoo) {}
     `);
   });
 
-  test('handles ternary operators', () => {
-    expect(ts2hx`
+  test('handles ternary operators', async () => {
+    await expect(ts2hx`
 const myStr = '';
 const myVar = myStr ? 1 : 0;
-    `).toMatchInlineSnapshot(`
+    `).resolves.toMatchInlineSnapshot(`
       "
       final  myStr =  '';
       final  myVar =  ( myStr != "") ? 1 : 0;
@@ -82,14 +82,14 @@ const myVar = myStr ? 1 : 0;
     `);
   });
 
-  test('handles boolean operators', () => {
-    expect(ts2hx`
+  test('handles boolean operators', async () => {
+    await expect(ts2hx`
 if ("" || "foo") {} else if (0 && 1) {}
 if (!({})) {} else if (!0) {}
 if (!(0 || 1) && ("" || !"")) {}
 if (!(5 * 3) || ("" + "454") && (!Object.assign({}))) {}
 if (3 === 2 + 1 || !(5 === 3 + 2 && "foo") {}
-        `).toMatchInlineSnapshot(`
+        `).resolves.toMatchInlineSnapshot(`
       "
       if (false || true) {} else if (false && true) {}
       if (!(true)) {} else if (!false) {}
@@ -100,12 +100,12 @@ if (3 === 2 + 1 || !(5 === 3 + 2 && "foo") {}
     `);
   });
 
-  test('handles loops', () => {
-    expect(ts2hx`
+  test('handles loops', async () => {
+    await expect(ts2hx`
 while (1) {}
 do {} while ("a".repeat(2)) {}
 for (let myVar = 10; myVar;) {}
-            `).toMatchInlineSnapshot(`
+            `).resolves.toMatchInlineSnapshot(`
       "
       while (true) {}
       do {} while ("a".repeat(2) != "") {}
@@ -116,13 +116,13 @@ for (let myVar = 10; myVar;) {}
     `);
   });
 
-  test('handles variable declarations', () => {
-    expect(ts2hx`
+  test('handles variable declarations', async () => {
+    await expect(ts2hx`
 const a = "";
 const b = a || "default";
 const c = a || (b || "foo");
 const d = c && !("bar".repeat(2)) && 0;
-            `).toMatchInlineSnapshot(`
+            `).resolves.toMatchInlineSnapshot(`
       "
       final  a =  "";
       final  b =   a.or( "default");

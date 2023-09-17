@@ -1,8 +1,8 @@
 import ts from 'typescript';
-import { type VisitNodeContext, type Transformer } from '../Transformer';
+import { type VisitNodeContext, type Transpiler } from '../Transpiler';
 
 export function getArrayTypeNode(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
 ): ts.Node | undefined {
   if (ts.isTypeReferenceNode(node) && node.typeName.getText() === 'Array') {
@@ -14,7 +14,7 @@ export function getArrayTypeNode(
 }
 
 export function toEitherType(
-  this: Transformer,
+  this: Transpiler,
   types: ts.NodeArray<ts.TypeNode>,
   context: VisitNodeContext,
 ): string | undefined {
@@ -35,7 +35,7 @@ export function toEitherType(
 }
 
 export function getRootSymbol(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
 ): ts.Symbol | undefined {
   const symbol = this.typeChecker.getSymbolAtLocation(node);
@@ -46,13 +46,13 @@ export function getRootSymbol(
 }
 
 export function getDeclarationSourceFile(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
 ): ts.SourceFile | undefined {
   return this.utils.getRootSymbol(node)?.declarations?.[0].getSourceFile();
 }
 
-export function isBuiltInNode(this: Transformer, node: ts.Node): boolean {
+export function isBuiltInNode(this: Transpiler, node: ts.Node): boolean {
   return !!this.utils.getRootSymbol(node)?.declarations?.some((dec) => {
     const { fileName } = dec.getSourceFile();
     return (
@@ -63,7 +63,7 @@ export function isBuiltInNode(this: Transformer, node: ts.Node): boolean {
 }
 
 export function getNodeTypeString(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   context: VisitNodeContext,
 ): string {

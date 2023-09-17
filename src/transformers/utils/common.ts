@@ -1,8 +1,8 @@
 import ts, { SyntaxKind } from 'typescript';
-import { type VisitNodeContext, type Transformer } from '../Transformer';
+import { type VisitNodeContext, type Transpiler } from '../Transpiler';
 
 export function getNextNode(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   parent = this.utils.getDirectParent(node),
 ): ts.Node | undefined {
@@ -11,7 +11,7 @@ export function getNextNode(
   return parent.getChildAt(nodeIndex + 1);
 }
 export function getPrevNode(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   parent = this.utils.getDirectParent(node),
 ): ts.Node | undefined {
@@ -21,7 +21,7 @@ export function getPrevNode(
 }
 
 export function getDirectParent(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
 ): ts.Node | undefined {
   if (!node.parent) return;
@@ -31,7 +31,7 @@ export function getDirectParent(
     : children.find((ch) => ch.getChildren().includes(node));
 }
 
-export function getNodeSourcePath(this: Transformer, node: ts.Node): string {
+export function getNodeSourcePath(this: Transpiler, node: ts.Node): string {
   const sourceFile = node.getSourceFile();
   const { line, character } = ts.getLineAndCharacterOfPosition(
     sourceFile,
@@ -41,7 +41,7 @@ export function getNodeSourcePath(this: Transformer, node: ts.Node): string {
 }
 
 export function replaceChild(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   context: VisitNodeContext,
   childToReplace: ts.Node,
@@ -58,7 +58,7 @@ export function replaceChild(
 }
 
 export function filterChildren(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   context: VisitNodeContext,
   comparator: (node: ts.Node) => boolean,
@@ -73,7 +73,7 @@ export function filterChildren(
 }
 
 export function omitChildrenByKind(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   context: VisitNodeContext,
   childKind: SyntaxKind,
@@ -82,7 +82,7 @@ export function omitChildrenByKind(
 }
 
 export function ignoreNextNodeOfKind(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   kind: SyntaxKind,
 ): void {
@@ -93,7 +93,7 @@ export function ignoreNextNodeOfKind(
 }
 
 export function ignoreChildrenOfKind(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   kind: SyntaxKind,
 ): void {
@@ -103,7 +103,7 @@ export function ignoreChildrenOfKind(
 }
 
 export function joinNodes<T extends ts.Node>(
-  this: Transformer,
+  this: Transpiler,
   nodes: ts.NodeArray<T> | T[] | undefined,
   context: VisitNodeContext,
   separator = ', ',
@@ -112,7 +112,7 @@ export function joinNodes<T extends ts.Node>(
 }
 
 export function joinTypeParameters(
-  this: Transformer,
+  this: Transpiler,
   typeParameters:
     | ts.NodeArray<ts.TypeParameterDeclaration>
     | ts.TypeParameterDeclaration[]
@@ -123,16 +123,16 @@ export function joinTypeParameters(
   return typeParams ? `<${typeParams}>` : '';
 }
 
-export function escapeStringText(this: Transformer, text: string): string {
+export function escapeStringText(this: Transpiler, text: string): string {
   return text.replace(/"/g, `\\"`);
 }
 
-export function escapeTemplateText(this: Transformer, text: string): string {
+export function escapeTemplateText(this: Transpiler, text: string): string {
   return text.replace(/'/g, `\\'`);
 }
 
 export function visitParenthesized(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   context: VisitNodeContext,
 ): string {
@@ -140,7 +140,7 @@ export function visitParenthesized(
   return ts.isIdentifier(node) ? code : `(${code})`;
 }
 
-export function isParenthesized(this: Transformer, node: ts.Node): boolean {
+export function isParenthesized(this: Transpiler, node: ts.Node): boolean {
   return (
     ts.isParenthesizedExpression(node) ||
     (this.utils.getPrevNode(node)?.kind === SyntaxKind.OpenParenToken &&
@@ -149,7 +149,7 @@ export function isParenthesized(this: Transformer, node: ts.Node): boolean {
 }
 
 export function parenthesizeCode(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   code: string,
 ): string {
@@ -157,7 +157,7 @@ export function parenthesizeCode(
 }
 
 export function getExtendedNode(
-  this: Transformer,
+  this: Transpiler,
   node: ts.ClassLikeDeclaration,
 ): ts.Node | undefined {
   return node.heritageClauses?.find(
@@ -166,7 +166,7 @@ export function getExtendedNode(
 }
 
 export function renameSymbol(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   renameTo: string,
 ): string {

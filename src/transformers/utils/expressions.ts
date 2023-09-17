@@ -1,5 +1,5 @@
 import ts, { SyntaxKind } from 'typescript';
-import { type VisitNodeContext, type Transformer } from '../Transformer';
+import { type VisitNodeContext, type Transpiler } from '../Transpiler';
 
 export function isBooleanNotExpression(
   node: ts.Node,
@@ -44,7 +44,7 @@ export function isBooleanExpression(node: ts.Node): node is ts.Expression {
 }
 
 export function isOperandOfConditionalExpression(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
 ): boolean {
   return (
@@ -55,7 +55,7 @@ export function isOperandOfConditionalExpression(
 }
 
 export function isOperandOfBooleanExpression(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
 ): boolean {
   return (
@@ -66,7 +66,7 @@ export function isOperandOfBooleanExpression(
 }
 
 export function isBooleanExpressionOfStatement(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
 ): boolean {
   return (
@@ -100,7 +100,7 @@ export function isBooleanExpressionOfVariableDeclaration(
 }
 
 export function toExplicitBooleanCondition(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   context: VisitNodeContext,
 ): string {
@@ -174,7 +174,7 @@ export function toExplicitBooleanCondition(
 }
 
 export function toSeparateStatements(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   context: VisitNodeContext,
 ): string {
@@ -192,7 +192,7 @@ export function toSeparateStatements(
   )};\n${this.utils.getIndent(node)}${this.visitNode(node.right, context)};\n`;
 }
 
-export function isSuperExpression(this: Transformer, node: ts.Node): boolean {
+export function isSuperExpression(this: Transpiler, node: ts.Node): boolean {
   return (
     ts.isExpressionStatement(node) &&
     ts.isCallExpression(node.expression) &&

@@ -1,8 +1,8 @@
 import ts from 'typescript';
 import { logger } from '../../Logger';
-import { type Transformer } from '../Transformer';
+import { type Transpiler } from '../Transpiler';
 
-export function getIndent(this: Transformer, node: ts.Node): string {
+export function getIndent(this: Transpiler, node: ts.Node): string {
   const sourceFile = node.getSourceFile();
   const { line } = ts.getLineAndCharacterOfPosition(
     sourceFile,
@@ -13,12 +13,12 @@ export function getIndent(this: Transformer, node: ts.Node): string {
   return lineText.slice(0, indentationLength);
 }
 
-export function getTodoString(this: Transformer): string {
+export function getTodoString(this: Transpiler): string {
   return this.includeTodos ? `TODO(ts2hx)` : '';
 }
 
 export function commentOutNode(
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   warning?: string,
 ): string {
@@ -34,7 +34,7 @@ export function commentOutNode(
 }
 
 export function createComment(
-  this: Transformer,
+  this: Transpiler,
   fn: (params: { todo: string }) => string,
 ): string {
   return this.includeComments
@@ -42,6 +42,6 @@ export function createComment(
     : '';
 }
 
-export function createTodoComment(this: Transformer): string {
+export function createTodoComment(this: Transpiler): string {
   return this.utils.createComment(({ todo }) => todo);
 }

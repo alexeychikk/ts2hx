@@ -1,9 +1,9 @@
 import ts from 'typescript';
 import { logger } from '../../Logger';
-import { type Transformer, type TransformerFn } from '../Transformer';
+import { type Transpiler, type TransformerFn } from '../Transpiler';
 
 export const transformTsLibTypes: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {

@@ -1,9 +1,9 @@
 import { ts2hx } from '@tests/framework';
 
-test('transforms empty class declaration', () => {
-  expect(ts2hx`
+test('transforms empty class declaration', async () => {
+  await expect(ts2hx`
 export class Foo {}
-  `).toMatchInlineSnapshot(`
+  `).resolves.toMatchInlineSnapshot(`
     "
 
       class Foo  {
@@ -14,10 +14,10 @@ export class Foo {}
   `);
 });
 
-test('transforms abstract class declaration', () => {
-  expect(ts2hx`
+test('transforms abstract class declaration', async () => {
+  await expect(ts2hx`
 export default abstract class Foo {}
-  `).toMatchInlineSnapshot(`
+  `).resolves.toMatchInlineSnapshot(`
     "
 
        abstract class Foo  {
@@ -26,10 +26,10 @@ export default abstract class Foo {}
   `);
 });
 
-test('transforms anonymous class declaration', () => {
-  expect(ts2hx`
+test('transforms anonymous class declaration', async () => {
+  await expect(ts2hx`
 export default class {};
-  `).toMatchInlineSnapshot(`
+  `).resolves.toMatchInlineSnapshot(`
     "
 
       class AnonymousClass_0  {

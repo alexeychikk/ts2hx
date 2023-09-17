@@ -1,8 +1,8 @@
 import ts from 'typescript';
-import { type Transformer, type TransformerFn } from '../Transformer';
+import { type Transpiler, type TransformerFn } from '../Transpiler';
 
 export const transformForLoop: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -32,7 +32,7 @@ export const transformForLoop: TransformerFn = function (
 };
 
 export const transformForOfLoop: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -49,7 +49,7 @@ export const transformForOfLoop: TransformerFn = function (
 };
 
 export const transformForInLoop: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {

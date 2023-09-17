@@ -2,12 +2,12 @@ import ts, { SymbolFlags, SyntaxKind } from 'typescript';
 import { logger } from '../../Logger';
 import {
   type VisitNodeContext,
-  type Transformer,
+  type Transpiler,
   type TransformerFn,
-} from '../Transformer';
+} from '../Transpiler';
 
 export const transformClassDeclaration: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -31,7 +31,7 @@ export const transformClassDeclaration: TransformerFn = function (
 };
 
 const getDefaultConstructor = function (
-  this: Transformer,
+  this: Transpiler,
   node: ts.ClassLikeDeclaration,
   context: VisitNodeContext,
 ): string {
@@ -66,7 +66,7 @@ const getDefaultConstructor = function (
 };
 
 const findParentConstructor = function (
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
 ): ts.ConstructorDeclaration | undefined {
   const classType = this.typeChecker.getTypeAtLocation(node);
@@ -90,7 +90,7 @@ const findParentConstructor = function (
 };
 
 export const transformHeritageClause: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -106,7 +106,7 @@ export const transformHeritageClause: TransformerFn = function (
 };
 
 export const transformConstructor: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -168,7 +168,7 @@ export const transformConstructor: TransformerFn = function (
 };
 
 export const transformClassPropertyDeclaration: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -201,7 +201,7 @@ export const transformClassPropertyDeclaration: TransformerFn = function (
 };
 
 export const transformClassMethodDeclaration: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -221,7 +221,7 @@ export const transformClassMethodDeclaration: TransformerFn = function (
 };
 
 export const transformClassGetter: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -237,7 +237,7 @@ export const transformClassGetter: TransformerFn = function (
 };
 
 export const transformClassSetter: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -275,7 +275,7 @@ export const transformClassSetter: TransformerFn = function (
 };
 
 const defineHaxeGetSetProperty = function (
-  this: Transformer,
+  this: Transpiler,
   node: ts.GetAccessorDeclaration | ts.SetAccessorDeclaration,
   context: VisitNodeContext,
 ): string {

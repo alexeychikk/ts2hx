@@ -1,12 +1,12 @@
 import ts, { SyntaxKind } from 'typescript';
 import {
   type VisitNodeContext,
-  type Transformer,
+  type Transpiler,
   type TransformerFn,
-} from '../Transformer';
+} from '../Transpiler';
 
 export const transformKeywords: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
 ) {
   switch (node.kind) {
@@ -66,7 +66,7 @@ export const transformKeywords: TransformerFn = function (
 };
 
 export const transformPowExpression: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -90,7 +90,7 @@ export const transformPowExpression: TransformerFn = function (
 };
 
 export const transformSimpleTemplate: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
 ) {
   // `"Hello"`
@@ -99,7 +99,7 @@ export const transformSimpleTemplate: TransformerFn = function (
 };
 
 export const transformTemplateExpression: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -111,24 +111,21 @@ export const transformTemplateExpression: TransformerFn = function (
 };
 
 export const transformTemplateParts: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
 ) {
   if (!ts.isTemplateMiddleOrTemplateTail(node)) return;
   return `}${this.utils.escapeTemplateText(node.text)}`;
 };
 
-export const transformRegex: TransformerFn = function (
-  this: Transformer,
-  node,
-) {
+export const transformRegex: TransformerFn = function (this: Transpiler, node) {
   // /[a-z]{0,9}/gim
   if (!ts.isRegularExpressionLiteral(node)) return;
   return `~${node.text}`;
 };
 
 export const transformVoidExpression: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -144,7 +141,7 @@ export const transformVoidExpression: TransformerFn = function (
 };
 
 export const transformTypeofExpression: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -154,7 +151,7 @@ export const transformTypeofExpression: TransformerFn = function (
 };
 
 export const transformInstanceOfExpression: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -174,7 +171,7 @@ export const transformInstanceOfExpression: TransformerFn = function (
 };
 
 export const transformImportDeclaration: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -230,7 +227,7 @@ export const transformImportDeclaration: TransformerFn = function (
 };
 
 export const transformRenameSymbol: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context: VisitNodeContext,
 ) {

@@ -1,9 +1,9 @@
-import { type TransformerFn } from './Transformer';
+import { type TransformerFn } from './Transpiler';
 
 import * as api from './api';
 import * as lang from './lang';
 
-export * from './Transformer';
+export * from './Transpiler';
 export { api, lang };
 
 // Order here actually matters (to some extent)

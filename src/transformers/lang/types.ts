@@ -1,8 +1,8 @@
 import ts, { SyntaxKind } from 'typescript';
-import { type Transformer, type TransformerFn } from '../Transformer';
+import { type Transpiler, type TransformerFn } from '../Transpiler';
 
 export const transformLiteralTypes: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
 ) {
   if (!ts.isLiteralTypeNode(node)) return;
@@ -28,7 +28,7 @@ export const transformLiteralTypes: TransformerFn = function (
 };
 
 export const transformArrayType: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -38,7 +38,7 @@ export const transformArrayType: TransformerFn = function (
 };
 
 export const transformUnionType: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -49,7 +49,7 @@ export const transformUnionType: TransformerFn = function (
 };
 
 export const transformTupleType: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -61,7 +61,7 @@ export const transformTupleType: TransformerFn = function (
 };
 
 export const transformPropertySignature: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -81,7 +81,7 @@ export const transformPropertySignature: TransformerFn = function (
 };
 
 export const transformIndexSignature: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
 ) {
   // { [key: string]: number; }
@@ -91,7 +91,7 @@ export const transformIndexSignature: TransformerFn = function (
 };
 
 export const transformMethodSignature: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -114,7 +114,7 @@ export const transformMethodSignature: TransformerFn = function (
 };
 
 export const transformConstructorSignature: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -128,7 +128,7 @@ export const transformConstructorSignature: TransformerFn = function (
 };
 
 export const transformTypeParameter: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -147,7 +147,7 @@ export const transformTypeParameter: TransformerFn = function (
 };
 
 export const transformConditionalType: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -162,7 +162,7 @@ export const transformConditionalType: TransformerFn = function (
 };
 
 export const transformTypeQuery: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -177,7 +177,7 @@ export const transformTypeQuery: TransformerFn = function (
 };
 
 export const transformEnumDeclaration: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -206,7 +206,7 @@ export const transformEnumDeclaration: TransformerFn = function (
 };
 
 export const transformIndexedAccessType: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -217,7 +217,7 @@ export const transformIndexedAccessType: TransformerFn = function (
 };
 
 export const transformAsExpression: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {

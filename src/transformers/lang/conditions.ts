@@ -1,12 +1,12 @@
 import ts, { SyntaxKind } from 'typescript';
 import {
   type VisitNodeContext,
-  type Transformer,
+  type Transpiler,
   type TransformerFn,
-} from '../Transformer';
+} from '../Transpiler';
 
 export const transformNotOperator: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -17,7 +17,7 @@ export const transformNotOperator: TransformerFn = function (
 };
 
 export const transformConditions: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -41,7 +41,7 @@ export const transformConditions: TransformerFn = function (
 };
 
 export const transformBooleanOperatorInVariableDeclaration: TransformerFn =
-  function (this: Transformer, node, context) {
+  function (this: Transpiler, node, context) {
     if (!this.utils.isBooleanExpressionOfVariableDeclaration(node)) return;
 
     const operator =
@@ -56,7 +56,7 @@ export const transformBooleanOperatorInVariableDeclaration: TransformerFn =
   };
 
 export const transformSwitchCase: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -116,7 +116,7 @@ export const transformSwitchCase: TransformerFn = function (
 };
 
 const transformCaseExpression = function (
-  this: Transformer,
+  this: Transpiler,
   node: ts.Node,
   context: VisitNodeContext,
 ): string {

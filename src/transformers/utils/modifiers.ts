@@ -1,10 +1,10 @@
 import type ts from 'typescript';
 import { SyntaxKind } from 'typescript';
 import { sortBy } from 'lodash';
-import { type VisitNodeContext, type Transformer } from '../Transformer';
+import { type VisitNodeContext, type Transpiler } from '../Transpiler';
 
 export function getAccessModifier(
-  this: Transformer,
+  this: Transpiler,
   node: ts.HasModifiers,
 ): ts.Modifier | undefined {
   return node.modifiers?.find(
@@ -16,7 +16,7 @@ export function getAccessModifier(
 }
 
 export function getAccessModifierString(
-  this: Transformer,
+  this: Transpiler,
   node: ts.HasModifiers,
 ): string {
   const modifier = this.utils.getAccessModifier(node);
@@ -25,16 +25,16 @@ export function getAccessModifierString(
     : 'private';
 }
 
-export function isReadonly(this: Transformer, node: ts.HasModifiers): boolean {
+export function isReadonly(this: Transpiler, node: ts.HasModifiers): boolean {
   return !!node.modifiers?.some((m) => m.kind === SyntaxKind.ReadonlyKeyword);
 }
 
-export function isAbstract(this: Transformer, node: ts.HasModifiers): boolean {
+export function isAbstract(this: Transpiler, node: ts.HasModifiers): boolean {
   return !!node.modifiers?.some((m) => m.kind === SyntaxKind.AbstractKeyword);
 }
 
 export function getDeclarationKeyword(
-  this: Transformer,
+  this: Transpiler,
   node: ts.HasModifiers,
 ): string {
   return this.utils.isReadonly(node) ? 'final' : 'var';
@@ -46,7 +46,7 @@ const MODIFIERS_PRIORITY: Partial<Record<SyntaxKind, number>> = {
 const MODIFIERS_TO_EXCLUDE = new Set([SyntaxKind.DefaultKeyword]);
 
 export function joinModifiers(
-  this: Transformer,
+  this: Transpiler,
   modifiers: ts.NodeArray<ts.ModifierLike> | ts.ModifierLike[] | undefined,
   context: VisitNodeContext,
 ): string {
@@ -61,7 +61,7 @@ export function joinModifiers(
 }
 
 export function joinMemberModifiers(
-  this: Transformer,
+  this: Transpiler,
   node: ts.HasModifiers,
   context: VisitNodeContext,
 ): string {

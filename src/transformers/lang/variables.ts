@@ -1,8 +1,8 @@
 import ts, { SyntaxKind } from 'typescript';
-import { type Transformer, type TransformerFn } from '../Transformer';
+import { type Transpiler, type TransformerFn } from '../Transpiler';
 
 export const transformVariableStatement: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -16,7 +16,7 @@ export const transformVariableStatement: TransformerFn = function (
 };
 
 export const transformVariableDeclarationList: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
@@ -116,7 +116,7 @@ export const transformVariableDeclarationList: TransformerFn = function (
 };
 
 export const transformVariableDeclaration: TransformerFn = function (
-  this: Transformer,
+  this: Transpiler,
   node,
   context,
 ) {
