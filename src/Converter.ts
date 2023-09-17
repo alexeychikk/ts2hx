@@ -7,7 +7,7 @@ import { exec } from 'child_process';
 
 import { Transpiler, TRANSFORMERS } from './transformers';
 import { logger } from './Logger';
-import { mapPromises } from './utils';
+import { asyncPool } from './utils';
 
 const execAsync = promisify(exec);
 
@@ -185,7 +185,7 @@ export class Converter {
   }
 
   protected runTsTransformers = async (): Promise<void> => {
-    await mapPromises(
+    await asyncPool(
       this.program.getSourceFiles(),
       async (sourceFile) => {
         if (sourceFile.isDeclarationFile) return;
@@ -207,7 +207,7 @@ export class Converter {
   };
 
   protected emitHaxeCode = async (): Promise<void> => {
-    await mapPromises(
+    await asyncPool(
       this.sourceFileTranspilers.values(),
       async (transpiler) => {
         const haxeCode = transpiler.emit();

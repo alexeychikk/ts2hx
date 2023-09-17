@@ -1,1 +1,1 @@
-export * from './mapPromises';
+export * from './asyncPool';
