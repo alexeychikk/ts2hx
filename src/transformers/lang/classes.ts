@@ -1,4 +1,4 @@
-import ts, { SymbolFlags, SyntaxKind } from 'typescript';
+import ts, { SyntaxKind } from 'typescript';
 import { logger } from '../../Logger';
 import {
   type VisitNodeContext,
@@ -42,51 +42,10 @@ const getDefaultConstructor = function (
   );
   if (hasConstructor) return '';
 
-  const emptyConstructor = `\n${this.utils.getIndent(
-    node,
-  )}  public function new() {}\n`;
-
   const baseClass = this.utils.getExtendedNode(node);
-  if (!baseClass) return emptyConstructor;
+  if (baseClass) return '';
 
-  const parentConstructor = findParentConstructor.call(this, baseClass);
-  if (!parentConstructor) return emptyConstructor;
-
-  const params = this.utils.joinNodes(parentConstructor.parameters, {
-    ...context,
-    enforceParameterType: true,
-    skipParameterInitializer: true,
-  });
-  const superParams = parentConstructor.parameters
-    .map((p) => p.name.getText())
-    .join(', ');
-  return `\n${this.utils.getIndent(
-    node,
-  )}  public function new(${params}) {\nsuper(${superParams});}\n`;
-};
-
-const findParentConstructor = function (
-  this: Transpiler,
-  node: ts.Node,
-): ts.ConstructorDeclaration | undefined {
-  const classType = this.typeChecker.getTypeAtLocation(node);
-  const symbol = classType.aliasSymbol ?? classType.symbol;
-  const members = Array.from(symbol.members?.values() ?? []);
-
-  const constructorSymbol = members.find(
-    (symbol) => symbol.flags & SymbolFlags.Constructor,
-  );
-  if (constructorSymbol) {
-    return constructorSymbol.declarations?.[0] as ts.ConstructorDeclaration;
-  }
-
-  const [declaration] = symbol.declarations ?? [];
-  const baseClass = this.utils.getExtendedNode(
-    declaration as ts.ClassLikeDeclaration,
-  );
-  if (!baseClass) return;
-
-  return findParentConstructor.call(this, baseClass);
+  return `\n${this.utils.getIndent(node)}  public function new() {}\n`;
 };
 
 export const transformHeritageClause: TransformerFn = function (
