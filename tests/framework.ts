@@ -48,7 +48,7 @@ export class Ts2hx {
   }
 
   protected createCompilerHost(): ts.CompilerHost {
-    const host = ts.createCompilerHost({ rootDir: '.' });
+    const host = ts.createCompilerHost({ rootDir: '.' }, true);
 
     const originalReadFile = host.readFile.bind(host);
     const originalFileExists = host.fileExists.bind(host);
