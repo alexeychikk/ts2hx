@@ -46,11 +46,10 @@ export const transformVariableDeclaration: TransformerFn = function (
   // foo: number = 5
   if (!ts.isVariableDeclaration(node)) return;
 
-  const { variableDeclarationKeyword: keyword } =
-    context.variableDeclaration ?? {};
+  const keyword = context.variableDeclaration?.variableDeclarationKeyword;
 
   if (ts.isIdentifier(node.name)) {
-    return `${keyword ? `${keyword} ` : ''}${node.name.getText()}${
+    return `${keyword ? `${keyword} ` : ''}${node.name.text}${
       node.type ? `: ${this.visitNode(node.type, context).trimStart()}` : ''
     }${
       node.initializer
@@ -60,7 +59,12 @@ export const transformVariableDeclaration: TransformerFn = function (
   }
 
   // avoid destructuring of parameter in catch clause
-  if (!keyword) return;
+  if (!keyword) {
+    return this.utils.commentOutNode(
+      node,
+      'Parameter destructuring is not allowed in catch clause',
+    );
+  }
 
   return this.visitNode(node.name, {
     ...context,
@@ -105,29 +109,35 @@ export const transformObjectBindingPattern: TransformerFn = function (
               return this.visitNode(propName.expression, context).trimStart();
             } else if (
               ts.isIdentifier(propName) ||
-              ts.isNumericLiteral(propName)
+              ts.isNumericLiteral(propName) ||
+              ts.isStringLiteral(propName)
             ) {
-              return `'${propName.getText()}'`;
+              return `'${propName.text}'`;
             }
 
             return propName.getText();
           })
           .join(', ');
+
         return (
-          `${variableDeclarationKeyword} ${element.name.getText()}` +
-          ` = Ts2hx.rest(${parentInitializer}, [${keysToOmit}])`
+          `${variableDeclarationKeyword} ${
+            (element.name as ts.Identifier).text
+          }` + ` = Ts2hx.rest(${parentInitializer}, [${keysToOmit}])`
         );
       }
 
       if (ts.isIdentifier(propertyName)) {
         // { foo: bar } = obj -> obj.foo
-        initializer = `${parentInitializer}.${propertyName.getText()}`;
+        initializer = `${parentInitializer}.${propertyName.text}`;
       } else {
         let propertyNameText = '';
 
-        if (ts.isNumericLiteral(propertyName)) {
+        if (
+          ts.isNumericLiteral(propertyName) ||
+          ts.isStringLiteral(propertyName)
+        ) {
           // { 0: bar } = obj -> Reflect.field(obj, '0')
-          propertyNameText = `'${propertyName.getText()}'`;
+          propertyNameText = `'${propertyName.text}'`;
         } else if (ts.isComputedPropertyName(propertyName)) {
           // { [expression]: bar } = obj -> Reflect.field(obj, expression)
           propertyNameText = this.visitNode(
@@ -135,7 +145,6 @@ export const transformObjectBindingPattern: TransformerFn = function (
             context,
           ).trimStart();
         } else {
-          // { 'foo': bar } = obj -> Reflect.field(obj, 'foo')
           propertyNameText = propertyName.getText();
         }
 
@@ -151,7 +160,7 @@ export const transformObjectBindingPattern: TransformerFn = function (
 
       // { foo } | { foo: bar } | { [foo]: bar } | { 'foo': bar } | { 0: bar }
       if (ts.isIdentifier(element.name)) {
-        return `${variableDeclarationKeyword} ${element.name.getText()} = ${initializer}`;
+        return `${variableDeclarationKeyword} ${element.name.text} = ${initializer}`;
       }
 
       // { foo: { bar } } | { foo: [bar] }
@@ -191,8 +200,9 @@ export const transformArrayBindingPattern: TransformerFn = function (
       // [...rest] = arr
       if (element.dotDotDotToken) {
         return (
-          `${variableDeclarationKeyword} ${element.name.getText()}` +
-          ` = ${parentInitializer}.slice(${index})`
+          `${variableDeclarationKeyword} ${
+            (element.name as ts.Identifier).text
+          }` + ` = ${parentInitializer}.slice(${index})`
         );
       }
 
@@ -207,7 +217,7 @@ export const transformArrayBindingPattern: TransformerFn = function (
 
       // [first, second] = arr
       if (ts.isIdentifier(element.name)) {
-        return `${variableDeclarationKeyword} ${element.name.getText()} = ${initializer}`;
+        return `${variableDeclarationKeyword} ${element.name.text} = ${initializer}`;
       }
 
       // [[first, second], { foo }] = arr

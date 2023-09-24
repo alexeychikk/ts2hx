@@ -9,6 +9,11 @@ test('transforms binding patterns in variable declarations', async () => {
   const { 'foo': foo = 'foo', 0: bar = 'bar' } = obj;
   const { [foo1 + 'foo']: { [bar1]: baz = 'baz' }, [foo2]: [bar2] = ['bar2'] } = obj;
   const { [foo1 + 'foo']: { [bar1]: baz = 'baz' }, 'foo': foo, '0': first, bar, ...rest } = obj;
+  const { 
+    foo = () => {
+      const { innerProp } = innerObj;
+    }
+  } = obj;
 `).resolves.toMatchInlineSnapshot(`
     "
       final bar = obj.foo ?? 'foo';
@@ -28,6 +33,9 @@ test('transforms binding patterns in variable declarations', async () => {
       final first = Reflect.field(obj, '0');
       final bar = obj.bar;
       final rest = Ts2hx.rest(obj, [foo1 + 'foo', 'foo', '0', 'bar']);
+      final foo = obj.foo ?? function () {
+          final innerProp = innerObj.innerProp;
+        };
     "
   `);
 });
