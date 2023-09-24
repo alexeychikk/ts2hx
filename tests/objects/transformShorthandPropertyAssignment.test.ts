@@ -6,8 +6,8 @@ let foo = "bar";
 let bar = { foo };
   `).resolves.toMatchInlineSnapshot(`
     "
-    var  foo =  "bar";
-    var  bar =  { foo: foo };
+    var foo = "bar";
+    var bar = { foo: foo };
       "
   `);
 });

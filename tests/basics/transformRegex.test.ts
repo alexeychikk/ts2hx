@@ -5,7 +5,7 @@ test('transforms regex', async () => {
 let myRegex = /[a-z]{0,9}/gim;
 `).resolves.toMatchInlineSnapshot(`
     "
-    var  myRegex =  ~/[a-z]{0,9}/gim;
+    var myRegex = ~/[a-z]{0,9}/gim;
     "
   `);
 });

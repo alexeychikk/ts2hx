@@ -44,22 +44,22 @@ if (Foo) {} else if (myFoo) {}
       "import haxe.extern.EitherType;
 
 
-      final  myBoolean:  Bool =  true;
-      final  myTrue:  Bool =  true;
-      final  myFalse:  Bool =  false;
-      final  myNumber =  0;
-      final  myString =  "foo";
-      final  myTen:  Float =  10;
-      final  myBar:  String =  "bar";
-      final  myUnion:  EitherType< String,  String> =  'foo';
-      final  myObject =  { foo: 'bar' };
-      final  myArray =  [1, 2, 3];
-      final  myFunction =  () -> 0;
+      final myBoolean: Bool = true;
+      final myTrue: Bool = true;
+      final myFalse: Bool = false;
+      final myNumber = 0;
+      final myString = "foo";
+      final myTen: Float = 10;
+      final myBar: String = "bar";
+      final myUnion: EitherType< String,  String> = 'foo';
+      final myObject = { foo: 'bar' };
+      final myArray = [1, 2, 3];
+      final myFunction = () -> 0;
       class Foo  {
         public function new() {}
 
       }
-      final  myFoo =  new Foo();
+      final myFoo = new Foo();
 
       if (myBoolean) {} else if (myTrue) {} else if (myFalse) {}
       if (myNumber != 0) {} else if (myString != "") {}
@@ -76,8 +76,8 @@ const myStr = '';
 const myVar = myStr ? 1 : 0;
     `).resolves.toMatchInlineSnapshot(`
       "
-      final  myStr =  '';
-      final  myVar =  ( myStr != "") ? 1 : 0;
+      final myStr = '';
+      final myVar = ( myStr != "") ? 1 : 0;
           "
     `);
   });
@@ -109,7 +109,7 @@ for (let myVar = 10; myVar;) {}
       "
       while (true) {}
       do {} while ("a".repeat(2) != "") {}
-      var  myVar =  10;
+      var myVar = 10;
       while(( myVar != 0)) {
       }
                   "
@@ -124,10 +124,10 @@ const c = a || (b || "foo");
 const d = c && !("bar".repeat(2)) && 0;
             `).resolves.toMatchInlineSnapshot(`
       "
-      final  a =  "";
-      final  b =   a.or( "default");
-      final  c =   a.or( (b.or( "foo")));
-      final  d =  (  c.and( !("bar".repeat(2) != ""))).and( 0);
+      final a = "";
+      final b = a.or( "default");
+      final c = a.or( (b.or( "foo")));
+      final d = (c.and( !("bar".repeat(2) != ""))).and( 0);
                   "
     `);
   });
