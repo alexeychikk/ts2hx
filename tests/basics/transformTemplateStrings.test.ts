@@ -4,8 +4,7 @@ test('transforms simple template string literal', async () => {
   await expect(ts2hx`
 let myLiteral = \`"Hello"\`;
 `).resolves.toMatchInlineSnapshot(`
-    "
-    var myLiteral = "\\"Hello\\"";
+    "var myLiteral = "\\"Hello\\"";
     "
   `);
 });
