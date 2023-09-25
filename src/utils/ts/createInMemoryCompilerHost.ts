@@ -2,7 +2,7 @@ import ts from 'typescript';
 import path from 'path';
 import { IntermediateSourceFile, type RawSourceFile } from './sourceFiles';
 
-export function createCompilerHost(params: {
+export function createInMemoryCompilerHost(params: {
   options: ts.CompilerOptions;
   sourceFiles: Iterable<RawSourceFile>;
 }): ts.CompilerHost {
@@ -30,7 +30,7 @@ export function createCompilerHost(params: {
   host.fileExists = (fileName: string): boolean => {
     const filePath = path.normalize(fileName);
     const fakeFile = sourceFilesArray.find((sf) => sf.filePath === filePath);
-    return fakeFile ? true : originalFileExists(fileName);
+    return !!fakeFile || originalFileExists(fileName);
   };
   host.writeFile = () => undefined;
   host.readDirectory = (rootDir, extensions, excludes, includes, depth) => {
@@ -45,7 +45,7 @@ export function createCompilerHost(params: {
     const fakeFile = sourceFilesArray.find((sf) =>
       sf.dirPath.includes(directoryPath),
     );
-    return fakeFile ? true : originalDirectoryExists?.(directoryName) ?? false;
+    return !!fakeFile || !!originalDirectoryExists?.(directoryName);
   };
 
   return host;

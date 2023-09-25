@@ -12,16 +12,30 @@ type FooBarBaz = Foo['bar']['baz'];
 type FooBarBoo = Foo['bar']['boo'];  
 type FooBarBooCoords = Foo['bar']['boo']['coords'];  
 `).resolves.toMatchInlineSnapshot(`
-    "
-    interface Foo { public var bar:  Bar; public var wow:  String; };
-    typedef Bar = { public var baz:  Float; public var boo:  Boo; };
-    typedef Boo = { public var boo:  String; public var coords:  { public var x:  Float; public var y:  Float; }; }
-
+    "interface Foo {
+        public var bar:  Bar;
+        public var wow:  String;
+    }
+    ;
+    typedef Bar = {
+        public var baz:  Float;
+        public var boo:  Boo;
+    };
+    typedef Boo = {
+        public var boo:  String;
+        public var coords:  {
+            public var x:  Float;
+            public var y:  Float;
+        };
+    };
     typedef FooBar = Bar;
     typedef FooWow = String;
-    typedef FooBarBaz = Float;  
-    typedef FooBarBoo = Boo;  
-    typedef FooBarBooCoords =  { public var x:  Float; public var y:  Float; };  
+    typedef FooBarBaz = Float;
+    typedef FooBarBoo = Boo;
+    typedef FooBarBooCoords =  {
+            public var x:  Float;
+            public var y:  Float;
+        };
     "
   `);
 });

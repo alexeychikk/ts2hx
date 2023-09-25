@@ -7,7 +7,7 @@ import { exec } from 'child_process';
 
 import { Transpiler, TRANSFORMERS } from './transformers';
 import { logger } from './Logger';
-import { asyncPool, createCompilerHost } from './utils';
+import { asyncPool, createInMemoryCompilerHost } from './utils';
 
 const execAsync = promisify(exec);
 
@@ -45,7 +45,7 @@ export class Converter {
   program: ts.Program;
   outputDirPath?: string;
   flags: ConverterFlags;
-  sourceFileTranspilers = new Map<ts.SourceFile, Transpiler>();
+  sourceFileTranspilers = new Map<string, Transpiler>();
 
   protected startTime: number;
 
@@ -55,7 +55,7 @@ export class Converter {
       'program' in options ? options.program : this.createProgram(options);
     this.outputDirPath = options.outputDirPath;
     // warm up
-    const typeChecker = this.program.getTypeChecker();
+    this.program.getTypeChecker();
     const compilerOptions = this.program.getCompilerOptions();
     this.flags = options.flags ?? {};
 
@@ -200,11 +200,12 @@ export class Converter {
           includeComments: this.flags.includeComments,
           includeTodos: this.flags.includeTodos,
         });
-        this.sourceFileTranspilers.set(sourceFile, transpiler);
+        this.sourceFileTranspilers.set(sourceFile.fileName, transpiler);
         transpiler.runTsTransformers();
       },
       { concurrency: 100 },
     );
+    this.reloadProgram();
   };
 
   protected runHxTransformers = async (): Promise<void> => {
@@ -215,6 +216,7 @@ export class Converter {
       },
       { concurrency: 100 },
     );
+    this.reloadProgram();
   };
 
   protected emitHaxeCode = async (): Promise<void> => {
@@ -234,14 +236,35 @@ export class Converter {
   protected reloadProgram = (): void => {
     const rootNames = this.program.getRootFileNames();
     const options = this.program.getCompilerOptions();
-    const sourceFiles = Array.from(this.sourceFileTranspilers.values()).map(
-      (t) => t.sourceFile,
-    );
-    const host = createCompilerHost({ options, sourceFiles });
+    const sourceFiles = this.program
+      .getSourceFiles()
+      .map((sf) =>
+        this.sourceFileTranspilers.has(sf.fileName)
+          ? this.sourceFileTranspilers.get(sf.fileName)!.sourceFile
+          : sf,
+      );
+    const host = createInMemoryCompilerHost({ options, sourceFiles });
     this.program = ts.createProgram({
       rootNames,
       options,
       host,
+    });
+    // warp up
+    this.program.getTypeChecker();
+    this.program.getCompilerOptions();
+
+    this.sourceFileTranspilers = new Map();
+    this.program.getSourceFiles().forEach((sourceFile) => {
+      if (sourceFile.isDeclarationFile) return;
+      const transpiler = new Transpiler({
+        sourceFile,
+        transformers: TRANSFORMERS,
+        program: this.program,
+        ignoreErrors: this.flags.ignoreErrors,
+        includeComments: this.flags.includeComments,
+        includeTodos: this.flags.includeTodos,
+      });
+      this.sourceFileTranspilers.set(sourceFile.fileName, transpiler);
     });
   };
 

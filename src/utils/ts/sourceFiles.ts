@@ -10,7 +10,14 @@ export class IntermediateSourceFile implements RawSourceFile {
   readonly dirPath: string;
 
   constructor(readonly fileName: string, readonly text: string) {
-    this.filePath = path.join(process.cwd(), this.fileName);
-    this.dirPath = path.join(process.cwd(), path.dirname(this.fileName));
+    const isAbsolute = path.isAbsolute(this.fileName);
+    this.filePath = path.normalize(
+      isAbsolute ? this.fileName : path.join(process.cwd(), this.fileName),
+    );
+    this.dirPath = path.normalize(
+      isAbsolute
+        ? path.dirname(this.fileName)
+        : path.join(process.cwd(), path.dirname(this.fileName)),
+    );
   }
 }

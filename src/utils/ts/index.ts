@@ -1,2 +1,2 @@
-export * from './createCompilerHost';
+export * from './createInMemoryCompilerHost';
 export * from './sourceFiles';

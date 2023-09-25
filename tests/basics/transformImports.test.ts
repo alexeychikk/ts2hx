@@ -17,12 +17,11 @@ import * as allImports from './namedExports';
       )
       .run(),
   ).resolves.toMatchInlineSnapshot(`
-    "
-    /* import './side-effect'; */
+    "/* import './side-effect'; */
     import DefaultExport.default as defaultImport;
     import NamedExports.foo;
     import NamedExports.bar as quz;
-    /* import * as allImports from './namedExports'; */ 
+    /* import * as allImports from './namedExports'; */
     "
   `);
 });
@@ -35,9 +34,8 @@ import { Class } from './utility-types';
       .addSourceFile('./utility-types.ts', `export type Class = {};`)
       .run(),
   ).resolves.toMatchInlineSnapshot(`
+    "import Utility_types.Class;
     "
-    import Utility_types.Class;
-      "
   `);
 });
 
@@ -52,9 +50,8 @@ import type { Class } from 'utility-types';
       )
       .run(),
   ).resolves.toMatchInlineSnapshot(`
+    "import node_modules.utility_types.Index.Class;
     "
-    import node_modules.utility_types.Index.Class;
-      "
   `);
 });
 
@@ -80,9 +77,8 @@ import { type HelloWorld } from '../../hello/world';
   ).resolves.toMatchInlineSnapshot(`
     "package foo.bar;
 
-
     import foo.bar.utility_types.x_01_Hello_world_com.X_02_foo_bar_dto.Class;
     import hello.world.HelloWorld.HelloWorld;
-      "
+    "
   `);
 });

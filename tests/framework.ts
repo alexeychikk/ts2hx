@@ -1,7 +1,7 @@
 import ts from 'typescript';
 import path from 'path';
 import { Converter } from '@src/Converter';
-import { IntermediateSourceFile, createCompilerHost } from '@src/utils';
+import { IntermediateSourceFile, createInMemoryCompilerHost } from '@src/utils';
 
 export async function ts2hx(
   strings: TemplateStringsArray | string,
@@ -28,7 +28,7 @@ export class Ts2hx {
     const program = ts.createProgram(
       this.sourceFiles.map((s) => path.join(process.cwd(), s.fileName)),
       options,
-      createCompilerHost({
+      createInMemoryCompilerHost({
         options,
         sourceFiles: this.sourceFiles,
       }),

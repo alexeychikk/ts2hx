@@ -14,7 +14,8 @@ test('transforms template string literal expression', async () => {
     ts2hx(
       'let myLiteral = `foo ${varX} bar ${varY ? `inner ${varZ} end` : ""} baz`;',
     ),
-  ).resolves.toEqual(
-    "var myLiteral = 'foo ${varX} bar ${(varY != null) ? 'inner ${varZ} end' : \"\"} baz';",
-  );
+  ).resolves.toMatchInlineSnapshot(`
+    "var myLiteral = 'foo \${varX} bar \${(varY != null) ? 'inner \${varZ} end' : ""} baz';
+    "
+  `);
 });
