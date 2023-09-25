@@ -7,7 +7,7 @@ import { exec } from 'child_process';
 
 import { Transpiler, TRANSFORMERS } from './transformers';
 import { logger } from './Logger';
-import { asyncPool } from './utils';
+import { asyncPool, createCompilerHost } from './utils';
 
 const execAsync = promisify(exec);
 
@@ -43,8 +43,6 @@ export interface ConverterFlags {
 
 export class Converter {
   program: ts.Program;
-  typeChecker: ts.TypeChecker;
-  compilerOptions: ts.CompilerOptions;
   outputDirPath?: string;
   flags: ConverterFlags;
   sourceFileTranspilers = new Map<ts.SourceFile, Transpiler>();
@@ -56,11 +54,12 @@ export class Converter {
     this.program =
       'program' in options ? options.program : this.createProgram(options);
     this.outputDirPath = options.outputDirPath;
-    this.typeChecker = this.program.getTypeChecker();
-    this.compilerOptions = this.program.getCompilerOptions();
+    // warm up
+    const typeChecker = this.program.getTypeChecker();
+    const compilerOptions = this.program.getCompilerOptions();
     this.flags = options.flags ?? {};
 
-    if (!this.compilerOptions.rootDir) {
+    if (!compilerOptions.rootDir) {
       throw new Error('rootDir must be set in your tsconfig.json');
     }
   }
@@ -73,6 +72,9 @@ export class Converter {
 
     logger.log('Running TS transformers');
     await this.runTsTransformers();
+
+    logger.log('Running HX transformers');
+    await this.runHxTransformers();
 
     logger.log('Emitting Haxe code');
     await this.emitHaxeCode();
@@ -193,14 +195,23 @@ export class Converter {
         const transpiler = new Transpiler({
           sourceFile,
           transformers: TRANSFORMERS,
-          typeChecker: this.typeChecker,
-          compilerOptions: this.compilerOptions,
+          program: this.program,
           ignoreErrors: this.flags.ignoreErrors,
           includeComments: this.flags.includeComments,
           includeTodos: this.flags.includeTodos,
         });
         this.sourceFileTranspilers.set(sourceFile, transpiler);
         transpiler.runTsTransformers();
+      },
+      { concurrency: 100 },
+    );
+  };
+
+  protected runHxTransformers = async (): Promise<void> => {
+    await asyncPool(
+      this.sourceFileTranspilers.values(),
+      async (transpiler) => {
+        transpiler.runHxTransformers();
       },
       { concurrency: 100 },
     );
@@ -218,6 +229,20 @@ export class Converter {
       },
       { concurrency: 100 },
     );
+  };
+
+  protected reloadProgram = (): void => {
+    const rootNames = this.program.getRootFileNames();
+    const options = this.program.getCompilerOptions();
+    const sourceFiles = Array.from(this.sourceFileTranspilers.values()).map(
+      (t) => t.sourceFile,
+    );
+    const host = createCompilerHost({ options, sourceFiles });
+    this.program = ts.createProgram({
+      rootNames,
+      options,
+      host,
+    });
   };
 
   protected async writeOutputFile(

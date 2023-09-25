@@ -1,4 +1,4 @@
-import type ts from 'typescript';
+import ts from 'typescript';
 import { mapValues } from 'lodash';
 import { logger } from '../Logger';
 import * as utils from './utils';
@@ -28,8 +28,7 @@ export class Transpiler {
   ignoreErrors?: boolean;
   includeComments?: boolean;
   includeTodos?: boolean;
-  typeChecker: ts.TypeChecker;
-  compilerOptions: ts.CompilerOptions;
+  program: ts.Program;
   sourceFile: ts.SourceFile;
   transformers: TransformerFn[];
   haxeCode?: string;
@@ -44,19 +43,24 @@ export class Transpiler {
     exception?: boolean;
   } = {};
 
+  protected printer = ts.createPrinter({
+    newLine: ts.NewLineKind.LineFeed,
+    removeComments: false,
+    omitTrailingSemicolon: false,
+    noEmitHelpers: false,
+  });
+
   utils = mapValues(utils, (fn) => fn.bind(this)) as TransformerUtils;
 
   constructor(options: {
-    typeChecker: ts.TypeChecker;
-    compilerOptions: ts.CompilerOptions;
+    program: ts.Program;
     sourceFile: ts.SourceFile;
     transformers: TransformerFn[];
     ignoreErrors?: boolean;
     includeComments?: boolean;
     includeTodos?: boolean;
   }) {
-    this.typeChecker = options.typeChecker;
-    this.compilerOptions = options.compilerOptions;
+    this.program = options.program;
     this.sourceFile = options.sourceFile;
     this.transformers = options.transformers;
     this.ignoreErrors = options.ignoreErrors;
@@ -64,8 +68,40 @@ export class Transpiler {
     this.includeTodos = options.includeTodos;
   }
 
+  get typeChecker(): ts.TypeChecker {
+    return this.program.getTypeChecker();
+  }
+
+  get compilerOptions(): ts.CompilerOptions {
+    return this.program.getCompilerOptions();
+  }
+
   runTsTransformers(): void {
-    // TODO
+    const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
+      return (sourceFile) => {
+        const visitor = (node: ts.Node): ts.Node => {
+          // TODO: iterate over visitors
+          return ts.visitEachChild(node, visitor, context);
+        };
+        return ts.visitNode(sourceFile, visitor) as ts.SourceFile;
+      };
+    };
+
+    const { transformed } = ts.transform(this.sourceFile, [transformer]);
+    const newCode = this.printer.printFile(transformed[0]);
+    this.sourceFile = this.sourceFile.update(
+      newCode,
+      ts.createTextChangeRange(
+        ts.createTextSpanFromBounds(0, this.sourceFile.end),
+        newCode.length,
+      ),
+    );
+  }
+
+  runHxTransformers(): void {
+    // TODO: there is an option to create ts identifiers that hold Haxe-specific
+    // syntax/keywords but that feels wrong and could lead to bugs when using
+    // ts TransformationContext and TypeChecker methods
   }
 
   emit(): string {
