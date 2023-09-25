@@ -11,8 +11,8 @@ let myInstanceof = myFoo instanceof Foo;
       public function new() {}
 
     }
-    var  myFoo =  new Foo();
-    var  myInstanceof =  Std.isOfType(myFoo, Foo);
+    var myFoo = new Foo();
+    var myInstanceof = Std.isOfType(myFoo, Foo);
     "
   `);
 });

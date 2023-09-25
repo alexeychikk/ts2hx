@@ -32,19 +32,19 @@ let myNaN = NaN;
 `,
   ).resolves.toMatchInlineSnapshot(`
     "
-    var  myNumber:  Float;
-    var  myString:  String;
-    var  myBoolean:  Bool;
-    var  myUndefined:  Null<Any>;
-    var  myVoid:  () -> Void;
-    var  myNever:  Void;
-    var  myUnknown:  Any;
-    var  myAny:  Any;
-    var  myAsKeyword =  ( [] : Array< String>);
-    var  myAsyncAwait =  @async function() {
+    var myNumber: Float;
+    var myString: String;
+    var myBoolean: Bool;
+    var myUndefined: Null<Any>;
+    var myVoid: () -> Void;
+    var myNever: Void;
+    var myUnknown: Any;
+    var myAny: Any;
+    var myAsKeyword = ( [] : Array< String>);
+    var myAsyncAwait = @async function() {
       @await  Promise.resolve();
     };
-      final  myExport =  {};
+      final myExport = {};
      
      
     class MyReadonlyClass  {
@@ -58,10 +58,10 @@ let myNaN = NaN;
     typedef MyReadonlyType {
       public final myReadonly:  Float;
     }
-    var  myEqEqEqToken =  3 == "3";
-    var  myExEqEqToken =  3 != "3";
-    var  myUndefinedValue =  null;
-    var  myNaN =  Math.NaN;
+    var myEqEqEqToken = 3 == "3";
+    var myExEqEqToken = 3 != "3";
+    var myUndefinedValue = null;
+    var myNaN = Math.NaN;
     "
   `);
 });

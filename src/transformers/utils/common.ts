@@ -136,7 +136,7 @@ export function visitParenthesized(
   node: ts.Node,
   context: VisitNodeContext,
 ): string {
-  const code = this.visitNode(node, context);
+  const code = this.visitNode(node, context).trim();
   return ts.isIdentifier(node) ? code : `(${code})`;
 }
 

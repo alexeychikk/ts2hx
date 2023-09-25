@@ -11,6 +11,11 @@ type TransformerUtils = {
 export interface VisitNodeContext {
   enforceParameterType?: boolean;
   skipParameterInitializer?: boolean;
+  variableDeclaration?: {
+    variableDeclarationIndent?: string;
+    variableDeclarationKeyword?: string;
+    variableDeclarationInitializer?: string;
+  };
 }
 
 export type TransformerFn = (
