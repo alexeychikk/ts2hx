@@ -1,7 +1,7 @@
 import ts, { SyntaxKind } from 'typescript';
-import { type Transpiler, type TransformerFn } from '../Transpiler';
+import { type Transpiler, type EmitFn } from '../Transpiler';
 
-export const transformVariableStatement: TransformerFn = function (
+export const transformVariableStatement: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -15,7 +15,7 @@ export const transformVariableStatement: TransformerFn = function (
   return this.utils.omitChildrenByKind(node, context, SyntaxKind.JSDoc);
 };
 
-export const transformVariableDeclarationList: TransformerFn = function (
+export const transformVariableDeclarationList: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -38,7 +38,7 @@ export const transformVariableDeclarationList: TransformerFn = function (
     .trimStart();
 };
 
-export const transformVariableDeclaration: TransformerFn = function (
+export const transformVariableDeclaration: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -78,7 +78,7 @@ export const transformVariableDeclaration: TransformerFn = function (
 };
 
 // { foo: bar = 'baz', [bar]: baz, ...rest } = obj
-export const transformObjectBindingPattern: TransformerFn = function (
+export const transformObjectBindingPattern: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -178,7 +178,7 @@ export const transformObjectBindingPattern: TransformerFn = function (
 };
 
 // [first, , third, ...rest] = arr
-export const transformArrayBindingPattern: TransformerFn = function (
+export const transformArrayBindingPattern: EmitFn = function (
   this: Transpiler,
   node,
   context,

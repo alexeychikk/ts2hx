@@ -73,9 +73,6 @@ export class Converter {
     logger.log('Running TS transformers');
     await this.runTsTransformers();
 
-    logger.log('Running HX transformers');
-    await this.runHxTransformers();
-
     logger.log('Emitting Haxe code');
     await this.emitHaxeCode();
 
@@ -202,17 +199,6 @@ export class Converter {
         });
         this.sourceFileTranspilers.set(sourceFile.fileName, transpiler);
         transpiler.runTsTransformers();
-      },
-      { concurrency: 100 },
-    );
-    this.reloadProgram();
-  };
-
-  protected runHxTransformers = async (): Promise<void> => {
-    await asyncPool(
-      this.sourceFileTranspilers.values(),
-      async (transpiler) => {
-        transpiler.runHxTransformers();
       },
       { concurrency: 100 },
     );

@@ -1,10 +1,7 @@
 import ts from 'typescript';
-import { type Transpiler, type TransformerFn } from '../Transpiler';
+import { type Transpiler, type EmitFn } from '../Transpiler';
 
-export const transformJsApiAccess: TransformerFn = function (
-  this: Transpiler,
-  node,
-) {
+export const transformJsApiAccess: EmitFn = function (this: Transpiler, node) {
   if (!ts.isPropertyAccessExpression(node)) return;
 
   const code: string | undefined = (() => {
@@ -18,7 +15,7 @@ export const transformJsApiAccess: TransformerFn = function (
   return code;
 };
 
-export const transformJsIdentifiers: TransformerFn = function (
+export const transformJsIdentifiers: EmitFn = function (
   this: Transpiler,
   node,
 ) {

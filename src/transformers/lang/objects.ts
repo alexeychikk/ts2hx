@@ -1,8 +1,8 @@
 import ts, { SyntaxKind } from 'typescript';
 import { logger } from '../../Logger';
-import { type Transpiler, type TransformerFn } from '../Transpiler';
+import { type Transpiler, type EmitFn } from '../Transpiler';
 
-export const transformObjectLiteralExpression: TransformerFn = function (
+export const transformObjectLiteralExpression: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -56,7 +56,7 @@ export const transformObjectLiteralExpression: TransformerFn = function (
   return result;
 };
 
-export const transformPropertyAssignment: TransformerFn = function (
+export const transformPropertyAssignment: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -84,7 +84,7 @@ export const transformPropertyAssignment: TransformerFn = function (
   }
 };
 
-export const transformShorthandPropertyAssignment: TransformerFn = function (
+export const transformShorthandPropertyAssignment: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -95,7 +95,7 @@ export const transformShorthandPropertyAssignment: TransformerFn = function (
   return `${node.name.text}:${this.visitNode(node.name, context)}`;
 };
 
-export const transformElementAccess: TransformerFn = function (
+export const transformElementAccess: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -119,7 +119,7 @@ export const transformElementAccess: TransformerFn = function (
   }
 };
 
-export const transformElementWriteToObject: TransformerFn = function (
+export const transformElementWriteToObject: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -144,10 +144,7 @@ export const transformElementWriteToObject: TransformerFn = function (
   }
 };
 
-export const transformGetSet: TransformerFn = function (
-  this: Transpiler,
-  node,
-) {
+export const transformGetSet: EmitFn = function (this: Transpiler, node) {
   // { get prop() {}, set prop(value) {} }
   if (!(ts.isGetAccessor(node) || ts.isSetAccessor(node))) return;
   if (!ts.isObjectLiteralExpression(node.parent)) return;
@@ -159,7 +156,7 @@ export const transformGetSet: TransformerFn = function (
   );
 };
 
-export const transformMethodOnObject: TransformerFn = function (
+export const transformMethodOnObject: EmitFn = function (
   this: Transpiler,
   node,
   context,

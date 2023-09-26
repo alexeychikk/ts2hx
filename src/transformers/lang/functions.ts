@@ -1,8 +1,8 @@
 import ts from 'typescript';
-import { type Transpiler, type TransformerFn } from '../Transpiler';
+import { type Transpiler, type EmitFn } from '../Transpiler';
 import { logger } from '../../Logger';
 
-export const transformArrowFunction: TransformerFn = function (
+export const transformArrowFunction: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -29,7 +29,7 @@ export const transformArrowFunction: TransformerFn = function (
   return `${modifiers}function ${typeParams}(${params})${returnType}${body}`;
 };
 
-export const transformFunctionParameter: TransformerFn = function (
+export const transformFunctionParameter: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -63,7 +63,7 @@ export const transformFunctionParameter: TransformerFn = function (
   return `${dotDotDotToken}${questionToken}${name}${type}${initializer}`;
 };
 
-export const transformCallExpression: TransformerFn = function (
+export const transformCallExpression: EmitFn = function (
   this: Transpiler,
   node,
   context,

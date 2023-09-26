@@ -3,34 +3,13 @@ import { mapValues } from 'lodash';
 import { logger } from '../Logger';
 import * as utils from './utils';
 
-type Utils = typeof utils;
-type TransformerUtils = {
-  [key in keyof Utils]: OmitThisParameter<Utils[key]>;
-};
-
-export interface VisitNodeContext {
-  enforceParameterType?: boolean;
-  skipParameterInitializer?: boolean;
-  variableDeclaration?: {
-    variableDeclarationIndent?: string;
-    variableDeclarationKeyword?: string;
-    variableDeclarationInitializer?: string;
-  };
-}
-
-export type TransformerFn = (
-  this: Transpiler,
-  node: ts.Node,
-  context: VisitNodeContext,
-) => string | undefined;
-
 export class Transpiler {
   ignoreErrors?: boolean;
   includeComments?: boolean;
   includeTodos?: boolean;
   program: ts.Program;
   sourceFile: ts.SourceFile;
-  transformers: TransformerFn[];
+  transformers: EmitFn[];
   haxeCode?: string;
 
   protected nodesToIgnore = new Set<ts.Node>();
@@ -55,7 +34,7 @@ export class Transpiler {
   constructor(options: {
     program: ts.Program;
     sourceFile: ts.SourceFile;
-    transformers: TransformerFn[];
+    transformers: EmitFn[];
     ignoreErrors?: boolean;
     includeComments?: boolean;
     includeTodos?: boolean;
@@ -80,7 +59,6 @@ export class Transpiler {
     const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
       return (sourceFile) => {
         const visitor = (node: ts.Node): ts.Node => {
-          // TODO: iterate over visitors
           return ts.visitEachChild(node, visitor, context);
         };
         return ts.visitNode(sourceFile, visitor) as ts.SourceFile;
@@ -183,3 +161,24 @@ export class Transpiler {
     this.nodesToIgnore.add(node);
   }
 }
+
+type Utils = typeof utils;
+type TransformerUtils = {
+  [key in keyof Utils]: OmitThisParameter<Utils[key]>;
+};
+
+export interface VisitNodeContext {
+  enforceParameterType?: boolean;
+  skipParameterInitializer?: boolean;
+  variableDeclaration?: {
+    variableDeclarationIndent?: string;
+    variableDeclarationKeyword?: string;
+    variableDeclarationInitializer?: string;
+  };
+}
+
+export type EmitFn = (
+  this: Transpiler,
+  node: ts.Node,
+  context: VisitNodeContext,
+) => string | undefined;

@@ -1,10 +1,7 @@
 import ts, { SyntaxKind } from 'typescript';
-import { type Transpiler, type TransformerFn } from '../Transpiler';
+import { type Transpiler, type EmitFn } from '../Transpiler';
 
-export const transformLiteralTypes: TransformerFn = function (
-  this: Transpiler,
-  node,
-) {
+export const transformLiteralTypes: EmitFn = function (this: Transpiler, node) {
   if (!ts.isLiteralTypeNode(node)) return;
   // myVar: 42
   if (ts.isNumericLiteral(node.literal)) {
@@ -27,7 +24,7 @@ export const transformLiteralTypes: TransformerFn = function (
   }
 };
 
-export const transformArrayType: TransformerFn = function (
+export const transformArrayType: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -37,7 +34,7 @@ export const transformArrayType: TransformerFn = function (
   return `Array<${this.visitNode(node.elementType, context)}>`;
 };
 
-export const transformUnionType: TransformerFn = function (
+export const transformUnionType: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -48,7 +45,7 @@ export const transformUnionType: TransformerFn = function (
   return this.utils.toEitherType(node.types, context);
 };
 
-export const transformTupleType: TransformerFn = function (
+export const transformTupleType: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -60,7 +57,7 @@ export const transformTupleType: TransformerFn = function (
   return res ? `Array<${res}>` : undefined;
 };
 
-export const transformPropertySignature: TransformerFn = function (
+export const transformPropertySignature: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -80,7 +77,7 @@ export const transformPropertySignature: TransformerFn = function (
   };`;
 };
 
-export const transformIndexSignature: TransformerFn = function (
+export const transformIndexSignature: EmitFn = function (
   this: Transpiler,
   node,
 ) {
@@ -90,7 +87,7 @@ export const transformIndexSignature: TransformerFn = function (
   return this.utils.commentOutNode(node, `Index signature is not supported at`);
 };
 
-export const transformMethodSignature: TransformerFn = function (
+export const transformMethodSignature: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -113,7 +110,7 @@ export const transformMethodSignature: TransformerFn = function (
   }):${ret};`;
 };
 
-export const transformConstructorSignature: TransformerFn = function (
+export const transformConstructorSignature: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -127,7 +124,7 @@ export const transformConstructorSignature: TransformerFn = function (
   );
 };
 
-export const transformTypeParameter: TransformerFn = function (
+export const transformTypeParameter: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -146,7 +143,7 @@ export const transformTypeParameter: TransformerFn = function (
   return `${node.name.getText()}${constraint ?? ''}`;
 };
 
-export const transformConditionalType: TransformerFn = function (
+export const transformConditionalType: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -161,7 +158,7 @@ export const transformConditionalType: TransformerFn = function (
   return `${comment} Any`;
 };
 
-export const transformTypeQuery: TransformerFn = function (
+export const transformTypeQuery: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -176,7 +173,7 @@ export const transformTypeQuery: TransformerFn = function (
   return `${comment} Any`;
 };
 
-export const transformEnumDeclaration: TransformerFn = function (
+export const transformEnumDeclaration: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -205,7 +202,7 @@ export const transformEnumDeclaration: TransformerFn = function (
   return `enum abstract ${node.name.text}(${underlyingType}) from ${underlyingType} to ${underlyingType} {\n${members}\n}`;
 };
 
-export const transformIndexedAccessType: TransformerFn = function (
+export const transformIndexedAccessType: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -216,7 +213,7 @@ export const transformIndexedAccessType: TransformerFn = function (
   return this.utils.getNodeTypeString(node, context);
 };
 
-export const transformAsExpression: TransformerFn = function (
+export const transformAsExpression: EmitFn = function (
   this: Transpiler,
   node,
   context,

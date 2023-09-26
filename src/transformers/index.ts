@@ -1,4 +1,4 @@
-import { type TransformerFn } from './Transpiler';
+import { type EmitFn } from './Transpiler';
 
 import * as api from './api';
 import * as lang from './lang';
@@ -7,7 +7,7 @@ export * from './Transpiler';
 export { api, lang };
 
 // Order here actually matters (to some extent)
-export const TRANSFORMERS: TransformerFn[] = [
+export const TRANSFORMERS: EmitFn[] = [
   api.transformJsApiAccess,
   api.transformJsIdentifiers,
   api.transformTsLibTypes,
