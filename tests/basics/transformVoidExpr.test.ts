@@ -6,7 +6,8 @@ let myVoid = void 0;
 void 0;
 void (myFnCall());
 `).resolves.toMatchInlineSnapshot(`
-    "var myVoid = null;
+    "
+    var myVoid = null;
     null;
     (function() { (myFnCall());})();
     "

@@ -22,7 +22,7 @@ class MyReadonlyClass {
   readonly myReadonly = 0;
   protected myProtected?: string;
 }
-type MyReadonlyType {
+type MyReadonlyType = {
   readonly myReadonly: number;
 }
 let myEqEqEqToken = 3 === "3";
@@ -31,7 +31,8 @@ let myUndefinedValue = undefined;
 let myNaN = NaN;
 `,
   ).resolves.toMatchInlineSnapshot(`
-    "var myNumber: Float;
+    "
+    var myNumber: Float;
     var myString: String;
     var myBoolean: Bool;
     var myUndefined: Null<Any>;
@@ -40,8 +41,8 @@ let myNaN = NaN;
     var myUnknown: Any;
     var myAny: Any;
     var myAsKeyword = ( [] : Array< String>);
-    var myAsyncAwait = @async function () {
-        @await  Promise.resolve();
+    var myAsyncAwait = @async function() {
+      @await  Promise.resolve();
     };
       final myExport = {};
      
@@ -49,14 +50,14 @@ let myNaN = NaN;
     class MyReadonlyClass  {
       public function new() {}
 
-        public 
-          final myReadonly=  0;
-        
-        private var myProtected: Null< String>;
+      public 
+        final myReadonly=  0;
+      
+      private var myProtected: Null< String>;
     }
     typedef MyReadonlyType = {
-        public final myReadonly:  Float;
-    };
+      public final myReadonly:  Float;
+    }
     var myEqEqEqToken = 3 == "3";
     var myExEqEqToken = 3 != "3";
     var myUndefinedValue = null;

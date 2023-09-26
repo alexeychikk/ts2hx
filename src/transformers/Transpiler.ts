@@ -66,14 +66,7 @@ export class Transpiler {
     };
 
     const { transformed } = ts.transform(this.sourceFile, [transformer]);
-    const newCode = this.printer.printFile(transformed[0]);
-    this.sourceFile = this.sourceFile.update(
-      newCode,
-      ts.createTextChangeRange(
-        ts.createTextSpanFromBounds(0, this.sourceFile.end),
-        newCode.length,
-      ),
-    );
+    this.sourceFile = transformed[0];
   }
 
   runHxTransformers(): void {

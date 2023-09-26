@@ -5,7 +5,8 @@ test('transforms pow expression', async () => {
 let myPow = 2 ** 3;
 myPow **= 4;
 `).resolves.toMatchInlineSnapshot(`
-    "var myPow = Math.pow( 2,  3);
+    "
+    var myPow = Math.pow( 2,  3);
 
     myPow = Math.pow(myPow,  4);
     "
