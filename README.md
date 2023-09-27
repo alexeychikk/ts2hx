@@ -1,3 +1,5 @@
+[![Test](https://github.com/alexeychikk/ts2hx/actions/workflows/test.yml/badge.svg)](https://github.com/alexeychikk/ts2hx/actions/workflows/test.yml)
+
 # ⚠️ WORK IN PROGRESS ⚠️
 
 ### Converts [TypeScript](https://www.typescriptlang.org/) into [Haxe](https://haxe.org/).
