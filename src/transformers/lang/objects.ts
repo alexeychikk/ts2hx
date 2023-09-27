@@ -155,19 +155,3 @@ export const transformGetSet: EmitFn = function (this: Transpiler, node) {
     `Getters and setters on object literals are not supported at`,
   );
 };
-
-export const transformMethodOnObject: EmitFn = function (
-  this: Transpiler,
-  node,
-  context,
-) {
-  // { methodOnObject() {} }
-  if (!ts.isMethodDeclaration(node)) return;
-  if (!ts.isObjectLiteralExpression(node.parent)) return;
-  return this.utils.replaceChild(
-    node,
-    context,
-    node.name,
-    `${node.name.getText()}: function`,
-  );
-};

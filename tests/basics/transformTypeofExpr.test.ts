@@ -5,8 +5,7 @@ test('transforms typeof expression', async () => {
 let myString = "foo";
 let myTypeof = typeof myString;
 `).resolves.toMatchInlineSnapshot(`
-    "
-    var myString = "foo";
+    "var myString = "foo";
     var myTypeof = Ts2hx.typeof( myString);
     "
   `);

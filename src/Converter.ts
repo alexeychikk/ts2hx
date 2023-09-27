@@ -5,9 +5,13 @@ import os from 'os';
 import { promisify } from 'util';
 import { exec } from 'child_process';
 
-import { Transpiler, TRANSFORMERS } from './transformers';
+import { Transpiler, EMITTERS, TRANSFORMERS } from './transformers';
 import { logger } from './Logger';
-import { asyncPool, createInMemoryCompilerHost } from './utils';
+import {
+  type RawSourceFile,
+  asyncPool,
+  createInMemoryCompilerHost,
+} from './utils';
 
 const execAsync = promisify(exec);
 
@@ -48,6 +52,9 @@ export class Converter {
   sourceFileTranspilers = new Map<string, Transpiler>();
 
   protected startTime: number;
+  protected printer = ts.createPrinter({
+    newLine: ts.NewLineKind.LineFeed,
+  });
 
   constructor(options: ConverterOptions) {
     this.startTime = Date.now();
@@ -192,6 +199,7 @@ export class Converter {
         const transpiler = new Transpiler({
           sourceFile,
           transformers: TRANSFORMERS,
+          emitters: EMITTERS,
           program: this.program,
           ignoreErrors: this.flags.ignoreErrors,
           includeComments: this.flags.includeComments,
@@ -222,13 +230,20 @@ export class Converter {
   protected reloadProgram = (): void => {
     const rootNames = this.program.getRootFileNames();
     const options = this.program.getCompilerOptions();
-    const sourceFiles = this.program
+
+    const sourceFiles: RawSourceFile[] = this.program
       .getSourceFiles()
-      .map((sf) =>
-        this.sourceFileTranspilers.has(sf.fileName)
-          ? this.sourceFileTranspilers.get(sf.fileName)!.sourceFile
-          : sf,
-      );
+      .map((sf) => {
+        if (this.sourceFileTranspilers.has(sf.fileName)) {
+          const file = this.sourceFileTranspilers.get(sf.fileName)!.sourceFile;
+          return {
+            fileName: file.fileName,
+            text: this.printer.printFile(file),
+          };
+        }
+        return sf;
+      });
+
     const host = createInMemoryCompilerHost({ options, sourceFiles });
     this.program = ts.createProgram({
       rootNames,
@@ -245,6 +260,7 @@ export class Converter {
       const transpiler = new Transpiler({
         sourceFile,
         transformers: TRANSFORMERS,
+        emitters: EMITTERS,
         program: this.program,
         ignoreErrors: this.flags.ignoreErrors,
         includeComments: this.flags.includeComments,

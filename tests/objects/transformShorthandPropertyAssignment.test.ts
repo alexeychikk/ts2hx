@@ -5,9 +5,8 @@ test('transforms shorthand property assignment', async () => {
 let foo = "bar";
 let bar = { foo };
   `).resolves.toMatchInlineSnapshot(`
-    "
-    var foo = "bar";
+    "var foo = "bar";
     var bar = { foo: foo };
-      "
+    "
   `);
 });

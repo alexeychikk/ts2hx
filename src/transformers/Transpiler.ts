@@ -9,7 +9,8 @@ export class Transpiler {
   includeTodos?: boolean;
   program: ts.Program;
   sourceFile: ts.SourceFile;
-  transformers: EmitFn[];
+  transformers: TransformerFn[];
+  emitters: EmitFn[];
   haxeCode?: string;
 
   protected nodesToIgnore = new Set<ts.Node>();
@@ -22,19 +23,13 @@ export class Transpiler {
     exception?: boolean;
   } = {};
 
-  protected printer = ts.createPrinter({
-    newLine: ts.NewLineKind.LineFeed,
-    removeComments: false,
-    omitTrailingSemicolon: false,
-    noEmitHelpers: false,
-  });
-
   utils = mapValues(utils, (fn) => fn.bind(this)) as TransformerUtils;
 
   constructor(options: {
     program: ts.Program;
     sourceFile: ts.SourceFile;
-    transformers: EmitFn[];
+    transformers: TransformerFn[];
+    emitters: EmitFn[];
     ignoreErrors?: boolean;
     includeComments?: boolean;
     includeTodos?: boolean;
@@ -42,6 +37,7 @@ export class Transpiler {
     this.program = options.program;
     this.sourceFile = options.sourceFile;
     this.transformers = options.transformers;
+    this.emitters = options.emitters;
     this.ignoreErrors = options.ignoreErrors;
     this.includeComments = options.includeComments;
     this.includeTodos = options.includeTodos;
@@ -59,7 +55,8 @@ export class Transpiler {
     const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
       return (sourceFile) => {
         const visitor = (node: ts.Node): ts.Node => {
-          return ts.visitEachChild(node, visitor, context);
+          const result = this.transformNode(node, context);
+          return result ?? ts.visitEachChild(node, visitor, context);
         };
         return ts.visitNode(sourceFile, visitor) as ts.SourceFile;
       };
@@ -102,7 +99,7 @@ export class Transpiler {
       return ' ';
     }
 
-    const transformedCode = this.transformNode(node, context);
+    const transformedCode = this.emitNode(node, context);
     if (transformedCode != null) {
       return this.dump(node, transformedCode);
     }
@@ -112,9 +109,24 @@ export class Transpiler {
 
   protected transformNode(
     node: ts.Node,
+    context: ts.TransformationContext,
+  ): ts.Node | undefined {
+    for (const fn of this.transformers) {
+      try {
+        const result = fn.call(this, node, context);
+        if (result != null) return result;
+      } catch (error) {
+        if (!this.ignoreErrors) throw error;
+        logger.error(error);
+      }
+    }
+  }
+
+  protected emitNode(
+    node: ts.Node,
     context: VisitNodeContext,
   ): string | undefined {
-    for (const fn of this.transformers) {
+    for (const fn of this.emitters) {
       try {
         const result = fn.call(this, node, context);
         if (result != null) return result;
@@ -169,6 +181,12 @@ export interface VisitNodeContext {
     variableDeclarationInitializer?: string;
   };
 }
+
+export type TransformerFn = (
+  this: Transpiler,
+  node: ts.Node,
+  context: ts.TransformationContext,
+) => ts.Node | undefined;
 
 export type EmitFn = (
   this: Transpiler,
