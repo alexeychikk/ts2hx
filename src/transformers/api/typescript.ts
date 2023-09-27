@@ -1,8 +1,8 @@
 import ts from 'typescript';
 import { logger } from '../../Logger';
-import { type Transpiler, type TransformerFn } from '../Transpiler';
+import { type Transpiler, type EmitFn } from '../Transpiler';
 
-export const transformTsLibTypes: TransformerFn = function (
+export const transformTsLibTypes: EmitFn = function (
   this: Transpiler,
   node,
   context,

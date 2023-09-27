@@ -1,6 +1,7 @@
 import ts from 'typescript';
 import path from 'path';
 import { Converter } from '@src/Converter';
+import { IntermediateSourceFile, createInMemoryCompilerHost } from '@src/utils';
 
 export async function ts2hx(
   strings: TemplateStringsArray | string,
@@ -11,22 +12,26 @@ export async function ts2hx(
 
 export class Ts2hx {
   converter?: Converter;
-  sourceFiles: FakeSourceFile[] = [];
+  sourceFiles: IntermediateSourceFile[] = [];
 
-  constructor(code: string, fileName = './main.ts') {
-    this.addSourceFile(fileName, code);
+  constructor(text: string, fileName = './main.ts') {
+    this.addSourceFile(fileName, text);
   }
 
-  addSourceFile(fileName: string, code: string): Ts2hx {
-    this.sourceFiles.push(new FakeSourceFile(fileName, code));
+  addSourceFile(fileName: string, text: string): Ts2hx {
+    this.sourceFiles.push(new IntermediateSourceFile(fileName, text));
     return this;
   }
 
   async run(): Promise<string> {
+    const options: ts.CompilerOptions = { rootDir: '.' };
     const program = ts.createProgram(
       this.sourceFiles.map((s) => path.join(process.cwd(), s.fileName)),
-      { rootDir: '.' },
-      this.createCompilerHost(),
+      options,
+      createInMemoryCompilerHost({
+        options,
+        sourceFiles: this.sourceFiles,
+      }),
     );
 
     this.converter = new Converter({
@@ -45,59 +50,5 @@ export class Ts2hx {
     )!;
 
     return transpiler.haxeCode!;
-  }
-
-  protected createCompilerHost(): ts.CompilerHost {
-    const host = ts.createCompilerHost({ rootDir: '.' }, true);
-
-    const originalReadFile = host.readFile.bind(host);
-    const originalFileExists = host.fileExists.bind(host);
-    const originalReadDirectory = host.readDirectory?.bind(host);
-    const originalDirectoryExists = host.directoryExists?.bind(host);
-
-    host.readFile = (fileName: string): string | undefined => {
-      const filePath = path.normalize(fileName);
-      const fakeFile = this.sourceFiles.find((sf) => sf.filePath === filePath);
-      return fakeFile ? fakeFile.code : originalReadFile(fileName);
-    };
-    host.fileExists = (fileName: string): boolean => {
-      const filePath = path.normalize(fileName);
-      const fakeFile = this.sourceFiles.find((sf) => sf.filePath === filePath);
-      return fakeFile ? true : originalFileExists(fileName);
-    };
-    host.writeFile = () => undefined;
-    host.readDirectory = (rootDir, extensions, excludes, includes, depth) => {
-      // TODO: this doesn't seem to be called at all
-      return (
-        originalReadDirectory?.(
-          rootDir,
-          extensions,
-          excludes,
-          includes,
-          depth,
-        ) ?? []
-      );
-    };
-    host.directoryExists = (directoryName) => {
-      const directoryPath = path.normalize(directoryName);
-      const fakeFile = this.sourceFiles.find((sf) =>
-        sf.dirPath.includes(directoryPath),
-      );
-      return fakeFile
-        ? true
-        : originalDirectoryExists?.(directoryName) ?? false;
-    };
-
-    return host;
-  }
-}
-
-export class FakeSourceFile {
-  readonly filePath: string;
-  readonly dirPath: string;
-
-  constructor(readonly fileName: string, readonly code: string) {
-    this.filePath = path.join(process.cwd(), this.fileName);
-    this.dirPath = path.join(process.cwd(), path.dirname(this.fileName));
   }
 }

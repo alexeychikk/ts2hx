@@ -6,8 +6,7 @@ class Foo {}
 let myFoo = new Foo();
 let myInstanceof = myFoo instanceof Foo;
 `).resolves.toMatchInlineSnapshot(`
-    "
-    class Foo  {
+    "class Foo  {
       public function new() {}
 
     }

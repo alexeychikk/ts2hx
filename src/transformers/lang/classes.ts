@@ -3,10 +3,10 @@ import { logger } from '../../Logger';
 import {
   type VisitNodeContext,
   type Transpiler,
-  type TransformerFn,
+  type EmitFn,
 } from '../Transpiler';
 
-export const transformClassDeclaration: TransformerFn = function (
+export const transformClassDeclaration: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -48,7 +48,7 @@ const getDefaultConstructor = function (
   return `\n${this.utils.getIndent(node)}  public function new() {}\n`;
 };
 
-export const transformHeritageClause: TransformerFn = function (
+export const transformHeritageClause: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -64,7 +64,7 @@ export const transformHeritageClause: TransformerFn = function (
     .join(' ');
 };
 
-export const transformConstructor: TransformerFn = function (
+export const transformConstructor: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -126,7 +126,7 @@ export const transformConstructor: TransformerFn = function (
   )}}`;
 };
 
-export const transformClassPropertyDeclaration: TransformerFn = function (
+export const transformClassPropertyDeclaration: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -159,7 +159,7 @@ export const transformClassPropertyDeclaration: TransformerFn = function (
   )} ${node.name.getText()}${type}${initializer};`;
 };
 
-export const transformClassMethodDeclaration: TransformerFn = function (
+export const transformClassMethodDeclaration: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -179,7 +179,7 @@ export const transformClassMethodDeclaration: TransformerFn = function (
   return `${modifiers}function ${node.name.getText()}${typeParams}(${params})${returnType}${body}`;
 };
 
-export const transformClassGetter: TransformerFn = function (
+export const transformClassGetter: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -195,7 +195,7 @@ export const transformClassGetter: TransformerFn = function (
   return `${property}${modifiers}function get_${node.name.getText()}()${type}${body}`;
 };
 
-export const transformClassSetter: TransformerFn = function (
+export const transformClassSetter: EmitFn = function (
   this: Transpiler,
   node,
   context,

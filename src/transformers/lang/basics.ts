@@ -2,13 +2,10 @@ import ts, { SyntaxKind } from 'typescript';
 import {
   type VisitNodeContext,
   type Transpiler,
-  type TransformerFn,
+  type EmitFn,
 } from '../Transpiler';
 
-export const transformKeywords: TransformerFn = function (
-  this: Transpiler,
-  node,
-) {
+export const transformKeywords: EmitFn = function (this: Transpiler, node) {
   switch (node.kind) {
     // myVar: number
     case SyntaxKind.NumberKeyword:
@@ -65,31 +62,7 @@ export const transformKeywords: TransformerFn = function (
   }
 };
 
-export const transformPowExpression: TransformerFn = function (
-  this: Transpiler,
-  node,
-  context,
-) {
-  // myNum ** 3
-  if (!ts.isBinaryExpression(node)) return;
-
-  if (node.operatorToken.kind === SyntaxKind.AsteriskAsteriskToken) {
-    return `Math.pow(${this.visitNode(node.left, context)}, ${this.visitNode(
-      node.right,
-      context,
-    )})`;
-  }
-
-  if (node.operatorToken.kind === SyntaxKind.AsteriskAsteriskEqualsToken) {
-    const left = this.visitNode(node.left, context);
-    return `${left} = Math.pow(${left.trim()}, ${this.visitNode(
-      node.right,
-      context,
-    )})`;
-  }
-};
-
-export const transformSimpleTemplate: TransformerFn = function (
+export const transformSimpleTemplate: EmitFn = function (
   this: Transpiler,
   node,
 ) {
@@ -98,7 +71,7 @@ export const transformSimpleTemplate: TransformerFn = function (
   return `"${this.utils.escapeStringText(node.text)}"`;
 };
 
-export const transformTemplateExpression: TransformerFn = function (
+export const transformTemplateExpression: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -110,7 +83,7 @@ export const transformTemplateExpression: TransformerFn = function (
     .join('')}'`;
 };
 
-export const transformTemplateParts: TransformerFn = function (
+export const transformTemplateParts: EmitFn = function (
   this: Transpiler,
   node,
 ) {
@@ -118,13 +91,13 @@ export const transformTemplateParts: TransformerFn = function (
   return `}${this.utils.escapeTemplateText(node.text)}`;
 };
 
-export const transformRegex: TransformerFn = function (this: Transpiler, node) {
+export const transformRegex: EmitFn = function (this: Transpiler, node) {
   // /[a-z]{0,9}/gim
   if (!ts.isRegularExpressionLiteral(node)) return;
   return `~${node.text}`;
 };
 
-export const transformVoidExpression: TransformerFn = function (
+export const transformVoidExpression: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -140,7 +113,7 @@ export const transformVoidExpression: TransformerFn = function (
   }
 };
 
-export const transformTypeofExpression: TransformerFn = function (
+export const transformTypeofExpression: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -150,7 +123,7 @@ export const transformTypeofExpression: TransformerFn = function (
   return `Ts2hx.typeof(${this.visitNode(node.expression, context)})`;
 };
 
-export const transformInstanceOfExpression: TransformerFn = function (
+export const transformInstanceOfExpression: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -170,7 +143,7 @@ export const transformInstanceOfExpression: TransformerFn = function (
   return `Std.isOfType(${left}, ${right})`;
 };
 
-export const transformImportDeclaration: TransformerFn = function (
+export const transformImportDeclaration: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -226,7 +199,7 @@ export const transformImportDeclaration: TransformerFn = function (
   return '';
 };
 
-export const transformRenameSymbol: TransformerFn = function (
+export const transformRenameSymbol: EmitFn = function (
   this: Transpiler,
   node,
   context: VisitNodeContext,

@@ -1,13 +1,19 @@
-import { type TransformerFn } from './Transpiler';
+import { type TransformerFn, type EmitFn } from './Transpiler';
 
 import * as api from './api';
 import * as lang from './lang';
+import * as tr from './ts';
 
 export * from './Transpiler';
 export { api, lang };
 
-// Order here actually matters (to some extent)
 export const TRANSFORMERS: TransformerFn[] = [
+  tr.transformPowExpression,
+  tr.transformMethodOnObject,
+];
+
+// Order here actually matters (to some extent)
+export const EMITTERS: EmitFn[] = [
   api.transformJsApiAccess,
   api.transformJsIdentifiers,
   api.transformTsLibTypes,
@@ -43,11 +49,9 @@ export const TRANSFORMERS: TransformerFn[] = [
   lang.transformElementAccess,
   lang.transformElementWriteToObject,
   lang.transformGetSet,
-  lang.transformMethodOnObject,
   lang.transformArrowFunction,
   lang.transformFunctionParameter,
   lang.transformCallExpression,
-  lang.transformPowExpression,
   lang.transformInstanceOfExpression,
   lang.transformVoidExpression,
   lang.transformAsExpression,

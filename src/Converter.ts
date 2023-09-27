@@ -5,9 +5,13 @@ import os from 'os';
 import { promisify } from 'util';
 import { exec } from 'child_process';
 
-import { Transpiler, TRANSFORMERS } from './transformers';
+import { Transpiler, EMITTERS, TRANSFORMERS } from './transformers';
 import { logger } from './Logger';
-import { asyncPool } from './utils';
+import {
+  type RawSourceFile,
+  asyncPool,
+  createInMemoryCompilerHost,
+} from './utils';
 
 const execAsync = promisify(exec);
 
@@ -43,24 +47,26 @@ export interface ConverterFlags {
 
 export class Converter {
   program: ts.Program;
-  typeChecker: ts.TypeChecker;
-  compilerOptions: ts.CompilerOptions;
   outputDirPath?: string;
   flags: ConverterFlags;
-  sourceFileTranspilers = new Map<ts.SourceFile, Transpiler>();
+  sourceFileTranspilers = new Map<string, Transpiler>();
 
   protected startTime: number;
+  protected printer = ts.createPrinter({
+    newLine: ts.NewLineKind.LineFeed,
+  });
 
   constructor(options: ConverterOptions) {
     this.startTime = Date.now();
     this.program =
       'program' in options ? options.program : this.createProgram(options);
     this.outputDirPath = options.outputDirPath;
-    this.typeChecker = this.program.getTypeChecker();
-    this.compilerOptions = this.program.getCompilerOptions();
+    // warm up
+    this.program.getTypeChecker();
+    const compilerOptions = this.program.getCompilerOptions();
     this.flags = options.flags ?? {};
 
-    if (!this.compilerOptions.rootDir) {
+    if (!compilerOptions.rootDir) {
       throw new Error('rootDir must be set in your tsconfig.json');
     }
   }
@@ -193,17 +199,18 @@ export class Converter {
         const transpiler = new Transpiler({
           sourceFile,
           transformers: TRANSFORMERS,
-          typeChecker: this.typeChecker,
-          compilerOptions: this.compilerOptions,
+          emitters: EMITTERS,
+          program: this.program,
           ignoreErrors: this.flags.ignoreErrors,
           includeComments: this.flags.includeComments,
           includeTodos: this.flags.includeTodos,
         });
-        this.sourceFileTranspilers.set(sourceFile, transpiler);
+        this.sourceFileTranspilers.set(sourceFile.fileName, transpiler);
         transpiler.runTsTransformers();
       },
       { concurrency: 100 },
     );
+    this.reloadProgram();
   };
 
   protected emitHaxeCode = async (): Promise<void> => {
@@ -218,6 +225,49 @@ export class Converter {
       },
       { concurrency: 100 },
     );
+  };
+
+  protected reloadProgram = (): void => {
+    const rootNames = this.program.getRootFileNames();
+    const options = this.program.getCompilerOptions();
+
+    const sourceFiles: RawSourceFile[] = this.program
+      .getSourceFiles()
+      .map((sf) => {
+        if (this.sourceFileTranspilers.has(sf.fileName)) {
+          const file = this.sourceFileTranspilers.get(sf.fileName)!.sourceFile;
+          return {
+            fileName: file.fileName,
+            text: this.printer.printFile(file),
+          };
+        }
+        return sf;
+      });
+
+    const host = createInMemoryCompilerHost({ options, sourceFiles });
+    this.program = ts.createProgram({
+      rootNames,
+      options,
+      host,
+    });
+    // warp up
+    this.program.getTypeChecker();
+    this.program.getCompilerOptions();
+
+    this.sourceFileTranspilers = new Map();
+    this.program.getSourceFiles().forEach((sourceFile) => {
+      if (sourceFile.isDeclarationFile) return;
+      const transpiler = new Transpiler({
+        sourceFile,
+        transformers: TRANSFORMERS,
+        emitters: EMITTERS,
+        program: this.program,
+        ignoreErrors: this.flags.ignoreErrors,
+        includeComments: this.flags.includeComments,
+        includeTodos: this.flags.includeTodos,
+      });
+      this.sourceFileTranspilers.set(sourceFile.fileName, transpiler);
+    });
   };
 
   protected async writeOutputFile(

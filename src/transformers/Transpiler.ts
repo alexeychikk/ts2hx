@@ -1,37 +1,16 @@
-import type ts from 'typescript';
+import ts from 'typescript';
 import { mapValues } from 'lodash';
 import { logger } from '../Logger';
 import * as utils from './utils';
-
-type Utils = typeof utils;
-type TransformerUtils = {
-  [key in keyof Utils]: OmitThisParameter<Utils[key]>;
-};
-
-export interface VisitNodeContext {
-  enforceParameterType?: boolean;
-  skipParameterInitializer?: boolean;
-  variableDeclaration?: {
-    variableDeclarationIndent?: string;
-    variableDeclarationKeyword?: string;
-    variableDeclarationInitializer?: string;
-  };
-}
-
-export type TransformerFn = (
-  this: Transpiler,
-  node: ts.Node,
-  context: VisitNodeContext,
-) => string | undefined;
 
 export class Transpiler {
   ignoreErrors?: boolean;
   includeComments?: boolean;
   includeTodos?: boolean;
-  typeChecker: ts.TypeChecker;
-  compilerOptions: ts.CompilerOptions;
+  program: ts.Program;
   sourceFile: ts.SourceFile;
   transformers: TransformerFn[];
+  emitters: EmitFn[];
   haxeCode?: string;
 
   protected nodesToIgnore = new Set<ts.Node>();
@@ -47,25 +26,50 @@ export class Transpiler {
   utils = mapValues(utils, (fn) => fn.bind(this)) as TransformerUtils;
 
   constructor(options: {
-    typeChecker: ts.TypeChecker;
-    compilerOptions: ts.CompilerOptions;
+    program: ts.Program;
     sourceFile: ts.SourceFile;
     transformers: TransformerFn[];
+    emitters: EmitFn[];
     ignoreErrors?: boolean;
     includeComments?: boolean;
     includeTodos?: boolean;
   }) {
-    this.typeChecker = options.typeChecker;
-    this.compilerOptions = options.compilerOptions;
+    this.program = options.program;
     this.sourceFile = options.sourceFile;
     this.transformers = options.transformers;
+    this.emitters = options.emitters;
     this.ignoreErrors = options.ignoreErrors;
     this.includeComments = options.includeComments;
     this.includeTodos = options.includeTodos;
   }
 
+  get typeChecker(): ts.TypeChecker {
+    return this.program.getTypeChecker();
+  }
+
+  get compilerOptions(): ts.CompilerOptions {
+    return this.program.getCompilerOptions();
+  }
+
   runTsTransformers(): void {
-    // TODO
+    const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
+      return (sourceFile) => {
+        const visitor = (node: ts.Node): ts.Node => {
+          const result = this.transformNode(node, context);
+          return result ?? ts.visitEachChild(node, visitor, context);
+        };
+        return ts.visitNode(sourceFile, visitor) as ts.SourceFile;
+      };
+    };
+
+    const { transformed } = ts.transform(this.sourceFile, [transformer]);
+    this.sourceFile = transformed[0];
+  }
+
+  runHxTransformers(): void {
+    // TODO: there is an option to create ts identifiers that hold Haxe-specific
+    // syntax/keywords but that feels wrong and could lead to bugs when using
+    // ts TransformationContext and TypeChecker methods
   }
 
   emit(): string {
@@ -95,7 +99,7 @@ export class Transpiler {
       return ' ';
     }
 
-    const transformedCode = this.transformNode(node, context);
+    const transformedCode = this.emitNode(node, context);
     if (transformedCode != null) {
       return this.dump(node, transformedCode);
     }
@@ -105,9 +109,24 @@ export class Transpiler {
 
   protected transformNode(
     node: ts.Node,
+    context: ts.TransformationContext,
+  ): ts.Node | undefined {
+    for (const fn of this.transformers) {
+      try {
+        const result = fn.call(this, node, context);
+        if (result != null) return result;
+      } catch (error) {
+        if (!this.ignoreErrors) throw error;
+        logger.error(error);
+      }
+    }
+  }
+
+  protected emitNode(
+    node: ts.Node,
     context: VisitNodeContext,
   ): string | undefined {
-    for (const fn of this.transformers) {
+    for (const fn of this.emitters) {
       try {
         const result = fn.call(this, node, context);
         if (result != null) return result;
@@ -147,3 +166,30 @@ export class Transpiler {
     this.nodesToIgnore.add(node);
   }
 }
+
+type Utils = typeof utils;
+type TransformerUtils = {
+  [key in keyof Utils]: OmitThisParameter<Utils[key]>;
+};
+
+export interface VisitNodeContext {
+  enforceParameterType?: boolean;
+  skipParameterInitializer?: boolean;
+  variableDeclaration?: {
+    variableDeclarationIndent?: string;
+    variableDeclarationKeyword?: string;
+    variableDeclarationInitializer?: string;
+  };
+}
+
+export type TransformerFn = (
+  this: Transpiler,
+  node: ts.Node,
+  context: ts.TransformationContext,
+) => ts.Node | undefined;
+
+export type EmitFn = (
+  this: Transpiler,
+  node: ts.Node,
+  context: VisitNodeContext,
+) => string | undefined;

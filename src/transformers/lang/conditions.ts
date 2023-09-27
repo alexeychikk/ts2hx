@@ -2,10 +2,10 @@ import ts, { SyntaxKind } from 'typescript';
 import {
   type VisitNodeContext,
   type Transpiler,
-  type TransformerFn,
+  type EmitFn,
 } from '../Transpiler';
 
-export const transformNotOperator: TransformerFn = function (
+export const transformNotOperator: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -16,7 +16,7 @@ export const transformNotOperator: TransformerFn = function (
   }
 };
 
-export const transformConditions: TransformerFn = function (
+export const transformConditions: EmitFn = function (
   this: Transpiler,
   node,
   context,
@@ -40,22 +40,25 @@ export const transformConditions: TransformerFn = function (
   return this.utils.toExplicitBooleanCondition(node, context);
 };
 
-export const transformBooleanOperatorInVariableDeclaration: TransformerFn =
-  function (this: Transpiler, node, context) {
-    if (!this.utils.isBooleanExpressionOfVariableDeclaration(node)) return;
+export const transformBooleanOperatorInVariableDeclaration: EmitFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  if (!this.utils.isBooleanExpressionOfVariableDeclaration(node)) return;
 
-    const operator =
-      node.operatorToken.kind === SyntaxKind.AmpersandAmpersandToken
-        ? 'and'
-        : 'or';
+  const operator =
+    node.operatorToken.kind === SyntaxKind.AmpersandAmpersandToken
+      ? 'and'
+      : 'or';
 
-    return `${this.utils.visitParenthesized(
-      node.left,
-      context,
-    )}.${operator}(${this.visitNode(node.right, context)})`;
-  };
+  return `${this.utils.visitParenthesized(
+    node.left,
+    context,
+  )}.${operator}(${this.visitNode(node.right, context)})`;
+};
 
-export const transformSwitchCase: TransformerFn = function (
+export const transformSwitchCase: EmitFn = function (
   this: Transpiler,
   node,
   context,
