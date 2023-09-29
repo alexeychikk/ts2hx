@@ -143,7 +143,7 @@ export function toExplicitBooleanCondition(
     return this.traverseChildren(node, context);
   }
   if (isBooleanNotExpression(node)) {
-    return this.visitNode(node, context);
+    return this.emitNode(node, context);
   }
 
   let result = this.traverseChildren(node, context);
@@ -184,12 +184,12 @@ export function toSeparateStatements(
       node.operatorToken.kind === SyntaxKind.CommaToken
     )
   ) {
-    return this.visitNode(node, context);
+    return this.emitNode(node, context);
   }
-  return `${this.utils.getIndent(node)}${this.visitNode(
+  return `${this.utils.getIndent(node)}${this.emitNode(
     node.left,
     context,
-  )};\n${this.utils.getIndent(node)}${this.visitNode(node.right, context)};\n`;
+  )};\n${this.utils.getIndent(node)}${this.emitNode(node.right, context)};\n`;
 }
 
 export function isSuperExpression(this: Transpiler, node: ts.Node): boolean {

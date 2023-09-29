@@ -31,7 +31,7 @@ export const transformArrayType: EmitFn = function (
 ) {
   // myVar: number[]
   if (!ts.isArrayTypeNode(node)) return;
-  return `Array<${this.visitNode(node.elementType, context)}>`;
+  return `Array<${this.emitNode(node.elementType, context)}>`;
 };
 
 export const transformUnionType: EmitFn = function (
@@ -73,7 +73,7 @@ export const transformPropertySignature: EmitFn = function (
   }public ${this.utils.getDeclarationKeyword(node)} ${
     isOptional && !isInterface ? '?' : ''
   }${node.name.getText()}: ${
-    node.type ? this.visitNode(node.type, context) : 'Any'
+    node.type ? this.emitNode(node.type, context) : 'Any'
   };`;
 };
 
@@ -101,7 +101,7 @@ export const transformMethodSignature: EmitFn = function (
     context,
   );
   const params = this.utils.joinNodes(node.parameters, context);
-  const ret = node.type ? this.visitNode(node.type, context) : 'Void';
+  const ret = node.type ? this.emitNode(node.type, context) : 'Void';
 
   return `${
     isOptional ? '@:optional ' : ''
@@ -133,10 +133,10 @@ export const transformTypeParameter: EmitFn = function (
   if (!ts.isTypeParameterDeclaration(node)) return;
 
   let constraint = node.constraint
-    ? this.visitNode(node.constraint, context)
+    ? this.emitNode(node.constraint, context)
     : undefined;
   if (!constraint && node.default) {
-    constraint = this.visitNode(node.default, context);
+    constraint = this.emitNode(node.default, context);
   }
   if (constraint) constraint = ` : ${constraint}`;
 
@@ -191,7 +191,7 @@ export const transformEnumDeclaration: EmitFn = function (
   const members = node.members
     .map((member) => {
       const initializer = member.initializer
-        ? ` = ${this.visitNode(member.initializer, context)}`
+        ? ` = ${this.emitNode(member.initializer, context)}`
         : '';
       return `${this.utils.getIndent(
         node,
@@ -225,7 +225,7 @@ export const transformAsExpression: EmitFn = function (
     ts.isTypeReferenceNode(node.type) &&
     node.type.typeName.getText() === 'const'
   ) {
-    return this.visitNode(node.expression, context);
+    return this.emitNode(node.expression, context);
   }
 
   // myVar = hisVar as T

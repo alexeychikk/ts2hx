@@ -22,7 +22,7 @@ export function toEitherType(
     types
       .map(
         (t, i) =>
-          `${i < types.length - 1 ? 'EitherType<' : ''}${this.visitNode(
+          `${i < types.length - 1 ? 'EitherType<' : ''}${this.emitNode(
             t,
             context,
           )}`,
@@ -77,12 +77,12 @@ export function getNodeTypeString(
     undefined,
   );
   if (!typeNode) return 'Void';
-  const result = this.visitNode(typeNode, context);
+  const result = this.emitNode(typeNode, context);
   return (
     result ||
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
     type.aliasSymbol?.name ||
-    this.visitNode(type.symbol.declarations?.[0], context) ||
+    this.emitNode(type.symbol.declarations?.[0], context) ||
     'Void'
   );
 }

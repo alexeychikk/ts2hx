@@ -16,13 +16,14 @@ export const transformPowExpression: TransformerFn = function (
         context.factory.createIdentifier('pow'),
       ),
       undefined,
-      [node.left, node.right],
+      [this.visitNode(node.left), this.visitNode(node.right)],
     );
   }
 
   if (node.operatorToken.kind === SyntaxKind.AsteriskAsteriskEqualsToken) {
+    const left = this.visitNode(node.left);
     return context.factory.createBinaryExpression(
-      node.left,
+      left,
       context.factory.createToken(SyntaxKind.EqualsToken),
       context.factory.createCallExpression(
         context.factory.createPropertyAccessExpression(
@@ -30,7 +31,7 @@ export const transformPowExpression: TransformerFn = function (
           context.factory.createIdentifier('pow'),
         ),
         undefined,
-        [node.left, node.right],
+        [left, this.visitNode(node.right)],
       ),
     );
   }

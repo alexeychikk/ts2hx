@@ -23,8 +23,8 @@ export const transformObjectLiteralExpression: EmitFn = function (
   node.properties.forEach((prop, index) => {
     if (index === 0) {
       result += ts.isSpreadAssignment(prop)
-        ? this.visitNode(prop.expression, context)
-        : `{${this.visitNode(prop, context)}`;
+        ? this.emitNode(prop.expression, context)
+        : `{${this.emitNode(prop, context)}`;
       isPrevSpread = ts.isSpreadAssignment(prop);
       return;
     }
@@ -32,7 +32,7 @@ export const transformObjectLiteralExpression: EmitFn = function (
     if (ts.isSpreadAssignment(prop)) {
       if (!isPrevSpread) result += `}`;
       closeParen();
-      result += `.combine(${this.visitNode(prop.expression, context)})`;
+      result += `.combine(${this.emitNode(prop.expression, context)})`;
       isPrevSpread = true;
       return;
     }
@@ -43,7 +43,7 @@ export const transformObjectLiteralExpression: EmitFn = function (
     } else {
       result += `,`;
     }
-    result += this.visitNode(prop, context);
+    result += this.emitNode(prop, context);
 
     if (index === node.properties.length - 1) {
       result += `}`;
@@ -92,7 +92,7 @@ export const transformShorthandPropertyAssignment: EmitFn = function (
   if (!ts.isShorthandPropertyAssignment(node)) return;
   if (!ts.isObjectLiteralExpression(node.parent)) return;
   // { myVar }
-  return `${node.name.text}:${this.visitNode(node.name, context)}`;
+  return `${node.name.text}:${this.emitNode(node.name, context)}`;
 };
 
 export const transformElementAccess: EmitFn = function (
@@ -106,16 +106,16 @@ export const transformElementAccess: EmitFn = function (
 
   if (this.typeChecker.isArrayLikeType(type)) {
     if (!node.questionDotToken) return;
-    const expression = this.visitNode(node.expression, context);
-    const arg = this.visitNode(node.argumentExpression, context);
+    const expression = this.emitNode(node.expression, context);
+    const arg = this.emitNode(node.argumentExpression, context);
     return `(${expression} != null ? ${expression}[${arg}] : null)`;
   }
 
   if (type.flags & ts.TypeFlags.Object) {
-    return `Reflect.field(${this.visitNode(
+    return `Reflect.field(${this.emitNode(
       node.expression,
       context,
-    )}, ${this.visitNode(node.argumentExpression, context)})`;
+    )}, ${this.emitNode(node.argumentExpression, context)})`;
   }
 };
 
@@ -134,10 +134,10 @@ export const transformElementWriteToObject: EmitFn = function (
   if (this.typeChecker.isArrayLikeType(type)) return;
 
   if (type.flags & ts.TypeFlags.Object) {
-    return `Reflect.setField(${this.visitNode(
+    return `Reflect.setField(${this.emitNode(
       expression,
       context,
-    )}, ${this.visitNode(argumentExpression, context)}, ${this.visitNode(
+    )}, ${this.emitNode(argumentExpression, context)}, ${this.emitNode(
       node.right,
       context,
     )})`;

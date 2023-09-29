@@ -21,7 +21,7 @@ export const transformTsLibTypes: EmitFn = function (
       this.imports.dynamicAccess = true;
       return `DynamicAccess<${
         node.typeArguments?.[1]
-          ? this.visitNode(node.typeArguments[1], context)
+          ? this.emitNode(node.typeArguments[1], context)
           : 'Dynamic'
       }>`;
     }
@@ -33,7 +33,7 @@ export const transformTsLibTypes: EmitFn = function (
         this.utils.getNodeSourcePath(typeNode),
       );
 
-      const typeParam = this.visitNode(node.typeArguments?.[0], context);
+      const typeParam = this.emitNode(node.typeArguments?.[0], context);
 
       return (
         this.utils.createComment(({ todo }) => `${todo} ${name}<`) +

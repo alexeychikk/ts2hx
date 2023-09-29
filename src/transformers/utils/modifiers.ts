@@ -56,7 +56,7 @@ export function joinModifiers(
     modifiers.filter((m) => !MODIFIERS_TO_EXCLUDE.has(m.kind)),
     (m) => MODIFIERS_PRIORITY[m.kind] ?? 999,
   )
-    .map((m) => this.visitNode(m, context) + ' ')
+    .map((m) => this.emitNode(m, context) + ' ')
     .join('');
 }
 

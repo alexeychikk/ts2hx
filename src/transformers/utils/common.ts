@@ -50,7 +50,7 @@ export function replaceChild(
   const nodeFullCode = node
     .getChildren()
     .map((node) =>
-      node === childToReplace ? code : this.visitNode(node, context),
+      node === childToReplace ? code : this.emitNode(node, context),
     )
     .join('');
 
@@ -66,7 +66,7 @@ export function filterChildren(
 ): string {
   const nodeFullCode = node
     .getChildren()
-    .map((node) => (comparator(node) ? this.visitNode(node, context) : ' '))
+    .map((node) => (comparator(node) ? this.emitNode(node, context) : ' '))
     .join(separator);
 
   return nodeFullCode || node.getFullText();
@@ -108,7 +108,7 @@ export function joinNodes<T extends ts.Node>(
   context: VisitNodeContext,
   separator = ', ',
 ): string {
-  return nodes?.map((tp) => this.visitNode(tp, context)).join(separator) ?? '';
+  return nodes?.map((tp) => this.emitNode(tp, context)).join(separator) ?? '';
 }
 
 export function joinTypeParameters(
@@ -136,7 +136,7 @@ export function visitParenthesized(
   node: ts.Node,
   context: VisitNodeContext,
 ): string {
-  const code = this.visitNode(node, context).trim();
+  const code = this.emitNode(node, context).trim();
   return ts.isIdentifier(node) ? code : `(${code})`;
 }
 

@@ -60,7 +60,7 @@ export const transformHeritageClause: EmitFn = function (
     node.token === SyntaxKind.ExtendsKeyword ? 'extends' : 'implements';
 
   return node.types
-    .map((t) => `${keyword} ${this.visitNode(t, context)}`)
+    .map((t) => `${keyword} ${this.emitNode(t, context)}`)
     .join(' ');
 };
 
@@ -81,9 +81,9 @@ export const transformConstructor: EmitFn = function (
   const params = node.parameters
     .map((param) => {
       const access = this.utils.getAccessModifier(param);
-      const code = this.visitNode(param, context);
+      const code = this.emitNode(param, context);
       if (access) {
-        propertyDeclarations += `${this.visitNode(
+        propertyDeclarations += `${this.emitNode(
           access,
           context,
         )} ${this.utils.getDeclarationKeyword(param)} ${code};\n`;
@@ -107,7 +107,7 @@ export const transformConstructor: EmitFn = function (
   let body = node.body
     ? node.body.statements
         .map((statement) => {
-          let code = this.visitNode(statement, context);
+          let code = this.emitNode(statement, context);
           if (this.utils.isSuperExpression(statement)) {
             superCallFound = true;
             code += propertyInitializations;
@@ -145,13 +145,13 @@ export const transformClassPropertyDeclaration: EmitFn = function (
 
   let type = '';
   if (node.type) {
-    type = this.visitNode(node.type, context);
+    type = this.emitNode(node.type, context);
     if (node.questionToken) type = `Null<${type}>`;
     type = `: ${type}`;
   }
 
   const initializer = node.initializer
-    ? `= ${this.visitNode(node.initializer, context)}`
+    ? `= ${this.emitNode(node.initializer, context)}`
     : '';
 
   return `${modifiers}${this.utils.getDeclarationKeyword(
@@ -173,8 +173,8 @@ export const transformClassMethodDeclaration: EmitFn = function (
     context,
   );
   const params = this.utils.joinNodes(node.parameters, context);
-  const returnType = node.type ? `: ${this.visitNode(node.type, context)}` : '';
-  const body = node.body ? this.visitNode(node.body, context) : ';';
+  const returnType = node.type ? `: ${this.emitNode(node.type, context)}` : '';
+  const body = node.body ? this.emitNode(node.body, context) : ';';
 
   return `${modifiers}function ${node.name.getText()}${typeParams}(${params})${returnType}${body}`;
 };
@@ -188,8 +188,8 @@ export const transformClassGetter: EmitFn = function (
   if (!(ts.isGetAccessor(node) && ts.isClassLike(node.parent))) return;
 
   const modifiers = this.utils.joinMemberModifiers(node, context);
-  const type = node.type ? `: ${this.visitNode(node.type, context)}` : '';
-  const body = node.body ? this.visitNode(node.body, context) : ';';
+  const type = node.type ? `: ${this.emitNode(node.type, context)}` : '';
+  const body = node.body ? this.emitNode(node.body, context) : ';';
   const property = defineHaxeGetSetProperty.call(this, node, context);
 
   return `${property}${modifiers}function get_${node.name.getText()}()${type}${body}`;
@@ -213,14 +213,14 @@ export const transformClassSetter: EmitFn = function (
     );
     if (hasReturn) {
       // unlikely, compiler prevents this
-      body = this.visitNode(node.body, context);
+      body = this.emitNode(node.body, context);
     } else {
       const lastStatement =
         node.body.statements[node.body.statements.length - 1];
       this.utils.ignoreChildrenOfKind(lastStatement, SyntaxKind.SemicolonToken);
       body = node.body.statements
         .map((st) => {
-          const code = this.visitNode(st, context);
+          const code = this.emitNode(st, context);
           return st === lastStatement ? `return (${code});` : code;
         })
         .join('\n');
@@ -264,9 +264,9 @@ const defineHaxeGetSetProperty = function (
   const commonAccess =
     getAccess === 'public' || setAccess === 'public' ? 'public' : 'private';
   const type = getter?.type
-    ? this.visitNode(getter.type, context)
+    ? this.emitNode(getter.type, context)
     : setter?.parameters[0].type
-    ? this.visitNode(setter.parameters[0].type, context)
+    ? this.emitNode(setter.parameters[0].type, context)
     : `${this.utils.createTodoComment()} Any`;
 
   if (type === 'Any') {

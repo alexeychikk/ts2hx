@@ -13,6 +13,7 @@ export class Transpiler {
   emitters: EmitFn[];
   haxeCode?: string;
 
+  protected transformationContext?: ts.TransformationContext;
   protected nodesToIgnore = new Set<ts.Node>();
   protected nodesToReplaceFullText = new Set<ts.Node>();
   protected symbolsToRename: Record<string, Map<ts.Symbol, string>> = {};
@@ -51,29 +52,18 @@ export class Transpiler {
     return this.program.getCompilerOptions();
   }
 
-  runTsTransformers(): void {
+  transform(): void {
     const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
-      return (sourceFile) => {
-        const visitor = (node: ts.Node): ts.Node => {
-          const result = this.transformNode(node, context);
-          return result ?? ts.visitEachChild(node, visitor, context);
-        };
-        return ts.visitNode(sourceFile, visitor) as ts.SourceFile;
-      };
+      this.transformationContext = context;
+      return this.visitNode as () => ts.SourceFile;
     };
 
     const { transformed } = ts.transform(this.sourceFile, [transformer]);
     this.sourceFile = transformed[0];
   }
 
-  runHxTransformers(): void {
-    // TODO: there is an option to create ts identifiers that hold Haxe-specific
-    // syntax/keywords but that feels wrong and could lead to bugs when using
-    // ts TransformationContext and TypeChecker methods
-  }
-
   emit(): string {
-    let haxeCode = this.visitNode(this.sourceFile, {});
+    let haxeCode = this.emitNode(this.sourceFile, {});
 
     const imports = [
       this.imports.exception && `import haxe.Exception;`,
@@ -91,7 +81,33 @@ export class Transpiler {
     return haxeCode;
   }
 
-  protected visitNode(
+  protected visitNode = <T extends ts.Node | undefined = ts.Node, Ret = T>(
+    node: T,
+  ): Ret => {
+    if (!node) return undefined as Ret;
+    return ts.visitNode(node, this.nodeVisitor) as Ret;
+  };
+
+  protected visitNodes = <
+    T extends ts.Node = ts.Node,
+    TArr extends ts.NodeArray<T> | undefined = ts.NodeArray<T>,
+    Ret = TArr,
+  >(
+    nodes: TArr,
+  ): Ret => {
+    if (!nodes) return undefined as Ret;
+    return ts.visitNodes(nodes, this.nodeVisitor) as Ret;
+  };
+
+  protected nodeVisitor = (node: ts.Node): ts.Node => {
+    const result = this.applyTransformers(node, this.transformationContext!);
+    return (
+      result ??
+      ts.visitEachChild(node, this.nodeVisitor, this.transformationContext!)
+    );
+  };
+
+  protected emitNode(
     node: ts.Node | undefined,
     context: VisitNodeContext,
   ): string {
@@ -99,7 +115,7 @@ export class Transpiler {
       return ' ';
     }
 
-    const transformedCode = this.emitNode(node, context);
+    const transformedCode = this.applyEmitters(node, context);
     if (transformedCode != null) {
       return this.dump(node, transformedCode);
     }
@@ -107,7 +123,7 @@ export class Transpiler {
     return this.traverseChildren(node, context);
   }
 
-  protected transformNode(
+  protected applyTransformers(
     node: ts.Node,
     context: ts.TransformationContext,
   ): ts.Node | undefined {
@@ -122,7 +138,7 @@ export class Transpiler {
     }
   }
 
-  protected emitNode(
+  protected applyEmitters(
     node: ts.Node,
     context: VisitNodeContext,
   ): string | undefined {
@@ -152,7 +168,7 @@ export class Transpiler {
 
     const nodeFullCode = node
       .getChildren()
-      .map((node) => this.visitNode(node, context))
+      .map((node) => this.emitNode(node, context))
       .join('');
 
     return nodeFullCode || node.getFullText();

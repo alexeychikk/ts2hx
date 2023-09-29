@@ -26,7 +26,7 @@ export const transformVariableDeclarationList: EmitFn = function (
   const indent = this.utils.getIndent(node);
   return node.declarations
     .map((declaration) =>
-      this.visitNode(declaration, {
+      this.emitNode(declaration, {
         ...context,
         variableDeclaration: {
           variableDeclarationIndent: indent,
@@ -50,10 +50,10 @@ export const transformVariableDeclaration: EmitFn = function (
 
   if (ts.isIdentifier(node.name)) {
     return `${keyword ? `${keyword} ` : ''}${node.name.text}${
-      node.type ? `: ${this.visitNode(node.type, context).trimStart()}` : ''
+      node.type ? `: ${this.emitNode(node.type, context).trimStart()}` : ''
     }${
       node.initializer
-        ? ` = ${this.visitNode(node.initializer, context).trimStart()}`
+        ? ` = ${this.emitNode(node.initializer, context).trimStart()}`
         : ''
     }`;
   }
@@ -66,7 +66,7 @@ export const transformVariableDeclaration: EmitFn = function (
     );
   }
 
-  return this.visitNode(node.name, {
+  return this.emitNode(node.name, {
     ...context,
     variableDeclaration: {
       ...context.variableDeclaration,
@@ -106,7 +106,7 @@ export const transformObjectBindingPattern: EmitFn = function (
             const propName = e.propertyName ?? e.name;
 
             if (ts.isComputedPropertyName(propName)) {
-              return this.visitNode(propName.expression, context).trimStart();
+              return this.emitNode(propName.expression, context).trimStart();
             } else if (
               ts.isIdentifier(propName) ||
               ts.isNumericLiteral(propName) ||
@@ -140,7 +140,7 @@ export const transformObjectBindingPattern: EmitFn = function (
           propertyNameText = `'${propertyName.text}'`;
         } else if (ts.isComputedPropertyName(propertyName)) {
           // { [expression]: bar } = obj -> Reflect.field(obj, expression)
-          propertyNameText = this.visitNode(
+          propertyNameText = this.emitNode(
             propertyName.expression,
             context,
           ).trimStart();
@@ -152,7 +152,7 @@ export const transformObjectBindingPattern: EmitFn = function (
       }
 
       if (element.initializer) {
-        initializer = `${initializer} ?? ${this.visitNode(
+        initializer = `${initializer} ?? ${this.emitNode(
           element.initializer,
           context,
         ).trimStart()}`;
@@ -164,7 +164,7 @@ export const transformObjectBindingPattern: EmitFn = function (
       }
 
       // { foo: { bar } } | { foo: [bar] }
-      return this.visitNode(element.name, {
+      return this.emitNode(element.name, {
         ...context,
         variableDeclaration: {
           ...context.variableDeclaration,
@@ -209,7 +209,7 @@ export const transformArrayBindingPattern: EmitFn = function (
       let initializer = `${parentInitializer}[${index}]`;
 
       if (element.initializer) {
-        initializer = `${initializer} ?? ${this.visitNode(
+        initializer = `${initializer} ?? ${this.emitNode(
           element.initializer,
           context,
         ).trimStart()}`;
@@ -221,7 +221,7 @@ export const transformArrayBindingPattern: EmitFn = function (
       }
 
       // [[first, second], { foo }] = arr
-      return this.visitNode(element.name, {
+      return this.emitNode(element.name, {
         ...context,
         variableDeclaration: {
           ...context.variableDeclaration,

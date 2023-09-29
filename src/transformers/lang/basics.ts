@@ -79,7 +79,7 @@ export const transformTemplateExpression: EmitFn = function (
   // `foo ${varX} bar ${varY ? `inner ${varZ} end` : ""} baz`
   if (!ts.isTemplateExpression(node)) return;
   return `'${this.utils.escapeTemplateText(node.head.text)}${node.templateSpans
-    .map((span) => `\${${this.visitNode(span, context)}`)
+    .map((span) => `\${${this.emitNode(span, context)}`)
     .join('')}'`;
 };
 
@@ -109,7 +109,7 @@ export const transformVoidExpression: EmitFn = function (
   ) {
     return `null`;
   } else {
-    return `(function() {${this.visitNode(node.expression, context)};})()`;
+    return `(function() {${this.emitNode(node.expression, context)};})()`;
   }
 };
 
@@ -120,7 +120,7 @@ export const transformTypeofExpression: EmitFn = function (
 ) {
   if (!ts.isTypeOfExpression(node)) return;
 
-  return `Ts2hx.typeof(${this.visitNode(node.expression, context)})`;
+  return `Ts2hx.typeof(${this.emitNode(node.expression, context)})`;
 };
 
 export const transformInstanceOfExpression: EmitFn = function (
@@ -137,8 +137,8 @@ export const transformInstanceOfExpression: EmitFn = function (
   )
     return;
 
-  const left = this.visitNode(node.left, context).trim();
-  const right = this.visitNode(node.right, context).trim();
+  const left = this.emitNode(node.left, context).trim();
+  const right = this.emitNode(node.right, context).trim();
 
   return `Std.isOfType(${left}, ${right})`;
 };

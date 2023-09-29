@@ -55,7 +55,7 @@ export const transformBooleanOperatorInVariableDeclaration: EmitFn = function (
   return `${this.utils.visitParenthesized(
     node.left,
     context,
-  )}.${operator}(${this.visitNode(node.right, context)})`;
+  )}.${operator}(${this.emitNode(node.right, context)})`;
 };
 
 export const transformSwitchCase: EmitFn = function (
@@ -65,7 +65,7 @@ export const transformSwitchCase: EmitFn = function (
 ) {
   if (!ts.isSwitchStatement(node)) return;
 
-  const expression = this.visitNode(node.expression, context);
+  const expression = this.emitNode(node.expression, context);
 
   let fallthroughCases: ts.CaseClause[] = [];
   const cases = node.caseBlock.clauses
@@ -83,7 +83,7 @@ export const transformSwitchCase: EmitFn = function (
 
       let statements = statementNodes
         .filter((st) => !ts.isBreakStatement(st))
-        .map((st) => this.visitNode(st, context))
+        .map((st) => this.emitNode(st, context))
         .join('');
       if (isBlock) {
         statements = ` {${statements}\n${this.utils.getIndent(node)}  }`;
@@ -123,7 +123,7 @@ const transformCaseExpression = function (
   node: ts.Node,
   context: VisitNodeContext,
 ): string {
-  if (ts.isLiteralExpression(node)) return this.visitNode(node, context);
+  if (ts.isLiteralExpression(node)) return this.emitNode(node, context);
 
-  return `_ == ${this.visitNode(node, context)} => true`;
+  return `_ == ${this.emitNode(node, context)} => true`;
 };

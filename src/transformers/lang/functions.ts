@@ -23,8 +23,8 @@ export const transformArrowFunction: EmitFn = function (
     );
   }
   const params = this.utils.joinNodes(node.parameters, context);
-  const returnType = node.type ? `: ${this.visitNode(node.type, context)}` : '';
-  const body = this.visitNode(node.body, context);
+  const returnType = node.type ? `: ${this.emitNode(node.type, context)}` : '';
+  const body = this.emitNode(node.body, context);
 
   return `${modifiers}function ${typeParams}(${params})${returnType}${body}`;
 };
@@ -45,9 +45,9 @@ export const transformFunctionParameter: EmitFn = function (
   let type = '';
   if (node.type) {
     if (dotDotDotToken) {
-      type = this.visitNode(this.utils.getArrayTypeNode(node.type), context);
+      type = this.emitNode(this.utils.getArrayTypeNode(node.type), context);
     } else {
-      type = this.visitNode(node.type, context);
+      type = this.emitNode(node.type, context);
     }
     type = `: ${type}`;
   } else if (context.enforceParameterType) {
@@ -56,7 +56,7 @@ export const transformFunctionParameter: EmitFn = function (
 
   const initializer =
     node.initializer && !context.skipParameterInitializer
-      ? ` = ${this.visitNode(node.initializer, context)}`
+      ? ` = ${this.emitNode(node.initializer, context)}`
       : '';
   const questionToken = node.questionToken ? `?` : '';
 
@@ -70,7 +70,7 @@ export const transformCallExpression: EmitFn = function (
 ) {
   if (!ts.isCallExpression(node)) return;
 
-  const expression = this.visitNode(node.expression, context);
+  const expression = this.emitNode(node.expression, context);
   const args = this.utils.joinNodes(node.arguments, context);
 
   let typeArgs = '';

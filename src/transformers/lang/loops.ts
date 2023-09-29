@@ -10,7 +10,7 @@ export const transformForLoop: EmitFn = function (
   if (!ts.isForStatement(node)) return;
 
   const declarations = node.initializer
-    ? `${this.visitNode(node.initializer, context)};\n`
+    ? `${this.emitNode(node.initializer, context)};\n`
     : '';
   const indent = node.initializer ? this.utils.getIndent(node) : '';
 
@@ -19,8 +19,8 @@ export const transformForLoop: EmitFn = function (
     : 'true';
 
   const body = ts.isBlock(node.statement)
-    ? node.statement.statements.map((s) => this.visitNode(s, context)).join('')
-    : this.visitNode(node.statement, context);
+    ? node.statement.statements.map((s) => this.emitNode(s, context)).join('')
+    : this.emitNode(node.statement, context);
 
   const increments = node.incrementor
     ? `${this.utils.toSeparateStatements(node.incrementor, context)}`
@@ -40,10 +40,10 @@ export const transformForOfLoop: EmitFn = function (
   if (!ts.isForOfStatement(node)) return;
 
   const initializer = ts.isVariableDeclarationList(node.initializer)
-    ? this.visitNode(node.initializer.declarations[0], context)
-    : this.visitNode(node.initializer, context);
-  const expression = this.visitNode(node.expression, context);
-  const body = this.visitNode(node.statement, context);
+    ? this.emitNode(node.initializer.declarations[0], context)
+    : this.emitNode(node.initializer, context);
+  const expression = this.emitNode(node.expression, context);
+  const body = this.emitNode(node.statement, context);
 
   return `for (${initializer} in ${expression}) ${body}`;
 };
@@ -57,10 +57,10 @@ export const transformForInLoop: EmitFn = function (
   if (!ts.isForInStatement(node)) return;
 
   const initializer = ts.isVariableDeclarationList(node.initializer)
-    ? this.visitNode(node.initializer.declarations[0], context)
-    : this.visitNode(node.initializer, context);
-  const expression = this.visitNode(node.expression, context);
-  const body = this.visitNode(node.statement, context);
+    ? this.emitNode(node.initializer.declarations[0], context)
+    : this.emitNode(node.initializer, context);
+  const expression = this.emitNode(node.expression, context);
+  const body = this.emitNode(node.statement, context);
 
   return `for (${initializer} in Reflect.fields(${expression})) ${body}`;
 };

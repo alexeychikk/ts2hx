@@ -206,7 +206,7 @@ export class Converter {
           includeTodos: this.flags.includeTodos,
         });
         this.sourceFileTranspilers.set(sourceFile.fileName, transpiler);
-        transpiler.runTsTransformers();
+        transpiler.transform();
       },
       { concurrency: 100 },
     );
