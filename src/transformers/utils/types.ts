@@ -96,7 +96,6 @@ export function isSimpleType(this: Transpiler, node: ts.Node): boolean {
     node.kind === ts.SyntaxKind.TrueKeyword ||
     node.kind === ts.SyntaxKind.FalseKeyword ||
     node.kind === ts.SyntaxKind.NullKeyword ||
-    node.kind === ts.SyntaxKind.VoidExpression ||
     node.kind === ts.SyntaxKind.UndefinedKeyword ||
     (!!symbol && this.typeChecker.isUndefinedSymbol(symbol))
   );
