@@ -11,15 +11,15 @@ export const transformMethodOnObject: TransformerFn = function (
   if (!ts.isObjectLiteralExpression(node.parent)) return;
 
   return context.factory.createPropertyAssignment(
-    this.visitNode(node.name),
+    node.name,
     context.factory.createFunctionExpression(
       ts.getModifiers(node),
-      this.visitNode(node.asteriskToken),
+      node.asteriskToken,
       undefined,
-      this.visitNodes(node.typeParameters),
-      this.visitNodes(node.parameters),
-      this.visitNode(node.type),
-      node.body ? this.visitNode(node.body) : context.factory.createBlock([]),
+      node.typeParameters,
+      node.parameters,
+      node.type,
+      node.body ? node.body : context.factory.createBlock([]),
     ),
   );
 };

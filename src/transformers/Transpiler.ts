@@ -100,10 +100,12 @@ export class Transpiler {
   };
 
   protected nodeVisitor = (node: ts.Node): ts.Node => {
-    const result = this.applyTransformers(node, this.transformationContext!);
-    return (
-      result ??
-      ts.visitEachChild(node, this.nodeVisitor, this.transformationContext!)
+    const result =
+      this.applyTransformers(node, this.transformationContext!) ?? node;
+    return ts.visitEachChild(
+      result,
+      this.nodeVisitor,
+      this.transformationContext!,
     );
   };
 
