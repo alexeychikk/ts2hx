@@ -177,3 +177,20 @@ export function renameSymbol(
   symbolsMap.set(this.typeChecker.getSymbolAtLocation(node)!, name);
   return name;
 }
+
+export function ensureNodeIsBlock(
+  this: Transpiler,
+  node: ts.Statement | ts.Expression | ts.Block,
+  context: ts.TransformationContext,
+): ts.Block {
+  if (ts.isBlock(node)) return node;
+  if (ts.isStatement(node)) return context.factory.createBlock([node], true);
+  if (ts.isExpression(node) && ts.isArrowFunction(node.parent)) {
+    return context.factory.createBlock(
+      [context.factory.createReturnStatement(node)],
+      true,
+    );
+  }
+
+  throw new Error('Unable to transform node to Block');
+}

@@ -58,11 +58,10 @@ export const transformVariableDeclaration: EmitFn = function (
     }`;
   }
 
-  // avoid destructuring of parameter in catch clause
   if (!keyword) {
     return this.utils.commentOutNode(
       node,
-      'Parameter destructuring is not allowed in catch clause',
+      'Parameter destructuring is not allowed out of variable declaration list',
     );
   }
 

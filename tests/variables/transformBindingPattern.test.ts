@@ -11,8 +11,9 @@ test('transforms binding patterns in variable declarations', async () => {
   const { [foo1 + 'foo']: { [bar1]: baz = 'baz' }, 'foo': foo, '0': first, bar, ...rest } = obj;
   const { 
     foo = () => {
-      const { innerProp } = innerObj;
-    }
+      const { innerProp = 'foo' } = innerObj;
+    },
+    bar: { baz = 'baz' }
   } = obj;
 `).resolves.toMatchInlineSnapshot(`
     "final bar = obj.foo ?? 'foo';
@@ -33,8 +34,44 @@ test('transforms binding patterns in variable declarations', async () => {
     final bar = obj.bar;
     final rest = Ts2hx.rest(obj, [foo1 + 'foo', 'foo', '0', 'bar']);
     final foo = obj.foo ?? function () {
-        final innerProp = innerObj.innerProp;
+        final innerProp = innerObj.innerProp ?? 'foo';
     };
+    final baz = obj.bar.baz ?? 'baz';
+    "
+  `);
+});
+
+test('transforms variable declaration with binding pattern inside for-of', async () => {
+  await expect(ts2hx`
+  for (const { foo, bar } of fooBars) {
+    for (const [{ foo1, bar1 }] of fooBars) {}
+  }
+`).resolves.toMatchInlineSnapshot(`
+    "for ( fooBarsItem_1 in  fooBars)  {
+        final foo = fooBarsItem_1.foo;
+        final bar = fooBarsItem_1.bar;
+        for ( fooBarsItem_2 in  fooBars)  {
+            final foo1 = fooBarsItem_2[0].foo1;
+            final bar1 = fooBarsItem_2[0].bar1;
+        }
+    }
+    "
+  `);
+});
+
+test('transforms variable declaration with binding pattern inside catch clause', async () => {
+  await expect(ts2hx`
+  try {}
+  catch ({ message }) {
+    console.log(message);
+  }
+`).resolves.toMatchInlineSnapshot(`
+    "try { }
+    catch (error_1) {
+        final message = error_1.message;
+        
+        trace(message);
+    }
     "
   `);
 });

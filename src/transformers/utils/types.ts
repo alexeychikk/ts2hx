@@ -86,3 +86,18 @@ export function getNodeTypeString(
     'Void'
   );
 }
+
+export function isSimpleType(this: Transpiler, node: ts.Node): boolean {
+  const symbol = this.typeChecker.getSymbolAtLocation(node);
+  return (
+    ts.isStringLiteral(node) ||
+    ts.isNumericLiteral(node) ||
+    ts.isNoSubstitutionTemplateLiteral(node) ||
+    node.kind === ts.SyntaxKind.TrueKeyword ||
+    node.kind === ts.SyntaxKind.FalseKeyword ||
+    node.kind === ts.SyntaxKind.NullKeyword ||
+    node.kind === ts.SyntaxKind.VoidExpression ||
+    node.kind === ts.SyntaxKind.UndefinedKeyword ||
+    (!!symbol && this.typeChecker.isUndefinedSymbol(symbol))
+  );
+}
