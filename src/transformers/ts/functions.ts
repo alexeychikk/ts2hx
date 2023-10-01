@@ -6,22 +6,12 @@ export const transformParameterDeclaration: TransformerFn = function (
   node,
   context,
 ) {
-  const shouldParameterDeclarationBeMoved = (
-    parameter: ts.ParameterDeclaration,
-  ): boolean => {
-    return (
-      !ts.isIdentifier(parameter.name) ||
-      (!!parameter.initializer &&
-        !this.utils.isSimpleType(parameter.initializer))
-    );
-  };
-
   if (
     !ts.isFunctionLike(node) ||
     ts.isTypeNode(node) ||
     !('body' in node) ||
     !node.body ||
-    !node.parameters.some(shouldParameterDeclarationBeMoved)
+    node.parameters.every(this.utils.isAcceptableParameterDeclarationForHx)
   ) {
     return;
   }
@@ -33,7 +23,9 @@ export const transformParameterDeclaration: TransformerFn = function (
   }> = [];
 
   const newParameters = node.parameters.map((parameter) => {
-    if (!shouldParameterDeclarationBeMoved(parameter)) return parameter;
+    if (this.utils.isAcceptableParameterDeclarationForHx(parameter)) {
+      return parameter;
+    }
 
     const newParameterName = context.factory.createUniqueName('param');
     parametersToMove.unshift({

@@ -21,12 +21,7 @@ export const transformDestructuredVariableDeclarationInForOf: TransformerFn =
     ) {
       return;
     }
-
-    const generatedNameText = ts.isIdentifier(node.expression)
-      ? `${node.expression.text}Item`
-      : 'item';
-    const generatedIdentifier =
-      context.factory.createUniqueName(generatedNameText);
+    const generatedIdentifier = context.factory.createUniqueName('element');
 
     return context.factory.updateForOfStatement(
       node,

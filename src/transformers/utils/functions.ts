@@ -1,6 +1,16 @@
 import ts from 'typescript';
 import { type Transpiler } from '../Transpiler';
 
+export function isAcceptableParameterDeclarationForHx(
+  this: Transpiler,
+  parameter: ts.ParameterDeclaration,
+): boolean {
+  return (
+    ts.isIdentifier(parameter.name) &&
+    (!parameter.initializer || this.utils.isSimpleType(parameter.initializer))
+  );
+}
+
 export function moveVariableOrParameterDeclarationToBlock(
   this: Transpiler,
   base: ts.VariableDeclaration | ts.ParameterDeclaration,

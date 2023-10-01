@@ -47,12 +47,12 @@ test('transforms variable declaration with binding pattern inside for-of', async
     for (const [{ foo1, bar1 }] of fooBars) {}
   }
 `).resolves.toMatchInlineSnapshot(`
-    "for ( fooBarsItem_1 in  fooBars)  {
-        final foo = fooBarsItem_1.foo;
-        final bar = fooBarsItem_1.bar;
-        for ( fooBarsItem_2 in  fooBars)  {
-            final foo1 = fooBarsItem_2[0].foo1;
-            final bar1 = fooBarsItem_2[0].bar1;
+    "for ( element_1 in  fooBars)  {
+        final foo = element_1.foo;
+        final bar = element_1.bar;
+        for ( element_2 in  fooBars)  {
+            final foo1 = element_2[0].foo1;
+            final bar1 = element_2[0].bar1;
         }
     }
     "
