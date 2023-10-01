@@ -5,3 +5,4 @@ export * from './expressions';
 export * from './modifiers';
 export * from './modules';
 export * from './types';
+export * from './functions';

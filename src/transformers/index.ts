@@ -10,6 +10,9 @@ export { api, lang };
 export const TRANSFORMERS: TransformerFn[] = [
   tr.transformPowExpression,
   tr.transformMethodOnObject,
+  tr.transformDestructuredVariableDeclarationInForOf,
+  tr.transformDestructuredVariableDeclarationInCatch,
+  tr.transformParameterDeclaration,
 ];
 
 // Order here actually matters (to some extent)
