@@ -2,15 +2,15 @@ import { ts2hx } from '@tests/framework';
 
 test('transforms binding patterns in parameter declarations in function', async () => {
   await expect(ts2hx`
-  function foo({ bar }: { bar: string }, [baz = bar]: string[], ...rest: string[]) {
+function foo({ bar }: { bar: string }, [baz = bar]: string[], ...rest: string[]) {
+}
+const foo1 = function({ bar = 'bar' }: { bar?: string } = {}, [baz]: number[] = [], id = bar): void {
+};
+class Foo {
+  foo = function<T extends string = string>(baz: T, { bar = baz }: { bar?: string }): T  {
+    return baz;
   }
-  const foo1 = function({ bar = 'bar' }: { bar?: string } = {}, [baz]: number[] = [], id = bar): void {
-  };
-  class Foo {
-    foo = function<T extends string = string>(baz: T, { bar = baz }: { bar?: string }): T  {
-      return baz;
-    }
-  }
+}
 `).resolves.toMatchInlineSnapshot(`
     "function foo(param_1:  {
         public var bar:  String;
@@ -41,12 +41,12 @@ test('transforms binding patterns in parameter declarations in function', async 
 
 test('transforms binding patterns in parameter declarations in arrow function', async () => {
   await expect(ts2hx`
-  const fooArrow = ({ bar }: { bar: string }, [baz = bar]: string[], ...rest: string[]): null => null;
-  const fooArrow1 = ({ bar = 'bar' }: { bar?: string } = {}, [baz]: number[] = [], id?: string): void => {
-  };
-  class Foo {
-    foo = ({ bar = 'bar' }: { bar?: string }): null => null;
-  }
+const fooArrow = ({ bar }: { bar: string }, [baz = bar]: string[], ...rest: string[]): null => null;
+const fooArrow1 = ({ bar = 'bar' }: { bar?: string } = {}, [baz]: number[] = [], id?: string): void => {
+};
+class Foo {
+  foo = ({ bar = 'bar' }: { bar?: string }): null => null;
+}
 `).resolves.toMatchInlineSnapshot(`
     "final fooArrow = function (param_1:  {
         public var bar:  String;
@@ -77,11 +77,11 @@ test('transforms binding patterns in parameter declarations in arrow function', 
 
 test('transforms binding patterns in parameter declarations in method', async () => {
   await expect(ts2hx`
-  class Foo {
-    foo([baz]: string[], { bar: { foobar = baz } }: { bar: { foobar: string; } }): string  {
-      return baz;
-    }
+class Foo {
+  foo([baz]: string[], { bar: { foobar = baz } }: { bar: { foobar: string; } }): string  {
+    return baz;
   }
+}
 `).resolves.toMatchInlineSnapshot(`
     "class Foo  {
       public function new() {}
@@ -102,12 +102,12 @@ test('transforms binding patterns in parameter declarations in method', async ()
 
 test('transforms binding patterns in parameter declarations in set accessor', async () => {
   await expect(ts2hx`
-  class Foo {
-    _bar: { bar: string } = { bar: 'bar' };
-    set Bar({ bar = '' } : { bar?: string }) {
-      this._bar = { bar };
-    }
+class Foo {
+  _bar: { bar: string } = { bar: 'bar' };
+  set Bar({ bar = '' } : { bar?: string }) {
+    this._bar = { bar };
   }
+}
 `).resolves.toMatchInlineSnapshot(`
     "class Foo  {
       public function new() {}
@@ -131,12 +131,12 @@ test('transforms binding patterns in parameter declarations in set accessor', as
 
 test('transforms binding patterns in parameter declarations in constructor', async () => {
   await expect(ts2hx`
-  class Foo {
-    _bar: { bar: string } = { bar: 'bar' };
-    constructor({ bar = '' } : { bar?: string }) {
-      this._bar = { bar };
-    }
+class Foo {
+  _bar: { bar: string } = { bar: 'bar' };
+  constructor({ bar = '' } : { bar?: string }) {
+    this._bar = { bar };
   }
+}
 `).resolves.toMatchInlineSnapshot(`
     "class Foo  {
         public var _bar:  {
