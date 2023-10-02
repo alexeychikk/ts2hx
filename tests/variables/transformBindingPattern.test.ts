@@ -75,3 +75,23 @@ catch ({ message }) {
     "
   `);
 });
+
+test('works with variable declaration list', async () => {
+  await expect(ts2hx`
+let simpleNum: number, { foo: { bar: baz } } = obj, 
+  anyVar, myBool: boolean = true,
+  [first = '', , third = 0, { fourth = 'foo' } = {}, ...rest] = arr,
+  myStr = 'wow';
+`).resolves.toMatchInlineSnapshot(`
+    "var simpleNum: Float;
+     var baz = obj.foo.bar;
+     var anyVar;
+     var myBool: Bool = true;
+     var first = arr[0] ?? '';
+    var third = arr[2] ?? 0;
+    var fourth = (arr[3] ?? {}).fourth ?? 'foo';
+    var rest = arr.slice(4);
+     var myStr = 'wow';
+    "
+  `);
+});

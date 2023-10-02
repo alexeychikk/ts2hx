@@ -34,7 +34,7 @@ export const transformVariableDeclarationList: EmitFn = function (
         },
       }),
     )
-    .join('')
+    .join(';\n')
     .trimStart();
 };
 
