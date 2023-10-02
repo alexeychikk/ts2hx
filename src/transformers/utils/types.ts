@@ -17,21 +17,26 @@ export function toEitherType(
   this: Transpiler,
   types: ts.NodeArray<ts.TypeNode>,
   context: VisitNodeContext,
-): string | undefined {
-  const res =
-    types
+): string {
+  const emittedStrings = types
+    .reduce((res, typeNode) => {
+      const str = this.emitNode(typeNode, context);
+      if (str.trim() !== (res[res.length - 1] || '').trim()) res.push(str);
+      return res;
+    }, [] as string[])
+    .filter(Boolean);
+
+  if (!emittedStrings.length) return 'Any';
+
+  this.imports.eitherType = true;
+  return (
+    emittedStrings
       .map(
-        (t, i) =>
-          `${i < types.length - 1 ? 'EitherType<' : ''}${this.emitNode(
-            t,
-            context,
-          )}`,
+        (str, i) =>
+          `${i < emittedStrings.length - 1 ? 'EitherType<' : ''}${str}`,
       )
-      .join(', ') + '>'.repeat(types.length - 1);
-  if (res) {
-    this.imports.eitherType = true;
-  }
-  return res;
+      .join(', ') + '>'.repeat(emittedStrings.length - 1)
+  );
 }
 
 export function getRootSymbol(

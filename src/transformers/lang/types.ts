@@ -4,7 +4,12 @@ import { type Transpiler, type EmitFn } from '../Transpiler';
 export const transformLiteralTypes: EmitFn = function (this: Transpiler, node) {
   if (!ts.isLiteralTypeNode(node)) return;
   // myVar: 42
-  if (ts.isNumericLiteral(node.literal)) {
+  if (
+    ts.isNumericLiteral(node.literal) ||
+    // myVar: -1
+    (ts.isPrefixUnaryExpression(node.literal) &&
+      ts.isNumericLiteral(node.literal.operand))
+  ) {
     return 'Float';
   }
   // myVar: "Hello"
@@ -41,7 +46,6 @@ export const transformUnionType: EmitFn = function (
 ) {
   // myVar: string | boolean
   if (!ts.isUnionTypeNode(node)) return;
-  if (node.types.length > 3) return 'Dynamic';
   return this.utils.toEitherType(node.types, context);
 };
 
@@ -52,9 +56,8 @@ export const transformTupleType: EmitFn = function (
 ) {
   // myVar: [number, string]
   if (!ts.isTupleTypeNode(node)) return;
-  if (node.elements.length > 3) return 'Dynamic';
   const res = this.utils.toEitherType(node.elements, context);
-  return res ? `Array<${res}>` : undefined;
+  return `Array<${res}>`;
 };
 
 export const transformPropertySignature: EmitFn = function (

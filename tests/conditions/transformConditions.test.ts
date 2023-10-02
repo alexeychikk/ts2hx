@@ -59,7 +59,7 @@ if (Foo) {} else if (myFoo) {}
       final myString = "foo";
       final myTen: Float = 10;
       final myBar: String = "bar";
-      final myUnion: EitherType< String,  String> = 'foo';
+      final myUnion: String = 'foo';
       final myObject = { foo: 'bar' };
       final myArray = [1, 2, 3];
       final myFunction = () -> 0;
