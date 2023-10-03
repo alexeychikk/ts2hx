@@ -8,11 +8,12 @@ export * from './Transpiler';
 export { api, lang };
 
 export const TRANSFORMERS: TransformerFn[] = [
-  tr.transformPowExpression,
-  tr.transformMethodOnObject,
-  tr.transformDestructuredVariableDeclarationInForOf,
+  tr.transformClassMembersWithoutAccessModifier,
   tr.transformDestructuredVariableDeclarationInCatch,
+  tr.transformDestructuredVariableDeclarationInForOf,
+  tr.transformMethodOnObject,
   tr.transformParameterDeclaration,
+  tr.transformPowExpression,
 ];
 
 // Order here actually matters (to some extent)

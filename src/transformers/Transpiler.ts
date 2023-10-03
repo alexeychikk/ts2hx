@@ -129,15 +129,16 @@ export class Transpiler {
     node: ts.Node,
     context: ts.TransformationContext,
   ): ts.Node | undefined {
+    let result: ts.Node = node;
     for (const fn of this.transformers) {
       try {
-        const result = fn.call(this, node, context);
-        if (result != null) return result;
+        result = fn.call(this, result, context) ?? result;
       } catch (error) {
         if (!this.ignoreErrors) throw error;
         logger.error(error);
       }
     }
+    return result;
   }
 
   protected applyEmitters(
@@ -202,7 +203,7 @@ export interface VisitNodeContext {
 
 export type TransformerFn = (
   this: Transpiler,
-  node: ts.Node,
+  node: ts.Node & { parent: ts.Node['parent'] | undefined },
   context: ts.TransformationContext,
 ) => ts.Node | undefined;
 

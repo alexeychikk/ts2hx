@@ -8,7 +8,7 @@ export const transformMethodOnObject: TransformerFn = function (
 ) {
   // { methodOnObject() {} }
   if (!ts.isMethodDeclaration(node)) return;
-  if (!ts.isObjectLiteralExpression(node.parent)) return;
+  if (!ts.isObjectLiteralExpression(this.utils.getParentNode(node))) return;
 
   return context.factory.createPropertyAssignment(
     node.name,

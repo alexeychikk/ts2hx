@@ -59,16 +59,3 @@ export function joinModifiers(
     .map((m) => this.emitNode(m, context) + ' ')
     .join('');
 }
-
-export function joinMemberModifiers(
-  this: Transpiler,
-  node: ts.HasModifiers,
-  context: VisitNodeContext,
-): string {
-  // in Haxe class members are private by default unlike in TS
-  const defaultAccessModifier = this.utils.getAccessModifier(node)
-    ? ''
-    : 'public ';
-  const modifiers = this.utils.joinModifiers(node.modifiers, context);
-  return `${defaultAccessModifier}${modifiers}`;
-}

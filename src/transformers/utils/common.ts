@@ -194,3 +194,7 @@ export function ensureNodeIsBlock(
 
   throw new Error('Unable to transform node to Block');
 }
+
+export function getParentNode(this: Transpiler, node: ts.Node): ts.Node {
+  return node.parent ?? ts.getOriginalNode(node).parent;
+}

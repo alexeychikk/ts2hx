@@ -49,8 +49,8 @@ let myNaN = NaN;
     class MyReadonlyClass  {
       public function new() {}
 
-        public 
-          final myReadonly=  0;
+        
+        public    final myReadonly=  0;
         
         private var myProtected: Null< String>;
     }
