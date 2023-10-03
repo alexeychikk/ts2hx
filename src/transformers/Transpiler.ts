@@ -13,7 +13,6 @@ export class Transpiler {
   emitters: EmitFn[];
   haxeCode?: string;
 
-  protected transformationContext?: ts.TransformationContext;
   protected nodesToIgnore = new Set<ts.Node>();
   protected nodesToReplaceFullText = new Set<ts.Node>();
   protected symbolsToRename: Record<string, Map<ts.Symbol, string>> = {};
@@ -53,12 +52,26 @@ export class Transpiler {
   }
 
   transform(): void {
-    const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
-      this.transformationContext = context;
-      return this.visitNode as () => ts.SourceFile;
-    };
+    const transformers: Array<ts.TransformerFactory<ts.SourceFile>> =
+      this.transformers.map((trans) => {
+        return (context) => {
+          const visitor = (
+            node: ts.Node,
+            parentNode: ts.Node,
+          ): ts.Node | undefined => {
+            const result = trans.call(this, node, context, parentNode) ?? node;
+            return ts.visitEachChild(
+              result,
+              (childNode) => visitor(childNode, result),
+              context,
+            );
+          };
+          return (node) =>
+            ts.visitNode(node, (n) => visitor(n, node)) as ts.SourceFile;
+        };
+      });
 
-    const { transformed } = ts.transform(this.sourceFile, [transformer]);
+    const { transformed } = ts.transform(this.sourceFile, transformers);
     this.sourceFile = transformed[0];
   }
 
@@ -81,34 +94,6 @@ export class Transpiler {
     return haxeCode;
   }
 
-  protected visitNode = <T extends ts.Node | undefined = ts.Node, Ret = T>(
-    node: T,
-  ): Ret => {
-    if (!node) return undefined as Ret;
-    return ts.visitNode(node, this.nodeVisitor) as Ret;
-  };
-
-  protected visitNodes = <
-    T extends ts.Node = ts.Node,
-    TArr extends ts.NodeArray<T> | undefined = ts.NodeArray<T>,
-    Ret = TArr,
-  >(
-    nodes: TArr,
-  ): Ret => {
-    if (!nodes) return undefined as Ret;
-    return ts.visitNodes(nodes, this.nodeVisitor) as Ret;
-  };
-
-  protected nodeVisitor = (node: ts.Node): ts.Node => {
-    const result =
-      this.applyTransformers(node, this.transformationContext!) ?? node;
-    return ts.visitEachChild(
-      result,
-      this.nodeVisitor,
-      this.transformationContext!,
-    );
-  };
-
   protected emitNode(
     node: ts.Node | undefined,
     context: VisitNodeContext,
@@ -123,22 +108,6 @@ export class Transpiler {
     }
 
     return this.traverseChildren(node, context);
-  }
-
-  protected applyTransformers(
-    node: ts.Node,
-    context: ts.TransformationContext,
-  ): ts.Node | undefined {
-    let result: ts.Node = node;
-    for (const fn of this.transformers) {
-      try {
-        result = fn.call(this, result, context) ?? result;
-      } catch (error) {
-        if (!this.ignoreErrors) throw error;
-        logger.error(error);
-      }
-    }
-    return result;
   }
 
   protected applyEmitters(
@@ -203,8 +172,9 @@ export interface VisitNodeContext {
 
 export type TransformerFn = (
   this: Transpiler,
-  node: ts.Node & { parent: ts.Node['parent'] | undefined },
+  node: ts.Node,
   context: ts.TransformationContext,
+  parentNode: ts.Node,
 ) => ts.Node | undefined;
 
 export type EmitFn = (

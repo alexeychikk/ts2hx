@@ -2,10 +2,10 @@ import ts from 'typescript';
 import { type TransformerFn, type Transpiler } from '../Transpiler';
 
 export const transformClassMembersWithoutAccessModifier: TransformerFn =
-  function (this: Transpiler, node, context) {
+  function (this: Transpiler, node, context, parentNode) {
     if (
       !ts.canHaveModifiers(node) ||
-      !ts.isClassLike(this.utils.getParentNode(node)) ||
+      !ts.isClassLike(parentNode) ||
       this.utils.getAccessModifier(node)
     ) {
       return;
