@@ -28,6 +28,7 @@ class Foo {
     class Foo  {
       public function new() {}
 
+        
         public var foo=  function <T :  String>(baz:  T, param_6:  {
             public var ?bar:  String;
         }): T {
@@ -64,6 +65,7 @@ class Foo {
     class Foo  {
       public function new() {}
 
+        
         public var foo=  function (param_5:  {
             public var ?bar:  String;
         }):  Null<Any> {
@@ -86,6 +88,7 @@ class Foo {
     "class Foo  {
       public function new() {}
 
+        
         public function foo(param_1:  Array< String>,  param_2:  {
             public var bar:  {
                 public var foobar:  String;
@@ -112,12 +115,14 @@ class Foo {
     "class Foo  {
       public function new() {}
 
+        
         public var _bar:  {
             public var bar:  String;
         }=  { bar: 'bar' };
         public var Bar(never, set):  {
             public var ?bar:  String;
         };
+        
         public function set_Bar(param_1:  {
             public var ?bar:  String;
         }){
@@ -139,9 +144,11 @@ class Foo {
 }
 `).resolves.toMatchInlineSnapshot(`
     "class Foo  {
+        
         public var _bar:  {
             public var bar:  String;
         }=  { bar: 'bar' };
+        
         public function new(param_1:  {
             public var ?bar:  String;
         }) {

@@ -73,7 +73,7 @@ export const transformConstructor: EmitFn = function (
   if (!(ts.isConstructorDeclaration(node) && ts.isClassLike(node.parent)))
     return;
 
-  const modifiers = this.utils.joinMemberModifiers(node, context);
+  const modifiers = this.utils.joinModifiers(node.modifiers, context);
 
   let propertyDeclarations = '';
   let propertyInitializations = '';
@@ -141,7 +141,7 @@ export const transformClassPropertyDeclaration: EmitFn = function (
     );
   }
 
-  const modifiers = this.utils.joinMemberModifiers(node, context);
+  const modifiers = this.utils.joinModifiers(node.modifiers, context);
 
   let type = '';
   if (node.type) {
@@ -167,7 +167,7 @@ export const transformClassMethodDeclaration: EmitFn = function (
   // public static main(): void {}
   if (!(ts.isMethodDeclaration(node) && ts.isClassLike(node.parent))) return;
 
-  const modifiers = this.utils.joinMemberModifiers(node, context);
+  const modifiers = this.utils.joinModifiers(node.modifiers, context);
   const typeParams = this.utils.joinTypeParameters(
     node.typeParameters,
     context,
@@ -187,7 +187,7 @@ export const transformClassGetter: EmitFn = function (
   // get prop(): string {}
   if (!(ts.isGetAccessor(node) && ts.isClassLike(node.parent))) return;
 
-  const modifiers = this.utils.joinMemberModifiers(node, context);
+  const modifiers = this.utils.joinModifiers(node.modifiers, context);
   const type = node.type ? `: ${this.emitNode(node.type, context)}` : '';
   const body = node.body ? this.emitNode(node.body, context) : ';';
   const property = defineHaxeGetSetProperty.call(this, node, context);
@@ -203,7 +203,7 @@ export const transformClassSetter: EmitFn = function (
   // set prop(value: string) {}
   if (!(ts.isSetAccessor(node) && ts.isClassLike(node.parent))) return;
 
-  const modifiers = this.utils.joinMemberModifiers(node, context);
+  const modifiers = this.utils.joinModifiers(node.modifiers, context);
   const params = this.utils.joinNodes(node.parameters, context);
 
   let body = ';'; // abstract setters do not have body

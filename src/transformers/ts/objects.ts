@@ -5,10 +5,11 @@ export const transformMethodOnObject: TransformerFn = function (
   this: Transpiler,
   node,
   context,
+  parentNode,
 ) {
   // { methodOnObject() {} }
   if (!ts.isMethodDeclaration(node)) return;
-  if (!ts.isObjectLiteralExpression(node.parent)) return;
+  if (!ts.isObjectLiteralExpression(parentNode)) return;
 
   return context.factory.createPropertyAssignment(
     node.name,

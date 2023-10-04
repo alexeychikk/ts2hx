@@ -58,12 +58,14 @@ class FooBarError extends Error {
     "import haxe.Exception;
 
     class Foo  {
+        
         public function new(foo:  String) {
         }
     }
     class Bar  extends  Foo {
     }
     class Baz  extends  Bar {
+        
         public function new(baz:  String) {
             
             super(baz);
@@ -72,6 +74,7 @@ class FooBarError extends Error {
     class FooError  extends  Exception {
     }
     class FooBarError  extends  Exception {
+        
         public function new() {
             
             super('FooBar error message');
