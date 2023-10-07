@@ -14,6 +14,7 @@ export const TRANSFORMERS: TransformerFn[] = [
   tr.transformMethodOnObject,
   tr.transformParameterDeclaration,
   tr.transformPowExpression,
+  tr.transformTemplateLiteralType,
 ];
 
 // Order here actually matters (to some extent)
