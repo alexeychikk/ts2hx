@@ -50,9 +50,7 @@ if (myTen) {} else if (myBar) {} else if (myUnion) {}
 if (myObject) {} else if (myArray) {} else if (myFunction) {}
 if (Foo) {} else if (myFoo) {}
 `).resolves.toMatchInlineSnapshot(`
-      "import haxe.extern.EitherType;
-
-      final myBoolean: Bool = true;
+      "final myBoolean: Bool = true;
       final myTrue: Bool = true;
       final myFalse: Bool = false;
       final myNumber = 0;

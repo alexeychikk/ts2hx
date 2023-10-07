@@ -26,7 +26,8 @@ export function toEitherType(
     }, [] as string[])
     .filter(Boolean);
 
-  if (!emittedStrings.length) return 'Any';
+  if (emittedStrings.length === 0) return 'Any';
+  if (emittedStrings.length === 1) return emittedStrings[0];
 
   this.imports.eitherType = true;
   return (

@@ -20,9 +20,7 @@ test('reduces union of equal types to 1 type', async () => {
 let myVar1: 0 | 1 | -1;
 let myVar2: "foo" | "bar" | "baz";
 `).resolves.toMatchInlineSnapshot(`
-    "import haxe.extern.EitherType;
-
-    var myVar1: Float;
+    "var myVar1: Float;
     var myVar2: String;
     "
   `);
