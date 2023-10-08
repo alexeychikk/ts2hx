@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import { type TransformerFn, type Transpiler } from '../Transpiler';
+import { groupBy } from 'lodash';
 
 export const transformClassMembersWithoutAccessModifier: TransformerFn =
   function (this: Transpiler, node, context, parentNode) {
@@ -11,14 +12,19 @@ export const transformClassMembersWithoutAccessModifier: TransformerFn =
       return;
     }
 
-    const newModifiers: ts.ModifierLike[] = [
-      context.factory.createModifier(ts.SyntaxKind.PublicKeyword),
-    ];
+    const { true: decorators = [], false: modifiers = [] } = groupBy(
+      node.modifiers,
+      ts.isDecorator,
+    );
+
+    const newModifiers: ts.ModifierLike[] = decorators
+      .concat(context.factory.createModifier(ts.SyntaxKind.PublicKeyword))
+      .concat(modifiers);
 
     if (ts.isPropertyDeclaration(node)) {
       return context.factory.updatePropertyDeclaration(
         node,
-        newModifiers.concat(node.modifiers ?? []),
+        newModifiers,
         node.name,
         node.questionToken ?? node.exclamationToken,
         node.type,
@@ -29,7 +35,7 @@ export const transformClassMembersWithoutAccessModifier: TransformerFn =
     if (ts.isGetAccessorDeclaration(node)) {
       return context.factory.updateGetAccessorDeclaration(
         node,
-        newModifiers.concat(node.modifiers ?? []),
+        newModifiers,
         node.name,
         node.parameters,
         node.type,
@@ -40,7 +46,7 @@ export const transformClassMembersWithoutAccessModifier: TransformerFn =
     if (ts.isSetAccessorDeclaration(node)) {
       return context.factory.updateSetAccessorDeclaration(
         node,
-        newModifiers.concat(node.modifiers ?? []),
+        newModifiers,
         node.name,
         node.parameters,
         node.body,
@@ -50,7 +56,7 @@ export const transformClassMembersWithoutAccessModifier: TransformerFn =
     if (ts.isConstructorDeclaration(node)) {
       return context.factory.updateConstructorDeclaration(
         node,
-        newModifiers.concat(node.modifiers ?? []),
+        newModifiers,
         node.parameters,
         node.body,
       );
@@ -59,7 +65,7 @@ export const transformClassMembersWithoutAccessModifier: TransformerFn =
     if (ts.isMethodDeclaration(node)) {
       return context.factory.updateMethodDeclaration(
         node,
-        newModifiers.concat(node.modifiers ?? []),
+        newModifiers,
         node.asteriskToken,
         node.name,
         node.questionToken,

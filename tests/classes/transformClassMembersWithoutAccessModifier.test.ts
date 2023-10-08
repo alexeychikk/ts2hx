@@ -27,7 +27,7 @@ class Foo {
   protected baz() {}
   public fooBar() {}
 }
-  `).resolves.toMatchInlineSnapshot(`
+`).resolves.toMatchInlineSnapshot(`
     "class Foo  {
         
         public  static var staticFoo:  String=  'static foo';
@@ -59,6 +59,30 @@ class Foo {
         private function baz() { }
         
         public function fooBar() { }
+    }
+    "
+  `);
+});
+
+test('works with decorators', async () => {
+  await expect(ts2hx`
+class Foo {
+  @Game.chain
+  init() {}
+
+  @PromiseChain()
+  async run() {}
+}
+`).resolves.toMatchInlineSnapshot(`
+    "class Foo  {
+      public function new() {}
+
+        
+        @Game.chain 
+        public function init() { }
+         @async 
+        @PromiseChain() 
+        public function run() { }
     }
     "
   `);
