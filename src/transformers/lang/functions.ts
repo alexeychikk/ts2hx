@@ -45,7 +45,13 @@ export const transformFunctionParameter: EmitFn = function (
   let type = '';
   if (node.type) {
     if (dotDotDotToken) {
-      type = this.emitNode(this.utils.getArrayTypeNode(node.type), context);
+      const typeNode = this.utils.getArrayTypeNode(node.type);
+      type = typeNode
+        ? this.emitNode(typeNode, context)
+        : this.utils.commentOutNode(
+            node.type,
+            'Non-array type annotations of rest parameter is not supported at',
+          ) + 'Any';
     } else {
       type = this.emitNode(node.type, context);
     }
