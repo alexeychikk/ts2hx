@@ -2,33 +2,6 @@ import ts from 'typescript';
 import { type Transpiler, type EmitFn } from '../Transpiler';
 import { logger } from '../../Logger';
 
-export const transformArrowFunction: EmitFn = function (
-  this: Transpiler,
-  node,
-  context,
-) {
-  if (!ts.isArrowFunction(node)) return;
-  // Arrow function without { } (inline body) behaves the same in Haxe
-  if (!ts.isBlock(node.body)) return;
-
-  const modifiers = this.utils.joinModifiers(node.modifiers, context);
-  let typeParams = this.utils.joinTypeParameters(node.typeParameters, context);
-  if (typeParams) {
-    logger.warn(
-      `Arrow function cannot have type parameters in Haxe at`,
-      this.utils.getNodeSourcePath(node),
-    );
-    typeParams = this.utils.createComment(
-      ({ todo }) => `${todo} ${typeParams}`,
-    );
-  }
-  const params = this.utils.joinNodes(node.parameters, context);
-  const returnType = node.type ? `: ${this.emitNode(node.type, context)}` : '';
-  const body = this.emitNode(node.body, context);
-
-  return `${modifiers}function ${typeParams}(${params})${returnType}${body}`;
-};
-
 export const transformFunctionParameter: EmitFn = function (
   this: Transpiler,
   node,

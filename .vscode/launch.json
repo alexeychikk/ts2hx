@@ -40,7 +40,9 @@
         "--createBuildHxml",
         "--includeComments",
         "--includeTodos",
-        "--ignoreFormatError"
+        "--ignoreFormatError",
+        "--format",
+        "0"
       ]
     },
     {

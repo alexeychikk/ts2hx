@@ -37,7 +37,9 @@ export function moveVariableOrParameterDeclarationToBlock(
           initializer,
         ),
       ],
-      base.parent.flags || 2,
+      ts.isVariableDeclarationList(base.parent)
+        ? base.parent.flags
+        : ts.NodeFlags.Let,
     ),
   );
 

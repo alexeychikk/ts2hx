@@ -130,3 +130,9 @@ export const transformParameterDeclaration: TransformerFn = function (
     );
   }
 };
+
+export const asdfd: TransformerFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {};
