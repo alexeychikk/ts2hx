@@ -8,14 +8,8 @@ let myVar3: [];
 `).resolves.toMatchInlineSnapshot(`
     "import haxe.extern.EitherType;
 
-    var myVar1: Array<EitherType<
-        Float, 
-        String>>;
-    var myVar2: Array<EitherType<
-        Float, EitherType<
-        String, EitherType<
-        Bool, 
-        {
+    var myVar1: Array<EitherType<Float, String>>;
+    var myVar2: Array<EitherType<Float, EitherType<String, EitherType<Bool, {
             public var foo:  String;
         }>>>>;
     var myVar3: Array<Any>;
@@ -29,10 +23,7 @@ let myVar1: [number | boolean, string] | boolean | string;
 `).resolves.toMatchInlineSnapshot(`
     "import haxe.extern.EitherType;
 
-    var myVar1: EitherType< Array<EitherType<
-        EitherType<
-        Float,  Bool>, 
-        String>>, EitherType< Bool,  String>>;
+    var myVar1: EitherType<Array<EitherType<EitherType<Float, Bool>, String>>, EitherType<Bool, String>>;
     "
   `);
 });

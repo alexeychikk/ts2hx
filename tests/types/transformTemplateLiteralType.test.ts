@@ -8,9 +8,9 @@ test('transforms template literal type to String', async () => {
   type C = 0 | 1;
   type D = \`Hello \${C}\`;
 `).resolves.toMatchInlineSnapshot(`
-    "typedef A =  String;
+    "typedef A = String;
     typedef B = String;
-    typedef C =  Float;
+    typedef C = Float;
     typedef D = String;
     "
   `);

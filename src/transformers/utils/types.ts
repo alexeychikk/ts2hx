@@ -18,26 +18,27 @@ export function toEitherType(
   types: ts.NodeArray<ts.TypeNode>,
   context: VisitNodeContext,
 ): string {
-  const emittedStrings = types
-    .reduce((res, typeNode) => {
-      const str = this.emitNode(typeNode, context);
-      if (str.trim() !== (res[res.length - 1] || '').trim()) res.push(str);
-      return res;
-    }, [] as string[])
-    .filter(Boolean);
+  const emittedStrings = new Set<string>(
+    types.map((node) => this.emitNode(node, context).trim()).filter(Boolean),
+  );
 
-  if (emittedStrings.length === 0) return 'Any';
-  if (emittedStrings.length === 1) return emittedStrings[0];
+  if (emittedStrings.size === 0) return 'Any';
+  if (emittedStrings.size === 1) return Array.from(emittedStrings)[0];
+
+  const hasNull = emittedStrings.delete('Null<Any>');
+  if (hasNull && emittedStrings.size === 1) {
+    return `Null<${Array.from(emittedStrings)[0]}>`;
+  }
 
   this.imports.eitherType = true;
-  return (
-    emittedStrings
+  const result =
+    Array.from(emittedStrings)
       .map(
-        (str, i) =>
-          `${i < emittedStrings.length - 1 ? 'EitherType<' : ''}${str}`,
+        (str, i) => `${i < emittedStrings.size - 1 ? 'EitherType<' : ''}${str}`,
       )
-      .join(', ') + '>'.repeat(emittedStrings.length - 1)
-  );
+      .join(', ') + '>'.repeat(emittedStrings.size - 1);
+
+  return hasNull ? `Null<${result}>` : result;
 }
 
 export function getRootSymbol(

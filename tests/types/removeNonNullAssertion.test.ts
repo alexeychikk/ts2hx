@@ -20,9 +20,7 @@ test('removes non null assertion from variable declaration', async () => {
 type Foo = string | undefined;
 let a!: Foo;
 `).resolves.toMatchInlineSnapshot(`
-    "import haxe.extern.EitherType;
-
-    typedef Foo = EitherType< String,  Null<Any>>;
+    "typedef Foo = Null<String>;
     var a: Foo;
     "
   `);
