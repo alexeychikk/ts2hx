@@ -8,11 +8,11 @@ export * from './Transpiler';
 export { api, lang };
 
 export const TRANSFORMERS: TransformerFn[] = [
-  tr.transformClassMembersWithoutAccessModifier,
+  tr.addDefaultPublicModifier,
   tr.transformDestructuredVariableDeclarationInCatch,
   tr.transformDestructuredVariableDeclarationInForOf,
   tr.transformMethodOnObject,
-  tr.transformParameterDeclaration,
+  tr.transformDestructuredParameterDeclaration,
   tr.transformPowExpression,
   tr.transformTemplateLiteralType,
 ];

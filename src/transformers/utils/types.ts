@@ -93,7 +93,10 @@ export function getNodeTypeString(
   );
 }
 
-export function isSimpleType(this: Transpiler, node: ts.Node): boolean {
+export function isPrimitiveInitializer(
+  this: Transpiler,
+  node: ts.Node,
+): boolean {
   if (
     ts.isStringLiteral(node) ||
     ts.isNumericLiteral(node) ||

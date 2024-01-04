@@ -7,23 +7,24 @@ export function isAcceptableParameterDeclarationForHx(
 ): boolean {
   return (
     ts.isIdentifier(parameter.name) &&
-    (!parameter.initializer || this.utils.isSimpleType(parameter.initializer))
+    (!parameter.initializer ||
+      this.utils.isPrimitiveInitializer(parameter.initializer))
   );
 }
 
 export function moveVariableOrParameterDeclarationToBlock(
   this: Transpiler,
-  base: ts.VariableDeclaration | ts.ParameterDeclaration,
+  node: ts.VariableDeclaration | ts.ParameterDeclaration,
   identifier: ts.Identifier,
   block: ts.Block,
   context: ts.TransformationContext,
 ): ts.Block {
   const initializer =
-    base.initializer && !this.utils.isSimpleType(base.initializer)
+    node.initializer && !this.utils.isPrimitiveInitializer(node.initializer)
       ? context.factory.createBinaryExpression(
           identifier,
           context.factory.createToken(ts.SyntaxKind.QuestionQuestionToken),
-          base.initializer,
+          node.initializer,
         )
       : identifier;
   const newVariableStatement = context.factory.createVariableStatement(
@@ -31,13 +32,15 @@ export function moveVariableOrParameterDeclarationToBlock(
     context.factory.createVariableDeclarationList(
       [
         context.factory.createVariableDeclaration(
-          base.name,
-          'exclamationToken' in base ? base.exclamationToken : undefined,
-          base.type,
+          node.name,
+          'exclamationToken' in node ? node.exclamationToken : undefined,
+          node.type,
           initializer,
         ),
       ],
-      base.parent.flags || 2,
+      ts.isVariableDeclarationList(node.parent)
+        ? node.parent.flags
+        : ts.NodeFlags.Let,
     ),
   );
 
