@@ -32,7 +32,7 @@ class Foo {
         public var foo=  function <T :  String>(baz:  T, param_6:  {
             public var ?bar:  String;
         }): T {
-            final bar = param_6.bar ?? baz;
+            var bar = param_6.bar ?? baz;
             return baz;
         };
     }
@@ -94,8 +94,8 @@ class Foo {
                 public var foobar:  String;
             };
         }):  String {
-            final baz = param_1[0];
-            final foobar = param_2.bar.foobar ?? baz;
+            var baz = param_1[0];
+            var foobar = param_2.bar.foobar ?? baz;
             return baz;
         }
     }

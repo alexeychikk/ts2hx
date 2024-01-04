@@ -68,7 +68,7 @@ catch ({ message }) {
 `).resolves.toMatchInlineSnapshot(`
     "try { }
     catch (error_1) {
-        final message = error_1.message;
+        var message = error_1.message;
         
         trace(message);
     }
