@@ -14,7 +14,7 @@ It just covers syntax differences, basic types and some extra stuff that might c
 ## Usage
 
 1. `git clone https://github.com/alexeychikk/ts2hx.git`
-2. `cd ts2hx`
+2. `cd ./ts2hx`
 3. `npm i`
 4. `npm start -- ./path/to/your/tsconfig.json ./output/folder/path`
 
