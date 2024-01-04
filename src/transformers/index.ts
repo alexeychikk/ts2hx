@@ -8,13 +8,15 @@ export * from './Transpiler';
 export { api, lang };
 
 export const TRANSFORMERS: TransformerFn[] = [
-  tr.addDefaultPublicModifier,
+  tr.removeNonNullExpression,
+  tr.removeNonNullAssertion,
   tr.transformDestructuredVariableDeclarationInCatch,
   tr.transformDestructuredVariableDeclarationInForOf,
   tr.transformMethodOnObject,
   tr.transformDestructuredParameterDeclaration,
   tr.transformPowExpression,
   tr.transformTemplateLiteralType,
+  tr.addDefaultPublicModifier,
 ];
 
 // Order here actually matters (to some extent)
