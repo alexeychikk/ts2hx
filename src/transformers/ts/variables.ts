@@ -39,7 +39,7 @@ export const transformDestructuredVariableDeclarationInForOf: TransformerFn =
       this.utils.moveVariableOrParameterDeclarationToBlock(
         variableDeclaration,
         generatedIdentifier,
-        this.utils.ensureNodeIsBlock(node.statement, context),
+        this.utils.ensureNodeIsBlock(node.statement, context, node),
         context,
       ),
     );

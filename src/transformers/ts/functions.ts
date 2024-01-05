@@ -13,7 +13,7 @@ export const transformDestructuredParameterDeclaration: TransformerFn =
       return;
     }
 
-    let newBody = this.utils.ensureNodeIsBlock(node.body, context);
+    let newBody = this.utils.ensureNodeIsBlock(node.body, context, node);
     const parametersToMove: Array<{
       newName: ts.Identifier;
       node: ts.ParameterDeclaration;

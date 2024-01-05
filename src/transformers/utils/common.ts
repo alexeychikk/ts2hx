@@ -182,10 +182,11 @@ export function ensureNodeIsBlock(
   this: Transpiler,
   node: ts.Statement | ts.Expression | ts.Block,
   context: ts.TransformationContext,
+  parentNode: ts.Node,
 ): ts.Block {
   if (ts.isBlock(node)) return node;
   if (ts.isStatement(node)) return context.factory.createBlock([node], true);
-  if (ts.isExpression(node) && ts.isArrowFunction(node.parent)) {
+  if (ts.isExpression(node) && ts.isArrowFunction(parentNode)) {
     return context.factory.createBlock(
       [context.factory.createReturnStatement(node)],
       true,
