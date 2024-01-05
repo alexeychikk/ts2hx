@@ -11,7 +11,7 @@ type Foo = {
         public var foo:  String;
         public var bar:  String;
     };
-    typedef Foo = Map<keyof Poo, Float>;
+    typedef Foo = Map<String, Float>;
     "
   `);
 });

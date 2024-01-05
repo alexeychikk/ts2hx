@@ -80,3 +80,14 @@ export const transformMappedType: TransformerFn = function (
     [keyNode, valueNode],
   );
 };
+
+export const transformKeyofTypeOperator: TransformerFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  // keyof Foo
+  if (!ts.isTypeOperatorNode(node)) return;
+
+  return context.factory.createKeywordTypeNode(ts.SyntaxKind.StringKeyword);
+};

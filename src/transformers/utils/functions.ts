@@ -1,4 +1,4 @@
-import ts from 'typescript';
+import ts, { SyntaxKind } from 'typescript';
 import { type Transpiler } from '../Transpiler';
 
 export function isAcceptableParameterDeclarationForHx(
@@ -23,7 +23,7 @@ export function moveVariableOrParameterDeclarationToBlock(
     node.initializer && !this.utils.isPrimitiveInitializer(node.initializer)
       ? context.factory.createBinaryExpression(
           identifier,
-          context.factory.createToken(ts.SyntaxKind.QuestionQuestionToken),
+          context.factory.createToken(SyntaxKind.QuestionQuestionToken),
           node.initializer,
         )
       : identifier;

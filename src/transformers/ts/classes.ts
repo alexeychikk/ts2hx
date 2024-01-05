@@ -1,6 +1,6 @@
-import ts from 'typescript';
-import { type TransformerFn, type Transpiler } from '../Transpiler';
+import ts, { SyntaxKind } from 'typescript';
 import { groupBy } from 'lodash';
+import { type TransformerFn, type Transpiler } from '../Transpiler';
 
 export const addDefaultPublicModifier: TransformerFn = function (
   this: Transpiler,
@@ -22,7 +22,7 @@ export const addDefaultPublicModifier: TransformerFn = function (
   );
 
   const newModifiers: ts.ModifierLike[] = decorators
-    .concat(context.factory.createModifier(ts.SyntaxKind.PublicKeyword))
+    .concat(context.factory.createModifier(SyntaxKind.PublicKeyword))
     .concat(modifiers);
 
   if (ts.isPropertyDeclaration(node)) {
