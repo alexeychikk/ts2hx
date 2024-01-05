@@ -4,7 +4,12 @@ const { compilerOptions } = require('./tsconfig.json');
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
   collectCoverageFrom: ['src/**/*.ts?(x)'],
-  coveragePathIgnorePatterns: ['/node_modules/'],
+  coveragePathIgnorePatterns: [
+    '/node_modules/',
+    '<rootDir>/src/cli.ts',
+    '<rootDir>/src/index.ts',
+    '<rootDir>/src/Logger.ts',
+  ],
   coverageReporters: ['text', 'html'],
   errorOnDeprecated: true,
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'mjs'],

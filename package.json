@@ -24,6 +24,7 @@
 		"lint:fix": "eslint . --fix",
 		"prettify": "npx prettier --write .",
 		"test": "jest",
+		"pretest:coverage": "rimraf ./coverage",
 		"test:coverage": "jest --coverage"
 	},
 	"author": "",
