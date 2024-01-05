@@ -11,6 +11,7 @@ import {
   type RawSourceFile,
   asyncPool,
   createInMemoryCompilerHost,
+  ConverterError,
 } from './utils';
 
 const execAsync = promisify(exec);
@@ -67,7 +68,7 @@ export class Converter {
     this.flags = options.flags ?? {};
 
     if (!compilerOptions.rootDir) {
-      throw new Error('rootDir must be set in your tsconfig.json');
+      throw new ConverterError('rootDir must be set in your tsconfig.json');
     }
   }
 
@@ -138,7 +139,7 @@ export class Converter {
         logger.warn(errorMessage);
         return;
       }
-      throw new Error(errorMessage);
+      throw new ConverterError(errorMessage);
     }
   }
 
@@ -159,7 +160,7 @@ export class Converter {
     const configFile = ts.readConfigFile(options.tsconfigPath, ts.sys.readFile);
 
     if (configFile.error != null) {
-      throw new Error(
+      throw new ConverterError(
         typeof configFile.error.messageText === 'string'
           ? configFile.error.messageText
           : JSON.stringify(configFile.error.messageText, null, 2),

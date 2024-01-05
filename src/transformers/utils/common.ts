@@ -1,5 +1,6 @@
 import ts, { SyntaxKind } from 'typescript';
 import { type VisitNodeContext, type Transpiler } from '../Transpiler';
+import { TranspilerError } from '../../utils';
 
 export function getNextNode(
   this: Transpiler,
@@ -35,7 +36,7 @@ export function getNodeSourcePath(this: Transpiler, node: ts.Node): string {
   const sourceFile = node.getSourceFile();
   const { line, character } = ts.getLineAndCharacterOfPosition(
     sourceFile,
-    node.getStart(),
+    node.pos,
   );
   return `${sourceFile.fileName}:${line + 1}:${character + 1}`;
 }
@@ -131,6 +132,21 @@ export function escapeTemplateText(this: Transpiler, text: string): string {
   return text.replace(/'/g, `\\'`);
 }
 
+/**
+ * Examples:
+ * ```
+ * 3foo ==> _3foo
+ * $$foo$bar ==> $_foo_bar
+ * foo.bar.baz ==> foo_bar_baz
+ * ```
+ */
+export function toValidIdentifier(this: Transpiler, text: string): string {
+  return text
+    .replace(/^([^a-z_$])/i, '_$1')
+    .replace(/(?<=.)\$/g, '_')
+    .replace(/[^a-z0-9_$]/gi, '_');
+}
+
 export function visitParenthesized(
   this: Transpiler,
   node: ts.Node,
@@ -193,5 +209,5 @@ export function ensureNodeIsBlock(
     );
   }
 
-  throw new Error('Unable to transform node to Block');
+  throw new TranspilerError('Unable to transform node to Block', node);
 }

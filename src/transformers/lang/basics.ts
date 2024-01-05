@@ -154,7 +154,7 @@ export const transformImportDeclaration: EmitFn = function (
   if (!node.importClause) {
     return this.utils.commentOutNode(
       node,
-      `Side-effect only import is not supported at`,
+      `Side-effect only import is not supported`,
     );
   }
 
@@ -190,10 +190,7 @@ export const transformImportDeclaration: EmitFn = function (
 
   // import * as Foo from './foo';
   if (ts.isNamespaceImport(node.importClause.namedBindings)) {
-    return this.utils.commentOutNode(
-      node,
-      `Namespace import is not supported at`,
-    );
+    return this.utils.commentOutNode(node, `Namespace import is not supported`);
   }
 
   return '';

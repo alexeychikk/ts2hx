@@ -75,7 +75,7 @@ export const transformPropertyAssignment: EmitFn = function (
   // { [myVar]: "bar" }
   if (ts.isComputedPropertyName(node.name)) {
     logger.warn(
-      `Computed property name is not supported at`,
+      `Computed property name is not supported in object literal at`,
       this.utils.getNodeSourcePath(node.name),
     );
 
@@ -152,6 +152,6 @@ export const transformGetSet: EmitFn = function (this: Transpiler, node) {
   this.utils.ignoreNextNodeOfKind(node, SyntaxKind.CommaToken);
   return this.utils.commentOutNode(
     node,
-    `Getters and setters on object literals are not supported at`,
+    `Getters and setters on object literals are not supported`,
   );
 };

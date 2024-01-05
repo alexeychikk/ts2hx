@@ -40,3 +40,18 @@ type T = { foo; };
     "
   `);
 });
+
+test('removes computed property name', async () => {
+  await expect(ts2hx`
+const Foo = 'foo' as const;
+type Bar = {
+  [Foo]: number;
+}
+`).resolves.toMatchInlineSnapshot(`
+    "final Foo = 'foo';
+    typedef Bar = {
+            /* [Foo]: number; */
+    };
+    "
+  `);
+});

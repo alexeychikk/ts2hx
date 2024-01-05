@@ -1,5 +1,7 @@
 import ts, { SyntaxKind } from 'typescript';
 import { type Transpiler, type EmitFn } from '../Transpiler';
+import { TranspilerError } from '../../utils';
+import { logger } from '../../Logger';
 
 export const transformLiteralTypes: EmitFn = function (this: Transpiler, node) {
   if (!ts.isLiteralTypeNode(node)) return;
@@ -68,6 +70,14 @@ export const transformPropertySignature: EmitFn = function (
   // { foo: string; }
   if (!ts.isPropertySignature(node)) return;
 
+  if (ts.isComputedPropertyName(node.name)) {
+    logger.warn(
+      `Computed property name is not supported in property signature at`,
+      this.utils.getNodeSourcePath(node.name),
+    );
+    return this.utils.commentOutNode(node);
+  }
+
   const isOptional = !!node.questionToken;
   const isInterface = ts.isInterfaceDeclaration(node.parent);
 
@@ -75,9 +85,30 @@ export const transformPropertySignature: EmitFn = function (
     isOptional && isInterface ? '@:optional ' : ''
   }public ${this.utils.getDeclarationKeyword(node)} ${
     isOptional && !isInterface ? '?' : ''
-  }${node.name.getText()}: ${
+  }${this.emitNode(node.name, context).trim()}: ${
     node.type ? this.emitNode(node.type, context) : 'Any'
   };`;
+};
+
+export const transformPropertyName: EmitFn = function (this: Transpiler, node) {
+  if (!ts.isPropertyName(node)) return;
+
+  if (
+    ts.isIdentifier(node) ||
+    ts.isStringLiteral(node) ||
+    ts.isNoSubstitutionTemplateLiteral(node) ||
+    ts.isNumericLiteral(node) ||
+    ts.isPrivateIdentifier(node)
+  ) {
+    return this.utils.toValidIdentifier(node.text);
+  }
+
+  if (ts.isComputedPropertyName(node)) {
+    throw new TranspilerError(
+      `ComputedPropertyName must be handled by parent's node transformer`,
+      node,
+    );
+  }
 };
 
 export const transformIndexSignature: EmitFn = function (
@@ -87,7 +118,7 @@ export const transformIndexSignature: EmitFn = function (
   // { [key: string]: number; }
   if (!ts.isIndexSignatureDeclaration(node)) return;
 
-  return this.utils.commentOutNode(node, `Index signature is not supported at`);
+  return this.utils.commentOutNode(node, `Index signature is not supported`);
 };
 
 export const transformMethodSignature: EmitFn = function (
@@ -123,7 +154,7 @@ export const transformConstructorSignature: EmitFn = function (
 
   return this.utils.commentOutNode(
     node,
-    `Constructor signature is not supported at`,
+    `Constructor signature is not supported`,
   );
 };
 
@@ -156,7 +187,7 @@ export const transformConditionalType: EmitFn = function (
 
   const comment = this.utils.commentOutNode(
     node,
-    `Conditional type is not supported at`,
+    `Conditional type is not supported`,
   );
   return `${comment} Any`;
 };
@@ -171,7 +202,7 @@ export const transformTypeQuery: EmitFn = function (
 
   const comment = this.utils.commentOutNode(
     node,
-    `typeof type query is not supported at`,
+    `typeof type query is not supported`,
   );
   return `${comment} Any`;
 };

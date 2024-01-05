@@ -137,7 +137,7 @@ export const transformClassPropertyDeclaration: EmitFn = function (
   if (ts.isComputedPropertyName(node.name)) {
     return this.utils.commentOutNode(
       node,
-      `Computed property name is not supported in class property declaration at`,
+      `Computed property name is not supported in class property declaration`,
     );
   }
 

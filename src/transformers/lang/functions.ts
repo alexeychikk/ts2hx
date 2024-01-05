@@ -50,7 +50,7 @@ export const transformFunctionParameter: EmitFn = function (
         ? this.emitNode(typeNode, context)
         : this.utils.commentOutNode(
             node.type,
-            'Non-array type annotations of rest parameter is not supported at',
+            'Non-array type annotations of rest parameter is not supported',
           ) + 'Any';
     } else {
       type = this.emitNode(node.type, context);

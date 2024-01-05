@@ -23,7 +23,7 @@ export function commentOutNode(
   warning?: string,
 ): string {
   if (warning) {
-    logger.warn(warning, this.utils.getNodeSourcePath(node));
+    logger.warn(warning, 'at', this.utils.getNodeSourcePath(node));
   }
 
   return this.includeComments
