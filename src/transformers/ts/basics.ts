@@ -45,17 +45,34 @@ export const transformTemplateExpression: TransformerFn = function (
   if (!this.flags.transformTemplateExpression || !ts.isTemplateExpression(node))
     return;
 
+  // `${bar} foo` ==> bar + " foo"
+  // without this produces "" + (bar + " foo")
+  if (
+    !node.head.text &&
+    node.templateSpans.length === 1 &&
+    node.templateSpans[0].literal.text
+  ) {
+    return context.factory.createAdd(
+      node.templateSpans[0].expression,
+      context.factory.createNoSubstitutionTemplateLiteral(
+        node.templateSpans[0].literal.text,
+      ),
+    );
+  }
+
   const head = context.factory.createNoSubstitutionTemplateLiteral(
     node.head.text,
   );
 
   return node.templateSpans.reduce((acc: ts.Expression, templateSpan) => {
-    const expressionPlusLiteral = context.factory.createAdd(
-      templateSpan.expression,
-      context.factory.createNoSubstitutionTemplateLiteral(
-        templateSpan.literal.text,
-      ),
-    );
+    const expressionPlusLiteral = templateSpan.literal.text
+      ? context.factory.createAdd(
+          templateSpan.expression,
+          context.factory.createNoSubstitutionTemplateLiteral(
+            templateSpan.literal.text,
+          ),
+        )
+      : templateSpan.expression;
     return context.factory.createAdd(acc, expressionPlusLiteral);
   }, head);
 };
