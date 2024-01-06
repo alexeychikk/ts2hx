@@ -2,6 +2,7 @@ import path from 'path';
 import { Command, Option } from 'commander';
 import { Converter, type ConverterFlags } from './Converter';
 import { logger, LogLevel } from './Logger';
+import { type TranspilerFlags } from './transformers';
 
 class BooleanOption extends Option {
   constructor(flags: string, description?: string) {
@@ -95,15 +96,22 @@ void (async () => {
         new Option('-l, --logLevel <level>', 'log level')
           .choices(['Log', 'Warn', 'Error', 'None'])
           .default('Log'),
+      )
+      .addOption(
+        new BooleanOption(
+          '--transformTemplateExpression [bool]',
+          'converts `foo ${expression} bar` to "foo " + expression + " bar"',
+        ).default(true),
       );
 
     command.showHelpAfterError();
     command.parse();
 
     const options = command.opts<
-      ConverterFlags & {
-        logLevel: keyof typeof LogLevel;
-      }
+      ConverterFlags &
+        TranspilerFlags & {
+          logLevel: keyof typeof LogLevel;
+        }
     >();
 
     logger.logLevel = LogLevel[options.logLevel];
@@ -124,9 +132,12 @@ void (async () => {
         createBuildHxml: options.createBuildHxml,
         format: options.format,
         ignoreFormatError: options.ignoreFormatError,
+      },
+      transpilerFlags: {
         ignoreErrors: options.ignoreErrors,
         includeComments: options.includeComments,
         includeTodos: options.includeTodos,
+        transformTemplateExpression: options.transformTemplateExpression,
       },
     });
     await converter.run();

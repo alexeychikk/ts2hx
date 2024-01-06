@@ -14,7 +14,7 @@ export function getIndent(this: Transpiler, node: ts.Node): string {
 }
 
 export function getTodoString(this: Transpiler): string {
-  return this.includeTodos ? `TODO(ts2hx)` : '';
+  return this.flags.includeTodos ? `TODO(ts2hx)` : '';
 }
 
 export function commentOutNode(
@@ -26,9 +26,9 @@ export function commentOutNode(
     logger.warn(warning, 'at', this.utils.getNodeSourcePath(node));
   }
 
-  return this.includeComments
+  return this.flags.includeComments
     ? `${
-        this.includeTodos ? `/* ${this.utils.getTodoString()} */\n` : ''
+        this.flags.includeTodos ? `/* ${this.utils.getTodoString()} */\n` : ''
       }${this.utils.getIndent(node)}/* ${node.getText()} */`
     : '';
 }
@@ -37,7 +37,7 @@ export function createComment(
   this: Transpiler,
   fn: (params: { todo: string }) => string,
 ): string {
-  return this.includeComments
+  return this.flags.includeComments
     ? `/* ${fn({ todo: this.utils.getTodoString() })} */`
     : '';
 }

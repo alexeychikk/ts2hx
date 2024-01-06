@@ -5,7 +5,12 @@ import os from 'os';
 import { promisify } from 'util';
 import { exec } from 'child_process';
 
-import { Transpiler, EMITTERS, TRANSFORMERS } from './transformers';
+import {
+  Transpiler,
+  EMITTERS,
+  TRANSFORMERS,
+  type TranspilerFlags,
+} from './transformers';
 import { logger } from './Logger';
 import {
   type RawSourceFile,
@@ -24,12 +29,14 @@ export interface ConverterOptionsTsConfig {
   tsconfigPath: string;
   outputDirPath?: string;
   flags?: ConverterFlags;
+  transpilerFlags?: TranspilerFlags;
 }
 
 export interface ConverterOptionsProgram {
   program: ts.Program;
   outputDirPath?: string;
   flags?: ConverterFlags;
+  transpilerFlags?: TranspilerFlags;
 }
 
 export interface ConverterFlags {
@@ -41,15 +48,13 @@ export interface ConverterFlags {
   createBuildHxml?: boolean;
   format?: boolean;
   ignoreFormatError?: boolean;
-  ignoreErrors?: boolean;
-  includeComments?: boolean;
-  includeTodos?: boolean;
 }
 
 export class Converter {
   program: ts.Program;
   outputDirPath?: string;
   flags: ConverterFlags;
+  transpilerFlags: TranspilerFlags;
   sourceFileTranspilers = new Map<string, Transpiler>();
 
   protected startTime: number;
@@ -66,6 +71,7 @@ export class Converter {
     this.program.getTypeChecker();
     const compilerOptions = this.program.getCompilerOptions();
     this.flags = options.flags ?? {};
+    this.transpilerFlags = options.transpilerFlags ?? {};
 
     if (!compilerOptions.rootDir) {
       throw new ConverterError('rootDir must be set in your tsconfig.json');
@@ -206,9 +212,7 @@ export class Converter {
           transformers: TRANSFORMERS,
           emitters: EMITTERS,
           program: this.program,
-          ignoreErrors: this.flags.ignoreErrors,
-          includeComments: this.flags.includeComments,
-          includeTodos: this.flags.includeTodos,
+          flags: this.transpilerFlags,
         });
         this.sourceFileTranspilers.set(sourceFile.fileName, transpiler);
         transpiler.transform();
@@ -267,9 +271,7 @@ export class Converter {
         transformers: TRANSFORMERS,
         emitters: EMITTERS,
         program: this.program,
-        ignoreErrors: this.flags.ignoreErrors,
-        includeComments: this.flags.includeComments,
-        includeTodos: this.flags.includeTodos,
+        flags: this.transpilerFlags,
       });
       this.sourceFileTranspilers.set(sourceFile.fileName, transpiler);
     });

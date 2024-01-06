@@ -4,13 +4,11 @@ import { logger } from '../Logger';
 import * as utils from './utils';
 
 export class Transpiler {
-  ignoreErrors?: boolean;
-  includeComments?: boolean;
-  includeTodos?: boolean;
   program: ts.Program;
   sourceFile: ts.SourceFile;
   transformers: TransformerFn[];
   emitters: EmitFn[];
+  flags: TranspilerFlags;
   haxeCode?: string;
 
   protected nodesToIgnore = new Set<ts.Node>();
@@ -30,17 +28,13 @@ export class Transpiler {
     sourceFile: ts.SourceFile;
     transformers: TransformerFn[];
     emitters: EmitFn[];
-    ignoreErrors?: boolean;
-    includeComments?: boolean;
-    includeTodos?: boolean;
+    flags?: TranspilerFlags;
   }) {
     this.program = options.program;
     this.sourceFile = options.sourceFile;
     this.transformers = options.transformers;
     this.emitters = options.emitters;
-    this.ignoreErrors = options.ignoreErrors;
-    this.includeComments = options.includeComments;
-    this.includeTodos = options.includeTodos;
+    this.flags = options.flags ?? {};
   }
 
   get typeChecker(): ts.TypeChecker {
@@ -64,7 +58,7 @@ export class Transpiler {
             try {
               result = trans.call(this, node, context, parentNode) ?? node;
             } catch (error) {
-              if (!this.ignoreErrors) throw error;
+              if (!this.flags.ignoreErrors) throw error;
               logger.error(error);
               result = node;
             }
@@ -128,7 +122,7 @@ export class Transpiler {
         const result = fn.call(this, node, context);
         if (result != null) return result;
       } catch (error) {
-        if (!this.ignoreErrors) throw error;
+        if (!this.flags.ignoreErrors) throw error;
         logger.error(error);
         return (
           this.utils.createComment(({ todo }) => `${todo} INTERNAL_ERROR`) +
@@ -191,3 +185,10 @@ export type EmitFn = (
   node: ts.Node,
   context: VisitNodeContext,
 ) => string | undefined;
+
+export interface TranspilerFlags {
+  ignoreErrors?: boolean;
+  includeComments?: boolean;
+  includeTodos?: boolean;
+  transformTemplateExpression?: boolean;
+}

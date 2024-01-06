@@ -36,7 +36,7 @@ export class Ts2hx {
 
     this.converter = new Converter({
       program,
-      flags: { includeComments: true },
+      transpilerFlags: { includeComments: true },
     });
 
     await this.converter.run();
