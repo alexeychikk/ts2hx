@@ -2,19 +2,27 @@ import ts from 'typescript';
 import path from 'path';
 import { Converter } from '@src/Converter';
 import { IntermediateSourceFile, createInMemoryCompilerHost } from '@src/utils';
+import { type TranspilerFlags } from '@src/transformers';
 
 export async function ts2hx(
   strings: TemplateStringsArray | string,
+  transpilerFlags?: TranspilerFlags,
 ): Promise<string> {
   const code = typeof strings === 'string' ? strings : strings.join('');
-  return await new Ts2hx(code).run();
+  return await new Ts2hx(code).run(transpilerFlags);
 }
 
 export class Ts2hx {
   converter?: Converter;
   sourceFiles: IntermediateSourceFile[] = [];
+  transpilerFlags?: TranspilerFlags;
 
-  constructor(text: string, fileName = './main.ts') {
+  constructor(
+    text: string,
+    fileName = './main.ts',
+    transpilerFlags?: TranspilerFlags,
+  ) {
+    this.transpilerFlags = transpilerFlags;
     this.addSourceFile(fileName, text);
   }
 
@@ -23,7 +31,7 @@ export class Ts2hx {
     return this;
   }
 
-  async run(): Promise<string> {
+  async run(transpilerFlags?: TranspilerFlags): Promise<string> {
     const options: ts.CompilerOptions = { rootDir: '.' };
     const program = ts.createProgram(
       this.sourceFiles.map((s) => path.join(process.cwd(), s.fileName)),
@@ -36,7 +44,11 @@ export class Ts2hx {
 
     this.converter = new Converter({
       program,
-      transpilerFlags: { includeComments: true },
+      transpilerFlags: {
+        includeComments: true,
+        ...this.transpilerFlags,
+        ...transpilerFlags,
+      },
     });
 
     await this.converter.run();

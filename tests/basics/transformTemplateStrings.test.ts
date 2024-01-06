@@ -19,3 +19,15 @@ test('transforms template string literal expression', async () => {
     "
   `);
 });
+
+test('transforms template expression to add expression', async () => {
+  await expect(
+    ts2hx(
+      'let myLiteral = `foo ${varX} bar ${varY ? `inner ${varZ} end` : ""} baz`;',
+      { transformTemplateExpression: true },
+    ),
+  ).resolves.toMatchInlineSnapshot(`
+    "var myLiteral = "foo " + (varX + " bar ") + (((varY != null) ? "inner " + (varZ + " end") : "") + " baz");
+    "
+  `);
+});

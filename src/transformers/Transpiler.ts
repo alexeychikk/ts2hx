@@ -190,5 +190,6 @@ export interface TranspilerFlags {
   ignoreErrors?: boolean;
   includeComments?: boolean;
   includeTodos?: boolean;
+  /** @see https://github.com/HaxeFoundation/haxe/issues/11467 */
   transformTemplateExpression?: boolean;
 }

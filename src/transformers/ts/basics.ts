@@ -35,3 +35,27 @@ export const transformPowExpression: TransformerFn = function (
     );
   }
 };
+
+export const transformTemplateExpression: TransformerFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  // `foo ${bar} baz` ==> "foo " + bar + " baz"
+  if (!this.flags.transformTemplateExpression || !ts.isTemplateExpression(node))
+    return;
+
+  const head = context.factory.createNoSubstitutionTemplateLiteral(
+    node.head.text,
+  );
+
+  return node.templateSpans.reduce((acc: ts.Expression, templateSpan) => {
+    const expressionPlusLiteral = context.factory.createAdd(
+      templateSpan.expression,
+      context.factory.createNoSubstitutionTemplateLiteral(
+        templateSpan.literal.text,
+      ),
+    );
+    return context.factory.createAdd(acc, expressionPlusLiteral);
+  }, head);
+};
