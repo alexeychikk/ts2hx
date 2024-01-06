@@ -133,9 +133,11 @@ export class Transpiler {
   }
 
   protected dump(node: ts.Node, code: string): string {
-    return node.pos === -1 || this.nodesToReplaceFullText.has(node)
-      ? code
-      : node.getFullText().replace(node.getText(), code);
+    if (node.pos === -1 || this.nodesToReplaceFullText.has(node)) return code;
+
+    const fullText = this.sourceFile.getFullText();
+    const leadingCode = fullText.slice(node.pos, node.getStart());
+    return leadingCode + code;
   }
 
   protected traverseChildren(node: ts.Node, context: VisitNodeContext): string {

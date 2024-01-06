@@ -5,7 +5,6 @@ import * as lang from './lang';
 import * as tr from './ts';
 
 export * from './Transpiler';
-export { api, lang };
 
 export const TRANSFORMERS: TransformerFn[] = [
   tr.removeNonNullExpression,
