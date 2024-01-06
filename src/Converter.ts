@@ -131,9 +131,13 @@ export class Converter {
       );
       await execAsync(`${lixPath} run formatter -s ${this.outputDirPath}`);
     } catch (error) {
+      const [formatErrorMessage] =
+        (error as { stderr?: string }).stderr?.match(
+          /failed to format (.+\.hx)/im,
+        ) ?? [];
       const errorMessage =
-        'Failed to format output.\n' +
-        'This usually happens when syntax of the resulting Haxe code is incorrect.';
+        (formatErrorMessage ?? 'Failed to format output.') +
+        '\nThis usually happens when syntax of the resulting Haxe code is incorrect.';
 
       if (this.flags.ignoreFormatError) {
         logger.warn(errorMessage);
