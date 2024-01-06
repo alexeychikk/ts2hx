@@ -59,7 +59,16 @@ export class Transpiler {
             node: ts.Node,
             parentNode: ts.Node,
           ): ts.Node | undefined => {
-            const result = trans.call(this, node, context, parentNode) ?? node;
+            let result: ts.Node;
+
+            try {
+              result = trans.call(this, node, context, parentNode) ?? node;
+            } catch (error) {
+              if (!this.ignoreErrors) throw error;
+              logger.error(error);
+              result = node;
+            }
+
             return ts.visitEachChild(
               result,
               (childNode) => visitor(childNode, result),
