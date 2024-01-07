@@ -18,6 +18,7 @@ export const TRANSFORMERS: TransformerFn[] = [
   tr.transformMappedType,
   tr.transformKeyofTypeOperator,
   tr.transformTemplateExpression,
+  tr.transformDeleteExpression,
   tr.addDefaultPublicModifier,
 ];
 
