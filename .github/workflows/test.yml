@@ -33,7 +33,7 @@ jobs:
         git config --global user.name 'Alex Zinkevych'
         git config --global user.email 'alexdarkmm@gmail.com'
         git fetch
-        git checkout coverage
+        git switch coverage
         git add -f ./coverage/coverage-summary.json
         git commit --amend --no-edit
         git push --force

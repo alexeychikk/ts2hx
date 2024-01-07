@@ -1,4 +1,5 @@
 [![Test](https://github.com/alexeychikk/ts2hx/actions/workflows/test.yml/badge.svg)](https://github.com/alexeychikk/ts2hx/actions/workflows/test.yml)
+![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Falexeychikk%2Fts2hx%2Fcoverage%2Fcoverage%2Fcoverage-summary.json&query=%24.total.lines.pct&suffix=%25&label=Coverage&color=green)
 
 # ⚠️ WORK IN PROGRESS ⚠️
 
