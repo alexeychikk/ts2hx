@@ -5,6 +5,7 @@ test('transforms instanceof expression', async () => {
 class Foo {}
 let myFoo = new Foo();
 let myInstanceof = myFoo instanceof Foo;
+if (myFoo instanceof Foo) {}
 `).resolves.toMatchInlineSnapshot(`
     "class Foo  {
       public function new() {}
@@ -12,6 +13,7 @@ let myInstanceof = myFoo instanceof Foo;
     }
     var myFoo = new Foo();
     var myInstanceof = Std.isOfType(myFoo, Foo);
+    if (Std.isOfType(myFoo, Foo)) { }
     "
   `);
 });
