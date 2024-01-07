@@ -18,12 +18,11 @@ export const transformTsLibTypes: EmitFn = function (
 
   switch (name) {
     case 'Record': {
-      this.imports.dynamicAccess = true;
-      return `DynamicAccess<${
+      return `Dynamic${
         node.typeArguments?.[1]
-          ? this.emitNode(node.typeArguments[1], context)
-          : 'Dynamic'
-      }>`;
+          ? `<${this.emitNode(node.typeArguments[1], context)}>`
+          : ''
+      }`;
     }
     case 'Required':
     case 'Partial':

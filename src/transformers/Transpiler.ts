@@ -17,7 +17,6 @@ export class Transpiler {
   protected anonymousClassCounter = 0;
   protected imports: {
     eitherType?: boolean;
-    dynamicAccess?: boolean;
     exception?: boolean;
   } = {};
 
@@ -83,7 +82,6 @@ export class Transpiler {
 
     const imports = [
       this.imports.exception && `import haxe.Exception;`,
-      this.imports.dynamicAccess && `import haxe.DynamicAccess;`,
       this.imports.eitherType && `import haxe.extern.EitherType;`,
     ].filter(Boolean);
     haxeCode = `${
