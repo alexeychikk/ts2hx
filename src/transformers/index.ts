@@ -27,6 +27,7 @@ export const EMITTERS: EmitFn[] = [
   api.transformJsApiAccess,
   api.transformJsIdentifiers,
   api.transformTsLibTypes,
+  lang.transformJsDoc,
   lang.transformImportDeclaration,
   lang.transformVariableStatement,
   lang.transformVariableDeclarationList,

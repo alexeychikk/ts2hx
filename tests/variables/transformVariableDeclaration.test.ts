@@ -38,7 +38,7 @@ let tax = 40;
 /* inline */ let foobar/*: Int */ = 30; // yikes 
 `,
   ).resolves.toMatchInlineSnapshot(`
-    " /**
+    "/**
      * This is jsdoc
      */
     var foo = 10;

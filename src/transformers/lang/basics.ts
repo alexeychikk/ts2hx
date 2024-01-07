@@ -62,6 +62,11 @@ export const transformKeywords: EmitFn = function (this: Transpiler, node) {
   }
 };
 
+export const transformJsDoc: EmitFn = function (this: Transpiler, node) {
+  if (!ts.isJSDoc(node)) return;
+  return '';
+};
+
 export const transformSimpleTemplate: EmitFn = function (
   this: Transpiler,
   node,

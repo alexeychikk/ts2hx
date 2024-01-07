@@ -1,4 +1,4 @@
-import ts, { SyntaxKind } from 'typescript';
+import ts from 'typescript';
 import { type Transpiler, type EmitFn } from '../Transpiler';
 
 export const transformIdentifier: EmitFn = function (this: Transpiler, node) {
@@ -18,7 +18,7 @@ export const transformVariableStatement: EmitFn = function (
   // JSDoc node from parent VariableStatement thus duplicating this comment
   // when a node is finally dumped after transformation
   this.replaceNodeFullText(node);
-  return this.utils.omitChildrenByKind(node, context, SyntaxKind.JSDoc);
+  return this.traverseChildren(node, context);
 };
 
 export const transformVariableDeclarationList: EmitFn = function (
