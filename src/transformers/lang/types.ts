@@ -100,7 +100,7 @@ export const transformPropertyName: EmitFn = function (this: Transpiler, node) {
     ts.isNumericLiteral(node) ||
     ts.isPrivateIdentifier(node)
   ) {
-    return this.utils.toValidIdentifier(node.text);
+    return this.utils.toHaxeIdentifier(node.text);
   }
 
   if (ts.isComputedPropertyName(node)) {
@@ -233,7 +233,9 @@ export const transformEnumDeclaration: EmitFn = function (
     })
     .join('\n');
 
-  return `enum abstract ${node.name.text}(${underlyingType}) from ${underlyingType} to ${underlyingType} {\n${members}\n}`;
+  return `enum abstract ${this.utils.toHaxeIdentifier(
+    node.name.text,
+  )}(${underlyingType}) from ${underlyingType} to ${underlyingType} {\n${members}\n}`;
 };
 
 export const transformIndexedAccessType: EmitFn = function (

@@ -92,7 +92,10 @@ export const transformShorthandPropertyAssignment: EmitFn = function (
   if (!ts.isShorthandPropertyAssignment(node)) return;
   if (!ts.isObjectLiteralExpression(node.parent)) return;
   // { myVar }
-  return `${node.name.text}:${this.emitNode(node.name, context)}`;
+  return `${this.utils.toHaxeIdentifier(node.name.text)}:${this.emitNode(
+    node.name,
+    context,
+  )}`;
 };
 
 export const transformElementAccess: EmitFn = function (

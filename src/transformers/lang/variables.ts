@@ -1,6 +1,12 @@
 import ts, { SyntaxKind } from 'typescript';
 import { type Transpiler, type EmitFn } from '../Transpiler';
 
+export const transformIdentifier: EmitFn = function (this: Transpiler, node) {
+  // $$foo$$bar$$ ==> $_foo__bar__
+  if (!ts.isIdentifier(node)) return;
+  return this.utils.toHaxeIdentifier(node.text);
+};
+
 export const transformVariableStatement: EmitFn = function (
   this: Transpiler,
   node,
@@ -49,9 +55,9 @@ export const transformVariableDeclaration: EmitFn = function (
   const keyword = context.variableDeclaration?.variableDeclarationKeyword;
 
   if (ts.isIdentifier(node.name)) {
-    return `${keyword ? `${keyword} ` : ''}${node.name.text}${
-      node.type ? `: ${this.emitNode(node.type, context).trimStart()}` : ''
-    }${
+    return `${keyword ? `${keyword} ` : ''}${this.utils.toHaxeIdentifier(
+      node.name.text,
+    )}${node.type ? `: ${this.emitNode(node.type, context).trimStart()}` : ''}${
       node.initializer
         ? ` = ${this.emitNode(node.initializer, context).trimStart()}`
         : ''
@@ -106,8 +112,9 @@ export const transformObjectBindingPattern: EmitFn = function (
 
             if (ts.isComputedPropertyName(propName)) {
               return this.emitNode(propName.expression, context).trimStart();
+            } else if (ts.isIdentifier(propName)) {
+              return `'${this.utils.toHaxeIdentifier(propName.text)}'`;
             } else if (
-              ts.isIdentifier(propName) ||
               ts.isNumericLiteral(propName) ||
               ts.isStringLiteral(propName)
             ) {
@@ -119,15 +126,17 @@ export const transformObjectBindingPattern: EmitFn = function (
           .join(', ');
 
         return (
-          `${variableDeclarationKeyword} ${
-            (element.name as ts.Identifier).text
-          }` + ` = Ts2hx.rest(${parentInitializer}, [${keysToOmit}])`
+          `${variableDeclarationKeyword} ${this.utils.toHaxeIdentifier(
+            (element.name as ts.Identifier).text,
+          )}` + ` = Ts2hx.rest(${parentInitializer}, [${keysToOmit}])`
         );
       }
 
       if (ts.isIdentifier(propertyName)) {
         // { foo: bar } = obj -> obj.foo
-        initializer = `${parentInitializer}.${propertyName.text}`;
+        initializer = `${parentInitializer}.${this.utils.toHaxeIdentifier(
+          propertyName.text,
+        )}`;
       } else {
         let propertyNameText = '';
 
@@ -159,7 +168,9 @@ export const transformObjectBindingPattern: EmitFn = function (
 
       // { foo } | { foo: bar } | { [foo]: bar } | { 'foo': bar } | { 0: bar }
       if (ts.isIdentifier(element.name)) {
-        return `${variableDeclarationKeyword} ${element.name.text} = ${initializer}`;
+        return `${variableDeclarationKeyword} ${this.utils.toHaxeIdentifier(
+          element.name.text,
+        )} = ${initializer}`;
       }
 
       // { foo: { bar } } | { foo: [bar] }
@@ -199,9 +210,9 @@ export const transformArrayBindingPattern: EmitFn = function (
       // [...rest] = arr
       if (element.dotDotDotToken) {
         return (
-          `${variableDeclarationKeyword} ${
-            (element.name as ts.Identifier).text
-          }` + ` = ${parentInitializer}.slice(${index})`
+          `${variableDeclarationKeyword} ${this.utils.toHaxeIdentifier(
+            (element.name as ts.Identifier).text,
+          )}` + ` = ${parentInitializer}.slice(${index})`
         );
       }
 
@@ -216,7 +227,9 @@ export const transformArrayBindingPattern: EmitFn = function (
 
       // [first, second] = arr
       if (ts.isIdentifier(element.name)) {
-        return `${variableDeclarationKeyword} ${element.name.text} = ${initializer}`;
+        return `${variableDeclarationKeyword} ${this.utils.toHaxeIdentifier(
+          element.name.text,
+        )} = ${initializer}`;
       }
 
       // [[first, second], { foo }] = arr

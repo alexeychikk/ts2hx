@@ -140,7 +140,7 @@ export function escapeTemplateText(this: Transpiler, text: string): string {
  * foo.bar.baz ==> foo_bar_baz
  * ```
  */
-export function toValidIdentifier(this: Transpiler, text: string): string {
+export function toHaxeIdentifier(this: Transpiler, text: string): string {
   return text
     .replace(/^([^a-z_$])/i, '_$1')
     .replace(/(?<=.)\$/g, '_')

@@ -78,4 +78,5 @@ export const EMITTERS: EmitFn[] = [
   lang.transformTupleType,
   lang.transformKeywords,
   lang.transformRenameSymbol,
+  lang.transformIdentifier,
 ];

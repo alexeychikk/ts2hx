@@ -180,9 +180,15 @@ export const transformImportDeclaration: EmitFn = function (
         const fileName = this.utils.getDeclarationSourceFile(el.name)?.fileName;
         if (!fileName) return;
 
-        return `import ${this.utils.getImportedPackageName(fileName)}.${
-          el.propertyName?.text ?? el.name.text
-        }${el.propertyName ? ` as ${el.name.text}` : ''};`;
+        return `import ${this.utils.getImportedPackageName(
+          fileName,
+        )}.${this.utils.toHaxeIdentifier(
+          el.propertyName?.text ?? el.name.text,
+        )}${
+          el.propertyName
+            ? ` as ${this.utils.toHaxeIdentifier(el.name.text)}`
+            : ''
+        };`;
       })
       .filter(Boolean)
       .join('\n');
