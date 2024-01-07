@@ -1,5 +1,4 @@
 --class-path lib
 --class-path dist/hx/src
---library tink_core
---library tink_await
+
 --main Basics

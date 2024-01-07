@@ -160,8 +160,6 @@ export class Converter {
       buildHxmlPath,
       `--class-path ts2hx
 --class-path src
---library tink_core
---library tink_await
 `,
     );
   }

@@ -100,7 +100,7 @@ void (async () => {
       .addOption(
         new BooleanOption(
           '--transformTemplateExpression [bool]',
-          'converts `foo ${expression} bar` to "foo " + expression + " bar"',
+          'converts (`foo ${expression} bar`) to ("foo " + expression + " bar")',
         ).default(true),
       );
 

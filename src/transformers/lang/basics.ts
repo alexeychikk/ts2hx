@@ -34,9 +34,9 @@ export const transformKeywords: EmitFn = function (this: Transpiler, node) {
     case SyntaxKind.AsKeyword:
       return ':';
     case SyntaxKind.AsyncKeyword:
-      return '@async';
+      return '@:async';
     case SyntaxKind.AwaitKeyword:
-      return '@await';
+      return '@:await';
     case SyntaxKind.ExportAssignment:
     case SyntaxKind.ExportDeclaration:
     case SyntaxKind.ExportKeyword:
