@@ -83,3 +83,19 @@ class FooBarError extends Error {
     "
   `);
 });
+
+test('removes declare modifier', async () => {
+  await expect(ts2hx`
+class Foo {
+  declare bar: string;
+}
+`).resolves.toMatchInlineSnapshot(`
+    "class Foo  {
+      public function new() {}
+
+        
+        public var bar:  String;
+    }
+    "
+  `);
+});

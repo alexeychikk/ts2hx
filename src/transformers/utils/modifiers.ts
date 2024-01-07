@@ -43,7 +43,10 @@ export function getDeclarationKeyword(
 const MODIFIERS_PRIORITY: Partial<Record<SyntaxKind, number>> = {
   [SyntaxKind.AsyncKeyword]: 0,
 };
-const MODIFIERS_TO_EXCLUDE = new Set([SyntaxKind.DefaultKeyword]);
+const MODIFIERS_TO_EXCLUDE = new Set([
+  SyntaxKind.DefaultKeyword,
+  SyntaxKind.DeclareKeyword,
+]);
 
 export function joinModifiers(
   this: Transpiler,
