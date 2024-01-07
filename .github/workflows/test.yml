@@ -27,4 +27,9 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
     - run: npm ci
-    - run: npm test
+    - run: npm run test:coverage -- --coverageReporters json-summary
+    - name: Code coverage summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: code-coverage-summary
+        path: coverage/coverage-summary.json
