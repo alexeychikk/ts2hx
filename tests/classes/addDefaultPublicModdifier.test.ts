@@ -51,9 +51,9 @@ class Foo {
         }
         
         public function bar() { }
-         @async 
+         @:async 
         public function asyncBar():  Promise<Void> { }
-         @async 
+         @:async 
         public  static function asyncStaticBar():  Promise<Void> { }
         
         private function baz() { }
@@ -80,7 +80,7 @@ class Foo {
         
         @Game.chain 
         public function init() { }
-         @async 
+         @:async 
         @PromiseChain() 
         public function run() { }
     }
