@@ -14,6 +14,7 @@
       "args": [
         "./examples/tsconfig.json",
         "./dist/hx",
+        "--clean",
         "--includeComments",
         "--includeTodos",
         "--format",

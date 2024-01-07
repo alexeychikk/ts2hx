@@ -17,7 +17,7 @@
 		"postinstall": "lix download",
 		"start": "node ./dist/src/cli.js",
 		"prestart": "npm run ts",
-		"clean": "rimraf ./dist",
+		"clean": "rimraf ./dist/src",
 		"prets": "npm run clean",
 		"ts": "tsc -p tsconfig.lib.json",
 		"lint": "eslint .",
