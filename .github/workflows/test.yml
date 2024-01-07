@@ -21,6 +21,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+      with:
+        token: ${{ secrets.PAT }}
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v3
       with:
@@ -30,9 +32,9 @@ jobs:
     - run: npm run test:coverage -- --coverageReporters json-summary
     - name: Code coverage summary
       run: |
-        git config --global user.name 'Github Actions'
+        git config --global user.name 'Alex Zinkevych'
         git config --global user.email 'alexdarkmm@gmail.com'
         git checkout coverage
-        git add ./coverage/coverage-summary.json
+        git add -f ./coverage/coverage-summary.json
         git commit --amend --no-edit
         git push --force
