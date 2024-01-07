@@ -29,7 +29,10 @@ jobs:
     - run: npm ci
     - run: npm run test:coverage -- --coverageReporters json-summary
     - name: Code coverage summary
-      uses: actions/upload-artifact@v3
-      with:
-        name: code-coverage-summary
-        path: coverage/coverage-summary.json
+      run: |
+        git config --global user.name 'Github Actions'
+        git config --global user.email 'alexdarkmm@gmail.com'
+        git checkout coverage
+        git add ./coverage/coverage-summary.json
+        git commit --amend --no-edit
+        git push --force
