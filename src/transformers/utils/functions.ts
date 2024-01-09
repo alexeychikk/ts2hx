@@ -52,3 +52,27 @@ export function moveVariableOrParameterDeclarationToBlock(
     ]),
   );
 }
+
+export function isCallOf(
+  this: Transpiler,
+  node: ts.Node,
+  path: string,
+): boolean {
+  if (!ts.isCallExpression(node) || !path) return false;
+
+  const pathParts = path.split('.');
+  let expression = node.expression;
+
+  for (let i = pathParts.length - 1; i >= 0; i--) {
+    const part = pathParts[i];
+    if (ts.isIdentifier(expression)) {
+      if (part !== '*' && part !== expression.text) return false;
+    } else if (ts.isPropertyAccessExpression(expression)) {
+      if (part !== '*' && part !== expression.name.text) return false;
+      expression = expression.expression;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}

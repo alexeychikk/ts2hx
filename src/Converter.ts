@@ -257,7 +257,7 @@ export class Converter {
       options,
       host,
     });
-    // warp up
+    // warm up
     this.program.getTypeChecker();
     this.program.getCompilerOptions();
 

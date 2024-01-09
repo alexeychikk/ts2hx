@@ -159,7 +159,7 @@ export class Transpiler {
 }
 
 type Utils = typeof utils;
-type TransformerUtils = {
+export type TransformerUtils = {
   [key in keyof Utils]: OmitThisParameter<Utils[key]>;
 };
 
@@ -190,6 +190,7 @@ export interface TranspilerFlags {
   ignoreErrors?: boolean;
   includeComments?: boolean;
   includeTodos?: boolean;
+  transformAsyncAwait?: boolean;
   /** @see https://github.com/HaxeFoundation/haxe/issues/11467 */
   transformTemplateExpression?: boolean;
 }
