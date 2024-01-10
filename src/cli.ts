@@ -99,6 +99,12 @@ void (async () => {
       )
       .addOption(
         new BooleanOption(
+          '--transformAsyncAwait [bool]',
+          'converts async-await syntax to Promise-s',
+        ).default(true),
+      )
+      .addOption(
+        new BooleanOption(
           '--transformTemplateExpression [bool]',
           'converts (`foo ${expression} bar`) to ("foo " + expression + " bar")',
         ).default(true),
@@ -137,6 +143,7 @@ void (async () => {
         ignoreErrors: options.ignoreErrors,
         includeComments: options.includeComments,
         includeTodos: options.includeTodos,
+        transformAsyncAwait: options.transformAsyncAwait,
         transformTemplateExpression: options.transformTemplateExpression,
       },
     });

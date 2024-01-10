@@ -9,6 +9,8 @@ export * from './Transpiler';
 export const TRANSFORMERS: TransformerFn[] = [
   tr.removeNonNullExpression,
   tr.removeNonNullAssertion,
+  tr.transformAsyncFunction,
+  tr.transformAsyncMethod,
   tr.transformDestructuredVariableDeclarationInCatch,
   tr.transformDestructuredVariableDeclarationInForOf,
   tr.transformMethodOnObject,

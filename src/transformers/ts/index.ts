@@ -4,3 +4,4 @@ export * from './functions';
 export * from './objects';
 export * from './types';
 export * from './variables';
+export * from './promise';

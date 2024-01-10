@@ -113,3 +113,11 @@ export function isPrimitiveInitializer(
   const symbol = this.typeChecker.getSymbolAtLocation(node);
   return !!symbol && this.typeChecker.isUndefinedSymbol(symbol);
 }
+
+/** TODO */
+export function returnsPromise(
+  this: Transpiler,
+  node: ts.CallExpression,
+): boolean {
+  return false;
+}
