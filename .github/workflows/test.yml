@@ -30,10 +30,9 @@ jobs:
     - run: npm run test:coverage -- --coverageReporters json-summary
     - name: Code coverage summary
       run: |
-        git config --global user.name 'Alex Zinkevych'
+        git config --global user.name 'Github Actions'
         git config --global user.email 'alexdarkmm@gmail.com'
-        git fetch
-        git switch coverage
+        git switch -c coverage
         git add -f ./coverage/coverage-summary.json
-        git commit --amend --no-edit
-        git push --force
+        git commit --no-edit 'Initial commit'
+        git push --force --set-upstream origin coverage
