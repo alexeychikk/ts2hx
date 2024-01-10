@@ -34,5 +34,5 @@ jobs:
         git config --global user.email 'alexdarkmm@gmail.com'
         git switch -c coverage
         git add -f ./coverage/coverage-summary.json
-        git commit --no-edit 'Initial commit'
+        git commit --no-edit -m 'Initial commit'
         git push --force --set-upstream origin coverage
