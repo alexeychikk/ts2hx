@@ -11,40 +11,40 @@ baz();
   ).getUtils();
 
   expect(
-    utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `foo.bar.baz`),
+    utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `foo.bar.baz`),
   ).toEqual(true);
   expect(
-    utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `foo.bar.*`),
+    utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `foo.bar.*`),
   ).toEqual(true);
   expect(
-    utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `foo.*.baz`),
+    utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `foo.*.baz`),
   ).toEqual(true);
   expect(
-    utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `*.bar.baz`),
+    utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `*.bar.baz`),
   ).toEqual(true);
-  expect(utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `*.*.*`)).toEqual(
-    true,
-  );
+  expect(
+    utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `*.*.*`),
+  ).toEqual(true);
 
-  expect(utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `foo`)).toEqual(
-    false,
-  );
-  expect(utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `foo.bar`)).toEqual(
+  expect(utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `foo`)).toEqual(
     false,
   );
   expect(
-    utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `foo.bar.bax`),
+    utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `foo.bar`),
   ).toEqual(false);
   expect(
-    utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `foo.bar.baz.tax`),
+    utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `foo.bar.bax`),
   ).toEqual(false);
   expect(
-    utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `foo.bar.baz.*`),
+    utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `foo.bar.baz.tax`),
   ).toEqual(false);
   expect(
-    utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `foo.*.bax`),
+    utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `foo.bar.baz.*`),
   ).toEqual(false);
-  expect(utils.isCallOf(utils.findByText(`foo.bar.baz()`)!, `*.foo.*`)).toEqual(
-    false,
-  );
+  expect(
+    utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `foo.*.bax`),
+  ).toEqual(false);
+  expect(
+    utils.isCallOf(utils.getNodeByText(`foo.bar.baz()`)!, `*.foo.*`),
+  ).toEqual(false);
 });

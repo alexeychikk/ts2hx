@@ -58,22 +58,22 @@ export function replaceChild(
   return nodeFullCode || node.getFullText();
 }
 
-export function findByTextIn(
+export function getNodeByTextIn(
   this: Transpiler,
   root: ts.Node,
   text: string,
 ): ts.Node | undefined {
   return ts.forEachChild(root, (node) => {
     if (node.getText() === text) return node;
-    return this.utils.findByTextIn(node, text);
+    return this.utils.getNodeByTextIn(node, text);
   });
 }
 
-export function findByText(
+export function getNodeByText(
   this: Transpiler,
   text: string,
 ): ts.Node | undefined {
-  return this.utils.findByTextIn(this.sourceFile, text);
+  return this.utils.getNodeByTextIn(this.sourceFile, text);
 }
 
 export function filterChildren(
