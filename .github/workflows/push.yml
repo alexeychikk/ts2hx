@@ -1,10 +1,10 @@
 # This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
 
-name: Test
+name: Push
 
 on:
-  pull_request:
+  push:
     branches: [ "main" ]
 
 jobs:
@@ -25,4 +25,12 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
     - run: npm ci
-    - run: npm run test
+    - run: npm run test:coverage -- --coverageReporters json-summary
+    - name: Code coverage summary
+      run: |
+        git config --global user.name 'Github Actions'
+        git config --global user.email 'alexdarkmm@gmail.com'
+        git switch -c coverage
+        git add -f ./coverage/coverage-summary.json
+        git commit --no-edit -m 'Initial commit'
+        git push --force --set-upstream origin coverage
