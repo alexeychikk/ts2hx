@@ -19,6 +19,7 @@ export class Transpiler {
     eitherType?: boolean;
     exception?: boolean;
   } = {};
+  nodeMetadata = new Map<ts.Node, string[]>();
 
   utils = mapValues(utils, (fn) => fn.bind(this)) as TransformerUtils;
 
@@ -131,11 +132,41 @@ export class Transpiler {
   }
 
   protected dump(node: ts.Node, code: string): string {
-    if (node.pos === -1 || this.nodesToReplaceFullText.has(node)) return code;
+    if (node.pos === -1 || this.nodesToReplaceFullText.has(node)) {
+      // Apply metadata even to nodes with pos === -1
+      return this.applyNodeMetadata(node, code);
+    }
 
     const fullText = this.sourceFile.getFullText();
     const leadingCode = fullText.slice(node.pos, node.getStart());
-    return leadingCode + code;
+    return leadingCode + this.applyNodeMetadata(node, code);
+  }
+  
+  protected applyNodeMetadata(node: ts.Node, code: string): string {
+    const metadata = this.nodeMetadata.get(node);
+    if (!metadata || metadata.length === 0) {
+      return code;
+    }
+    
+    // Add all metadata tags before the code
+    // Format: @:metadata1 @:metadata2 code
+    
+    // Handle function declarations and expressions
+    if (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || 
+        ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
+      
+      // For functions, place metadata before "function" keyword or at the start
+      if (code.trim().startsWith('function')) {
+        // Insert metadata before the function keyword
+        return code.replace(/function/, `${metadata.join(' ')} function`);
+      } else if (ts.isArrowFunction(node)) {
+        // For arrow functions, add metadata at the start
+        return `${metadata.join(' ')} ${code}`;
+      }
+    }
+    
+    // For regular await expressions
+    return `${metadata.join(' ')} ${code}`;
   }
 
   protected traverseChildren(node: ts.Node, context: VisitNodeContext): string {

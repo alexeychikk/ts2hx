@@ -10,8 +10,8 @@ let foo = {
 }
 `).resolves.toMatchInlineSnapshot(`
     "var foo = {
-        bar: function () { },
-        baz: function <T>(foo:  String): T {
+        bar: function() { },
+        baz: function<T>(foo:  String):  T {
             return foo;
         }
     };

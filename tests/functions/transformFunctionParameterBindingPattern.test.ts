@@ -14,13 +14,13 @@ class Foo {
 `).resolves.toMatchInlineSnapshot(`
     "function foo(param_1:  {
         public var bar:  String;
-    }, param_2:  Array< String>, ...rest:  String) {
+    },  param_2:  Array< String>,  ...rest:  String) {
         var bar = param_1.bar;
         var baz = param_2[0] ?? bar;
     }
-    final foo1 = function (param_3:  {
+    final foo1 = function(param_3:  {
         public var ?bar:  String;
-    }, param_4:  Array< Float>, param_5): Void {
+    },  param_4:  Array< Float>,  param_5):  Void {
         var bar = (param_3 ?? {}).bar ?? 'bar';
         var baz = (param_4 ?? [])[0];
         var id = param_5 ?? bar;
@@ -29,9 +29,9 @@ class Foo {
       public function new() {}
 
         
-        public var foo=  function <T :  String>(baz:  T, param_6:  {
+        public var foo=  function<T :  String>(baz:  T,  param_6:  {
             public var ?bar:  String;
-        }): T {
+        }):  T {
             var bar = param_6.bar ?? baz;
             return baz;
         };

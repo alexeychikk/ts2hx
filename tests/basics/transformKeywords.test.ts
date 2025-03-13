@@ -40,8 +40,9 @@ let myNaN = NaN;
     var myUnknown: Any;
     var myAny: Any;
     var myAsKeyword = ( [] : Array< String>);
-    var myAsyncAwait = @:async function () {
-        @:await  Promise.resolve();
+    var myAsyncAwait = function() {
+        
+        Promise.resolve();
     };
       final myExport = {};
      

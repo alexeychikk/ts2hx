@@ -11,6 +11,10 @@ export const TRANSFORMERS: TransformerFn[] = [
   tr.removeNonNullAssertion,
   tr.transformAsyncFunction,
   tr.transformAsyncMethod,
+  tr.transformAsyncArrowFunction,
+  tr.transformAsyncFunctionExpression,
+  tr.transformAwaitExpression,
+  tr.transformPromiseChain,
   tr.transformDestructuredVariableDeclarationInCatch,
   tr.transformDestructuredVariableDeclarationInForOf,
   tr.transformMethodOnObject,
@@ -26,6 +30,11 @@ export const TRANSFORMERS: TransformerFn[] = [
 
 // Order here actually matters (to some extent)
 export const EMITTERS: EmitFn[] = [
+  // Function/class declarations with custom metadata
+  lang.transformFunctionDeclaration,
+  lang.transformFunctionExpression,
+  // Metadata should be first to ensure it's applied correctly
+  lang.transformNodeMetadata,
   api.transformJsApiAccess,
   api.transformJsIdentifiers,
   api.transformTsLibTypes,

@@ -114,10 +114,36 @@ export function isPrimitiveInitializer(
   return !!symbol && this.typeChecker.isUndefinedSymbol(symbol);
 }
 
-/** TODO */
+/**
+ * Checks if a call expression returns a Promise
+ */
 export function returnsPromise(
   this: Transpiler,
   node: ts.CallExpression,
 ): boolean {
+  // Check if the expression is directly a Promise-related method
+  if (this.utils.isCallOf(node, 'Promise.resolve') || 
+      this.utils.isCallOf(node, 'Promise.reject') ||
+      this.utils.isCallOf(node, 'Promise.all') ||
+      this.utils.isCallOf(node, 'Promise.race') ||
+      this.utils.isCallOf(node, 'Promise.allSettled') ||
+      this.utils.isCallOf(node, 'Promise.any')) {
+    return true;
+  }
+
+  // Check return type of the function
+  const signature = this.typeChecker.getResolvedSignature(node);
+  if (!signature) return false;
+
+  const returnType = this.typeChecker.getReturnTypeOfSignature(signature);
+  if (!returnType) return false;
+
+  // Check if it's a Promise type
+  if (returnType.symbol?.name === 'Promise') return true;
+
+  // Check if it extends Promise
+  const baseTypes = returnType.getBaseTypes();
+  if (baseTypes?.some(type => type.symbol?.name === 'Promise')) return true;
+
   return false;
 }

@@ -11,6 +11,12 @@ export const transformArrowFunction: EmitFn = function (
   // Arrow function without { } (inline body) behaves the same in Haxe
   if (!ts.isBlock(node.body)) return;
 
+  // Add @:async metadata prefix if needed
+  let asyncPrefix = '';
+  if (node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+    asyncPrefix = '@:async ';
+  }
+
   const modifiers = this.utils.joinModifiers(node.modifiers, context);
   let typeParams = this.utils.joinTypeParameters(node.typeParameters, context);
   if (typeParams) {
@@ -26,7 +32,7 @@ export const transformArrowFunction: EmitFn = function (
   const returnType = node.type ? `: ${this.emitNode(node.type, context)}` : '';
   const body = this.emitNode(node.body, context);
 
-  return `${modifiers}function ${typeParams}(${params})${returnType}${body}`;
+  return `${asyncPrefix}${modifiers}function ${typeParams}(${params})${returnType}${body}`;
 };
 
 export const transformFunctionParameter: EmitFn = function (

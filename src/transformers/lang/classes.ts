@@ -167,6 +167,12 @@ export const transformClassMethodDeclaration: EmitFn = function (
   // public static main(): void {}
   if (!(ts.isMethodDeclaration(node) && ts.isClassLike(node.parent))) return;
 
+  // Add @:async metadata prefix if needed
+  let asyncPrefix = '';
+  if (node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+    asyncPrefix = '@:async ';
+  }
+
   const modifiers = this.utils.joinModifiers(node.modifiers, context);
   const typeParams = this.utils.joinTypeParameters(
     node.typeParameters,
@@ -176,7 +182,7 @@ export const transformClassMethodDeclaration: EmitFn = function (
   const returnType = node.type ? `: ${this.emitNode(node.type, context)}` : '';
   const body = node.body ? this.emitNode(node.body, context) : ';';
 
-  return `${modifiers}function ${node.name.getText()}${typeParams}(${params})${returnType}${body}`;
+  return `${asyncPrefix}${modifiers}function ${node.name.getText()}${typeParams}(${params})${returnType}${body}`;
 };
 
 export const transformClassGetter: EmitFn = function (

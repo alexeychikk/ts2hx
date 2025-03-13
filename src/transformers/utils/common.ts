@@ -190,6 +190,26 @@ export function parenthesizeCode(
   return this.utils.isParenthesized(node) ? code : `(${code})`;
 }
 
+/**
+ * Adds metadata to be emitted before the node in Haxe code
+ * Metadata in Haxe looks like @:metadata
+ */
+export function addNodeMetadata(
+  this: Transpiler,
+  node: ts.Node,
+  metadata: string
+): void {
+  if (!this.nodeMetadata) {
+    this.nodeMetadata = new Map();
+  }
+  
+  const existingMetadata = this.nodeMetadata.get(node) || [];
+  if (!existingMetadata.includes(metadata)) {
+    existingMetadata.push(metadata);
+    this.nodeMetadata.set(node, existingMetadata);
+  }
+}
+
 export function getExtendedNode(
   this: Transpiler,
   node: ts.ClassLikeDeclaration,

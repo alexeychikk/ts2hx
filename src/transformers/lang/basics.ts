@@ -5,6 +5,46 @@ import {
   type EmitFn,
 } from '../Transpiler';
 
+// Basic function declaration emitter
+export const transformFunctionDeclaration: EmitFn = function (this: Transpiler, node, context) {
+  if (!ts.isFunctionDeclaration(node)) return;
+  
+  // Add @:async metadata prefix if needed
+  let asyncPrefix = '';
+  if (node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+    asyncPrefix = '@:async ';
+  }
+
+  const modifiers = this.utils.joinModifiers(node.modifiers, context);
+  const typeParams = this.utils.joinTypeParameters(node.typeParameters, context);
+  const params = this.utils.joinNodes(node.parameters, context);
+  const returnType = node.type ? `: ${this.emitNode(node.type, context)}` : '';
+  const body = node.body ? this.emitNode(node.body, context) : ';';
+  const name = node.name ? node.name.getText() : '';
+
+  return `${asyncPrefix}${modifiers}function ${name}${typeParams}(${params})${returnType}${body}`;
+};
+
+// Function expression emitter
+export const transformFunctionExpression: EmitFn = function (this: Transpiler, node, context) {
+  if (!ts.isFunctionExpression(node)) return;
+  
+  // Add @:async metadata prefix if needed
+  let asyncPrefix = '';
+  if (node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+    asyncPrefix = '@:async ';
+  }
+
+  const modifiers = this.utils.joinModifiers(node.modifiers, context);
+  const typeParams = this.utils.joinTypeParameters(node.typeParameters, context);
+  const params = this.utils.joinNodes(node.parameters, context);
+  const returnType = node.type ? `: ${this.emitNode(node.type, context)}` : '';
+  const body = node.body ? this.emitNode(node.body, context) : ';';
+  const name = node.name ? ' ' + node.name.getText() : '';
+
+  return `${asyncPrefix}${modifiers}function${name}${typeParams}(${params})${returnType}${body}`;
+};
+
 export const transformKeywords: EmitFn = function (this: Transpiler, node) {
   switch (node.kind) {
     // myVar: number
@@ -34,9 +74,9 @@ export const transformKeywords: EmitFn = function (this: Transpiler, node) {
     case SyntaxKind.AsKeyword:
       return ':';
     case SyntaxKind.AsyncKeyword:
-      return '@:async';
+      return '@:async'; // Add the metadata directly
     case SyntaxKind.AwaitKeyword:
-      return '@:await';
+      return '@:await'; // Add the metadata directly
     case SyntaxKind.ExportAssignment:
     case SyntaxKind.ExportDeclaration:
     case SyntaxKind.ExportKeyword:

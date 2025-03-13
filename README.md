@@ -78,6 +78,6 @@ Options:
 - [x] enums
 - [x] imports
 - [x] exceptions
-- [ ] async-await
+- [x] async-await (Promise-based, removing async/await keywords)
 - [ ] decorators
 - [ ] ...probably many more
