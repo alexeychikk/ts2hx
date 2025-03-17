@@ -11,8 +11,8 @@ type Bar<T extends (...args: Array<number>) => void> = { bar: T };
 type A = Array<any>;
 type B = (...args: A) => void;
 `).resolves.toMatchInlineSnapshot(`
-    "final foo = function (...args:  String) { };
-    final bar = function (...args: Float) { };
+    "final foo = function (...args:  String)  { };
+    final bar = function (...args: Float)  { };
     typedef Foo = (...args:  String) -> Void;
     typedef Bar<T :  (...args: Float) -> Void> = {
         public var bar:  T;
