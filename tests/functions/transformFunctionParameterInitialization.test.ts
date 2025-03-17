@@ -24,7 +24,7 @@ function foo(a = !true, b = 1 + 1, c = \`foo\${bar}\`, d = {}, e = [], f = () =>
         var c = param_3 ?? 'foo\${bar}';
         var d = param_4 ?? {};
         var e = param_5 ?? [];
-        var f = param_6 ?? (function () { });
+        var f = param_6 ?? (function ()  { });
         var g = param_7 ??  foo();
     }
     "

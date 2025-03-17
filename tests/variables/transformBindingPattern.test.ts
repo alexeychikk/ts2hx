@@ -33,7 +33,7 @@ const {
     final first = Reflect.field(obj, '0');
     final bar = obj.bar;
     final rest = Ts2hx.rest(obj, [foo1 + 'foo', 'foo', '0', 'bar']);
-    final foo = obj.foo ?? function () {
+    final foo = obj.foo ?? function ()  {
         final innerProp = innerObj.innerProp ?? 'foo';
     };
     final baz = obj.bar.baz ?? 'baz';

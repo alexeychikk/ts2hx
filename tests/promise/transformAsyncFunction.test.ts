@@ -29,7 +29,7 @@ async function foo() {
         if (a > 0.3) {
             while (a > 0.1) {
                 
-                (function () { return 4; })();
+                (function ()  { return 4; })();
                 return  Promise.resolve(5);
             }
             return  Promise.resolve(2);
@@ -38,7 +38,7 @@ async function foo() {
         function bar() { return 'foo'; }
         final fooBar = function () { return 'fooBar'; };
         
-        (function () { return 6; })();
+        (function ()  { return 6; })();
         return  Promise.resolve(3);
     }
     "

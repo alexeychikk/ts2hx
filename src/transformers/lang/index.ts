@@ -1,3 +1,4 @@
+export * from './arrows';
 export * from './basics';
 export * from './classes';
 export * from './conditions';

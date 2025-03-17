@@ -50,7 +50,7 @@ let bar = (({ x }: { x: string }) => foo()!);
     "var foo = () -> ({});
     var bar = (function (param_1:  {
         public var x:  String;
-    }) {
+    })  {
         var x = param_1.x;
         return  foo();
     });
