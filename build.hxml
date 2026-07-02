@@ -2,3 +2,4 @@
 --class-path dist/hx/src
 
 --main Basics
+--js dist/hx/basics.js

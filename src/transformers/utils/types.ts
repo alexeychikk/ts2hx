@@ -114,10 +114,28 @@ export function isPrimitiveInitializer(
   return !!symbol && this.typeChecker.isUndefinedSymbol(symbol);
 }
 
-/** TODO */
+/** Check if a call expression returns a Promise (or any thenable) */
 export function returnsPromise(
   this: Transpiler,
   node: ts.CallExpression,
 ): boolean {
-  return false;
+  if (this.utils.isCallOf(node, 'Promise.*')) return true;
+
+  // Calls of nodes without positions (created during transformation)
+  // cannot be resolved through the type checker
+  if (node.expression.pos === -1) return false;
+
+  try {
+    const signature = this.typeChecker.getResolvedSignature(node);
+    if (!signature) return false;
+
+    const returnType = this.typeChecker.getReturnTypeOfSignature(signature);
+    if (returnType.getSymbol()?.name === 'Promise') return true;
+
+    // Promise-like structure with a .then method
+    return !!returnType.getProperty('then');
+  } catch {
+    // Type checker may fail on nodes detached from the original source tree
+    return false;
+  }
 }

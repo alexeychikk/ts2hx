@@ -18,6 +18,7 @@ export class Transpiler {
   protected imports: {
     eitherType?: boolean;
     exception?: boolean;
+    asyncUtils?: boolean;
   } = {};
 
   utils = mapValues(utils, (fn) => fn.bind(this)) as TransformerUtils;
@@ -80,9 +81,16 @@ export class Transpiler {
   emit(): string {
     let haxeCode = this.emitNode(this.sourceFile, {});
 
+    // AsyncUtils calls are generated during the transform phase, which does
+    // not survive program reload — detect the usage in the emitted code
+    if (/\bAsyncUtils\s*\./.test(haxeCode)) {
+      this.imports.asyncUtils = true;
+    }
+
     const imports = [
       this.imports.exception && `import haxe.Exception;`,
       this.imports.eitherType && `import haxe.extern.EitherType;`,
+      this.imports.asyncUtils && `import ts2hx.AsyncUtils;`,
     ].filter(Boolean);
     haxeCode = `${
       imports.join('\n') + (imports.length ? '\n\n' : '')

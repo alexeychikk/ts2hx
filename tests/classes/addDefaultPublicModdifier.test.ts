@@ -52,9 +52,9 @@ class Foo {
         
         public function bar() { }
         
-        public function asyncBar():  Promise<Void> { }
+        public function asyncBar():  Promise<Void> { return  Promise.resolve(); }
         
-        public  static function asyncStaticBar():  Promise<Void> { }
+        public  static function asyncStaticBar():  Promise<Void> { return  Promise.resolve(); }
         
         private function baz() { }
         
@@ -82,7 +82,7 @@ class Foo {
         public function init() { }
         
         @PromiseChain() 
-        public function run() { }
+        public function run() { return  Promise.resolve(); }
     }
     "
   `);

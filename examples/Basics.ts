@@ -185,7 +185,21 @@ Foo 'Bar'!`;
       console.log('before sleep');
       await sleep();
       console.log('after sleep');
+      for (const item of ['a', 'b', 'c']) {
+        if (item === 'c') break;
+        await sleep(1);
+        console.log('processed', item);
+      }
+      try {
+        await sleep(1);
+        throw new Error('expected failure');
+      } catch (error) {
+        console.log('caught', error);
+      }
+      return 'done';
     }
+
+    myAsyncFn().then((result) => console.log('myAsyncFn:', result));
 
     console.log('Main complete!');
   }
