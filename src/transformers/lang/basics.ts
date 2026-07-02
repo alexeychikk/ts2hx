@@ -164,6 +164,11 @@ const EXTERNAL_MODULE_SHIMS: Record<
   string,
   { haxeModule: string; symbols: Set<string>; defaultImport?: string }
 > = {
+  joi: {
+    haxeModule: 'ts2hx.Joi',
+    symbols: new Set(),
+    defaultImport: 'Joi',
+  },
   seedrandom: {
     haxeModule: 'ts2hx.SeedRandom',
     symbols: new Set(),

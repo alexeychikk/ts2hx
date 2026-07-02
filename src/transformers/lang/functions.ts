@@ -127,7 +127,38 @@ export const transformCallExpression: EmitFn = function (
   if (!ts.isCallExpression(node)) return;
 
   const expression = this.emitNode(node.expression, context);
-  const args = this.utils.joinNodes(node.arguments, context);
+  let args = this.utils.joinNodes(node.arguments, context);
+
+  // Haxe only allows spreading into the trailing rest argument —
+  // f(...a, b) / f(...a, ...b) become a single spread of concatenated arrays
+  const spreadArguments = node.arguments.filter(ts.isSpreadElement);
+  if (
+    spreadArguments.length > 1 ||
+    (spreadArguments.length === 1 &&
+      !ts.isSpreadElement(node.arguments[node.arguments.length - 1]))
+  ) {
+    const segments: string[] = [];
+    let pending: string[] = [];
+    for (const argument of node.arguments) {
+      if (ts.isSpreadElement(argument)) {
+        if (pending.length) {
+          segments.push(`[${pending.join(', ')}]`);
+          pending = [];
+        }
+        segments.push(
+          this.utils.visitParenthesized(argument.expression, context),
+        );
+      } else {
+        pending.push(this.emitNode(argument, context).trim());
+      }
+    }
+    if (pending.length) segments.push(`[${pending.join(', ')}]`);
+
+    args = `...${segments[0]}${segments
+      .slice(1)
+      .map((segment) => `.concat(${segment})`)
+      .join('')}`;
+  }
 
   let typeArgs = '';
   if (node.typeArguments) {
