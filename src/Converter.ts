@@ -131,19 +131,26 @@ export class Converter {
   async formatOutput(): Promise<void> {
     try {
       if (!this.outputDirPath) return;
-      const lixPath = path.resolve(
-        process.cwd(),
-        './node_modules/.bin/lix' + (os.platform() === 'win32' ? '.cmd' : ''),
+      const binDirPath = path.resolve(process.cwd(), './node_modules/.bin');
+      const lixPath = path.join(
+        binDirPath,
+        'lix' + (os.platform() === 'win32' ? '.cmd' : ''),
       );
-      await execAsync(`${lixPath} run formatter -s ${this.outputDirPath}`);
+      await execAsync(`"${lixPath}" run formatter -s "${this.outputDirPath}"`, {
+        // lix invokes haxelib, which must be resolved from node_modules/.bin
+        env: {
+          ...process.env,
+          PATH: `${binDirPath}${path.delimiter}${process.env.PATH ?? ''}`,
+        },
+      });
     } catch (error) {
+      const stderr = (error as { stderr?: string }).stderr;
       const [formatErrorMessage] =
-        (error as { stderr?: string }).stderr?.match(
-          /failed to format (.+\.hx)/im,
-        ) ?? [];
-      const errorMessage =
-        (formatErrorMessage ?? 'Failed to format output.') +
-        '\nThis usually happens when syntax of the resulting Haxe code is incorrect.';
+        stderr?.match(/failed to format (.+\.hx)/im) ?? [];
+      const errorMessage = formatErrorMessage
+        ? formatErrorMessage +
+          '\nThis usually happens when syntax of the resulting Haxe code is incorrect.'
+        : `Failed to format output.\n${stderr ?? String(error)}`;
 
       if (this.flags.ignoreFormatError) {
         logger.warn(errorMessage);
