@@ -1,12 +1,14 @@
 [![Test](https://github.com/alexeychikk/ts2hx/actions/workflows/test.yml/badge.svg)](https://github.com/alexeychikk/ts2hx/actions/workflows/test.yml)
 ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Falexeychikk%2Fts2hx%2Fcoverage%2Fcoverage%2Fcoverage-summary.json&query=%24.total.lines.pct&suffix=%25&label=Coverage&color=green)
 
-# ⚠️ WORK IN PROGRESS ⚠️
+# ts2hx
 
 ### Converts [TypeScript](https://www.typescriptlang.org/) into [Haxe](https://haxe.org/).
 
 This tool does not seamlessly convert TS to Haxe, but rather helps to transition your codebase.
-It just covers syntax differences, basic types and some extra stuff that might come in handy.
+It covers syntax differences, basic types and some extra stuff that might come in handy.
+Constructs that cannot be converted safely are kept as-is and marked with `TODO(ts2hx)`
+comments (see `--includeTodos`), so you can finish the transition by hand.
 
 ## Requirements
 
@@ -57,6 +59,8 @@ Options:
                                         "true", "false", "1", "0")
   -l, --logLevel <level>                log level (choices: "Log", "Warn", "Error", "None",
                                         default: "Log")
+  --transformAsyncAwait [bool]          converts async-await syntax to Promise-s (choices: "true",
+                                        "false", "1", "0", default: true)
   --transformTemplateExpression [bool]  converts (`foo ${expression} bar`) to ("foo " + expression
                                         + " bar") (choices: "true", "false", "1", "0", default:
                                         true)
@@ -78,6 +82,49 @@ Options:
 - [x] enums
 - [x] imports
 - [x] exceptions
-- [ ] async-await
-- [ ] decorators
+- [x] async-await (see below)
+- [ ] decorators (emitted as Haxe metadata, no runtime behavior)
 - [ ] ...probably many more
+
+## Async/await
+
+By default (`--transformAsyncAwait`), `async` functions are converted into
+functions returning Promise chains — `await`s become `.then()` continuations:
+
+```ts
+async function load(id: string) {
+  const user = await fetchUser(id);
+  return user.name;
+}
+```
+
+```haxe
+function load(id: String) {
+  return fetchUser(id).then(function(user) {
+    return Promise.resolve(user.name);
+  });
+}
+```
+
+Loops and try/catch containing `await` are expressed through the
+`ts2hx.AsyncUtils` runtime helpers (`asyncLoop`, `forEachAsync`, `whileAsync`,
+`doWhileAsync`, `tryAsync`), which are copied into the output together with the
+other lib files. `break` and `continue` inside such loops are supported, and a
+top-level `throw` inside an async function becomes `Promise.reject()` to match
+the rejection semantics of TypeScript. On the JS target `Promise` resolves to
+`js.lib.Promise` (imported via the copied `import.hx`); on other targets bring
+your own Promise implementation.
+
+Patterns that cannot be converted safely are kept as-is (their `async`/`await`
+keywords are emitted as `@:async`/`@:await` metadata) and marked with a
+`TODO(ts2hx)` comment:
+
+- `await` in a loop condition (e.g. `while (await hasNext())`)
+- conditionally evaluated `await` (in `&&`, `||`, `??`, `?:`)
+- `return` from inside a loop with `await` (the loop is not stopped)
+- `for` loops other than `for (let i = <start>; i < <end>; i++)`
+- async generators
+
+With `--transformAsyncAwait false` async functions are left untouched and
+`async`/`await` are emitted as `@:async`/`@:await` metadata, which plays well
+with macro-based async libraries (e.g. hxasync).

@@ -19,3 +19,5 @@ yarn-error.log*
 .vscode/**
 !.vscode/launch.json
 !.vscode/tasks.json
+**/.claude/settings.local.json
+.claude/
