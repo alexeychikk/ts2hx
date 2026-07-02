@@ -42,10 +42,22 @@ export const transformForOfLoop: EmitFn = function (
   const initializer = ts.isVariableDeclarationList(node.initializer)
     ? this.emitNode(node.initializer.declarations[0], context)
     : this.emitNode(node.initializer, context);
-  const expression = this.emitNode(node.expression, context);
+  let expression = this.emitNode(node.expression, context).trim();
   const body = this.emitNode(node.statement, context);
 
-  return `for (${initializer} in ${expression}) ${body}`;
+  // Haxe cannot iterate a Dynamic value
+  if (node.expression.pos !== -1) {
+    try {
+      const type = this.typeChecker.getTypeAtLocation(node.expression);
+      if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) {
+        expression = `(${expression} : Array<Dynamic>)`;
+      }
+    } catch {
+      // detached nodes cannot be resolved
+    }
+  }
+
+  return `for (${initializer.trim()} in ${expression}) ${body}`;
 };
 
 export const transformForInLoop: EmitFn = function (

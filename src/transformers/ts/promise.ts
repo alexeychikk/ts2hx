@@ -134,6 +134,74 @@ export const transformAsyncArrowFunction: TransformerFn = function (
   );
 };
 
+/**
+ * promise.then(() => x) ==> promise.then(_ => x)
+ * Haxe promise handlers always take one argument.
+ */
+export const transformPromiseHandlerArity: TransformerFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  if (!ts.isCallExpression(node)) return;
+  if (!ts.isPropertyAccessExpression(node.expression)) return;
+  if (!['then', 'catch'].includes(node.expression.name.text)) return;
+  if (node.expression.expression.pos === -1) return;
+  try {
+    const type = this.typeChecker.getTypeAtLocation(node.expression.expression);
+    if (!type.getProperty('then')) return;
+  } catch {
+    return;
+  }
+
+  let changed = false;
+  const newArguments = node.arguments.map((argument) => {
+    if (
+      !(ts.isArrowFunction(argument) || ts.isFunctionExpression(argument)) ||
+      argument.parameters.length > 0
+    ) {
+      return argument;
+    }
+    changed = true;
+    const parameter = context.factory.createParameterDeclaration(
+      undefined,
+      undefined,
+      '_',
+      undefined,
+      undefined,
+      undefined,
+    );
+    return ts.isArrowFunction(argument)
+      ? context.factory.updateArrowFunction(
+          argument,
+          argument.modifiers,
+          argument.typeParameters,
+          [parameter],
+          argument.type,
+          argument.equalsGreaterThanToken,
+          argument.body,
+        )
+      : context.factory.updateFunctionExpression(
+          argument,
+          argument.modifiers,
+          argument.asteriskToken,
+          argument.name,
+          argument.typeParameters,
+          [parameter],
+          argument.type,
+          argument.body,
+        );
+  });
+  if (!changed) return;
+
+  return context.factory.updateCallExpression(
+    node,
+    node.expression,
+    node.typeArguments,
+    newArguments,
+  );
+};
+
 function isAsyncFunction(
   transpiler: Transpiler,
   node:

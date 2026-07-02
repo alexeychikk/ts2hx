@@ -107,7 +107,7 @@ if (3 === 2 + 1 || !(5 === 3 + 2 && "foo") {}
       if (!(true)) { }
       else if (!false) { }
       if (!(false || true) && (false || !false)) { }
-      if (!(5 * 3 != 0) ||  ("" + "454" != "") && (!(Object.assign({}) != null))) { }
+      if (!(5 * 3 != 0) ||  ("" + "454" != "") && (!(Ts2hx.objectAssign({}) != null))) { }
       if (3 == 2 + 1 || !(5 == 3 + 2 && true)) { }
       "
     `);

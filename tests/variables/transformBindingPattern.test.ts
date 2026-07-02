@@ -47,10 +47,10 @@ for (const { foo, bar } of fooBars) {
   for (const [{ foo1, bar1 }] of fooBars) {}
 }
 `).resolves.toMatchInlineSnapshot(`
-    "for ( element_1 in  fooBars)  {
+    "for (element_1 in (fooBars : Array<Dynamic>))  {
         final foo = element_1.foo;
         final bar = element_1.bar;
-        for ( element_2 in  fooBars)  {
+        for (element_2 in (fooBars : Array<Dynamic>))  {
             final foo1 = element_2[0].foo1;
             final bar1 = element_2[0].bar1;
         }

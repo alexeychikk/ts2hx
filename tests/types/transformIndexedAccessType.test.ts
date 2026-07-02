@@ -12,10 +12,10 @@ type FooBarBaz = Foo['bar']['baz'];
 type FooBarBoo = Foo['bar']['boo'];  
 type FooBarBooCoords = Foo['bar']['boo']['coords'];  
 `).resolves.toMatchInlineSnapshot(`
-    "interface Foo {
+    "typedef Foo = {
         public var bar:  Bar;
         public var wow:  String;
-    }
+    };
     ;
     typedef Bar = {
         public var baz:  Float;

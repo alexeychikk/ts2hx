@@ -53,13 +53,38 @@ export const transformVariableDeclaration: EmitFn = function (
   if (!ts.isVariableDeclaration(node)) return;
 
   const keyword = context.variableDeclaration?.variableDeclarationKeyword;
+  // the declaration keyword must not leak into the type and initializer
+  // subtrees (e.g. a for-of loop or a catch clause inside the initializer)
+  const innerContext = { ...context, variableDeclaration: undefined };
 
   if (ts.isIdentifier(node.name)) {
+    let type = node.type
+      ? `: ${this.emitNode(node.type, innerContext).trimStart()}`
+      : '';
+    // calls of shimmed external functions (lodash & co) return Dynamic —
+    // an explicit annotation restores the TS-inferred type
+    if (!node.type && isExternalShimCall.call(this, node.initializer)) {
+      let typeString = this.utils.getNodeTypeString(node.name, innerContext);
+      if (typeString === 'Any') {
+        // an unmapped array is still iterable when typed as Array<Dynamic>;
+        // other unmapped types would only become less usable than Dynamic
+        try {
+          typeString = this.typeChecker.isArrayLikeType(
+            this.typeChecker.getTypeAtLocation(node.name),
+          )
+            ? 'Array<Dynamic>'
+            : '';
+        } catch {
+          typeString = '';
+        }
+      }
+      if (typeString) type = `: ${typeString}`;
+    }
     return `${keyword ? `${keyword} ` : ''}${this.utils.toHaxeIdentifier(
       node.name.text,
-    )}${node.type ? `: ${this.emitNode(node.type, context).trimStart()}` : ''}${
+    )}${type}${
       node.initializer
-        ? ` = ${this.emitNode(node.initializer, context).trimStart()}`
+        ? ` = ${this.emitNode(node.initializer, innerContext).trimStart()}`
         : ''
     }`;
   }
@@ -77,9 +102,68 @@ export const transformVariableDeclaration: EmitFn = function (
       ...context.variableDeclaration,
       variableDeclarationInitializer:
         node.initializer &&
-        this.utils.visitParenthesized(node.initializer, context),
+        this.utils.visitParenthesized(node.initializer, innerContext),
     },
   }).trimStart();
+};
+
+/** Is the expression a call of a function declared in node_modules? */
+const isExternalShimCall = function (
+  this: Transpiler,
+  node: ts.Expression | undefined,
+): boolean {
+  if (!node || !ts.isCallExpression(node)) return false;
+  if (!ts.isIdentifier(node.expression) || node.expression.pos === -1) {
+    return false;
+  }
+  try {
+    const declarations = this.utils.getRootSymbol(
+      node.expression,
+    )?.declarations;
+    return !!declarations?.every((declaration) =>
+      /[\\/]node_modules[\\/]/.test(declaration.getSourceFile().fileName),
+    );
+  } catch {
+    return false;
+  }
+};
+
+// [a[i], a[j]] = [a[j], a[i]];
+export const transformArrayDestructuringAssignment: EmitFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  if (!ts.isExpressionStatement(node)) return;
+  const expression = node.expression;
+  if (!ts.isBinaryExpression(expression)) return;
+  if (expression.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return;
+  if (!ts.isArrayLiteralExpression(expression.left)) return;
+  if (
+    expression.left.elements.some(
+      (element) =>
+        ts.isSpreadElement(element) ||
+        ts.isArrayLiteralExpression(element) ||
+        ts.isObjectLiteralExpression(element),
+    )
+  ) {
+    return;
+  }
+
+  const indent = this.utils.getIndent(node);
+  const right = this.emitNode(expression.right, context).trim();
+  const assignments = expression.left.elements
+    .map((element, index) => {
+      if (ts.isOmittedExpression(element)) return '';
+      return `${indent}  ${this.emitNode(
+        element,
+        context,
+      ).trim()} = __destructured[${index}];`;
+    })
+    .filter(Boolean)
+    .join('\n');
+
+  return `{\n${indent}  final __destructured = ${right};\n${assignments}\n${indent}};`;
 };
 
 // { foo: bar = 'baz', [bar]: baz, ...rest } = obj
@@ -160,10 +244,10 @@ export const transformObjectBindingPattern: EmitFn = function (
       }
 
       if (element.initializer) {
-        initializer = `${initializer} ?? ${this.emitNode(
-          element.initializer,
-          context,
-        ).trimStart()}`;
+        initializer = `${initializer} ?? ${this.emitNode(element.initializer, {
+          ...context,
+          variableDeclaration: undefined,
+        }).trimStart()}`;
       }
 
       // { foo } | { foo: bar } | { [foo]: bar } | { 'foo': bar } | { 0: bar }
@@ -219,10 +303,10 @@ export const transformArrayBindingPattern: EmitFn = function (
       let initializer = `${parentInitializer}[${index}]`;
 
       if (element.initializer) {
-        initializer = `${initializer} ?? ${this.emitNode(
-          element.initializer,
-          context,
-        ).trimStart()}`;
+        initializer = `${initializer} ?? ${this.emitNode(element.initializer, {
+          ...context,
+          variableDeclaration: undefined,
+        }).trimStart()}`;
       }
 
       // [first, second] = arr

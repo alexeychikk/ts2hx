@@ -21,6 +21,10 @@ export const transformConditions: EmitFn = function (
   node,
   context,
 ) {
+  // the node is being re-emitted from toExplicitBooleanCondition —
+  // let the remaining emitters process it
+  if (this.explicitBooleanConversions.has(node)) return;
+
   if (
     !(
       //  myVar ? a : b
@@ -35,27 +39,29 @@ export const transformConditions: EmitFn = function (
   )
     return;
 
-  if (this.utils.isBooleanExpressionOfVariableDeclaration(node.parent)) return;
+  if (this.utils.isValueBooleanExpression(node.parent)) return;
 
   return this.utils.toExplicitBooleanCondition(node, context);
 };
 
-export const transformBooleanOperatorInVariableDeclaration: EmitFn = function (
+export const transformBooleanOperatorAsValue: EmitFn = function (
   this: Transpiler,
   node,
   context,
 ) {
-  if (!this.utils.isBooleanExpressionOfVariableDeclaration(node)) return;
+  // foo = a || b; return a && b; — the expression evaluates to an operand
+  if (!this.utils.isValueBooleanExpression(node)) return;
+  const binary = node as ts.BinaryExpression;
 
   const operator =
-    node.operatorToken.kind === SyntaxKind.AmpersandAmpersandToken
+    binary.operatorToken.kind === SyntaxKind.AmpersandAmpersandToken
       ? 'and'
       : 'or';
 
   return `${this.utils.visitParenthesized(
-    node.left,
+    binary.left,
     context,
-  )}.${operator}(${this.emitNode(node.right, context)})`;
+  )}.${operator}(${this.emitNode(binary.right, context)})`;
 };
 
 export const transformSwitchCase: EmitFn = function (

@@ -7,10 +7,10 @@ interface I {
   bar: number;
 }
 `).resolves.toMatchInlineSnapshot(`
-    "interface I {
+    "typedef I = {
         @:optional public var foo:  String;
         public var bar:  Float;
-    }
+    };
     "
   `);
 });

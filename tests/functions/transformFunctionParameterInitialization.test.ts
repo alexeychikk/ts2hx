@@ -18,7 +18,7 @@ function foo(a = !true, b = 1 + 1, c = \`foo\${bar}\`, d = {}, e = [], f = () =>
 }
 `).resolves.toMatchInlineSnapshot(`
     "final bar = 'bar';
-    function foo(param_1, param_2, param_3, param_4, param_5, param_6, param_7) {
+    function foo(?param_1, ?param_2, ?param_3, ?param_4, ?param_5, ?param_6, ?param_7) {
         var a = param_1 ?? !true;
         var b = param_2 ?? 1 + 1;
         var c = param_3 ?? 'foo\${bar}';

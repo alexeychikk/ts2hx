@@ -158,7 +158,7 @@ test('transforms try-catch with await', async () => {
             });
         },  function ( error) {
             
-            console.error(error);
+            trace(error);
             return  Promise.resolve('failure');
         },  function () {
             return   cleanup().then(function (_) {
@@ -215,7 +215,7 @@ test('transforms complex nested async patterns', async () => {
                 });
             },  function ( error) {
                 
-                console.error('Error processing item \${i}:',  error);
+                trace('Error processing item \${i}:',  error);
                 return   logError(error).then(function (_) {
                     return  Promise.resolve();
                 });

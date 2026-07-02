@@ -39,7 +39,7 @@ let myNaN = NaN;
     var myNever: Void;
     var myUnknown: Any;
     var myAny: Any;
-    var myAsKeyword = ( [] : Array< String>);
+    var myAsKeyword = (cast [] : Array< String>);
     var myAsyncAwait = function () {
         return   Promise.resolve().then(function (_) {
             return  Promise.resolve();
@@ -48,7 +48,7 @@ let myNaN = NaN;
       final myExport = {};
      
      
-    class MyReadonlyClass  {
+    class Main_MyReadonlyClass  {
       public function new() {}
 
         
@@ -56,7 +56,7 @@ let myNaN = NaN;
         
         private var myProtected: Null< String>;
     }
-    typedef MyReadonlyType = {
+    typedef Main_MyReadonlyType = {
         public final myReadonly:  Float;
     };
     var myEqEqEqToken = 3 == "3";

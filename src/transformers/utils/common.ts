@@ -111,6 +111,17 @@ export function ignoreNextNodeOfKind(
   }
 }
 
+export function ignorePrevNodeOfKind(
+  this: Transpiler,
+  node: ts.Node,
+  kind: SyntaxKind,
+): void {
+  const prevNode = this.utils.getPrevNode(node);
+  if (prevNode?.kind === kind) {
+    this.ignoreNode(prevNode);
+  }
+}
+
 export function ignoreChildrenOfKind(
   this: Transpiler,
   node: ts.Node,
@@ -210,6 +221,21 @@ export function renameSymbol(
   const name = symbolsMap.size > 0 ? `${renameTo}${symbolsMap.size}` : renameTo;
   symbolsMap.set(this.typeChecker.getSymbolAtLocation(node)!, name);
   return name;
+}
+
+/**
+ * Same as renameSymbol but uses the given name verbatim
+ * (no uniqueness suffix)
+ */
+export function renameSymbolTo(
+  this: Transpiler,
+  node: ts.Node,
+  renameTo: string,
+): void {
+  const key = Buffer.from(node.getText()).toString('base64');
+  const symbolsMap = this.symbolsToRename[key] ?? new Map();
+  this.symbolsToRename[key] = symbolsMap;
+  symbolsMap.set(this.typeChecker.getSymbolAtLocation(node)!, renameTo);
 }
 
 export function ensureNodeIsBlock(

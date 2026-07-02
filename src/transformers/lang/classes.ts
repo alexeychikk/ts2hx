@@ -60,7 +60,36 @@ export const transformHeritageClause: EmitFn = function (
     node.token === SyntaxKind.ExtendsKeyword ? 'extends' : 'implements';
 
   return node.types
-    .map((t) => `${keyword} ${this.emitNode(t, context)}`)
+    .map((t) => {
+      // types mapped by other emitters (Error => Exception)
+      if (ts.isIdentifier(t.expression) && t.expression.text === 'Error') {
+        return `${keyword} ${this.emitNode(t, context)}`;
+      }
+      // external base types have no Haxe counterpart —
+      // extending them would produce invalid code
+      const declarations = this.utils.getRootSymbol(t.expression)?.declarations;
+      const isExternal = !!declarations?.every((declaration) =>
+        /[\\/]node_modules[\\/]/.test(declaration.getSourceFile().fileName),
+      );
+      // TS allows implementing structural types (type aliases) — Haxe
+      // requires a real interface, and structural typing covers the
+      // contract anyway
+      const isStructural =
+        keyword === 'implements' &&
+        !!declarations?.some(ts.isTypeAliasDeclaration);
+      if (isExternal || isStructural) {
+        logger.warn(
+          `Heritage clause with ${
+            isExternal ? 'an external type' : 'a structural type'
+          } is not supported at`,
+          this.utils.getNodeSourcePath(t),
+        );
+        return this.utils.createComment(
+          ({ todo }) => `${todo} ${keyword} ${t.getText()}`,
+        );
+      }
+      return `${keyword} ${this.emitNode(t, context)}`;
+    })
     .join(' ');
 };
 
@@ -156,7 +185,132 @@ export const transformClassPropertyDeclaration: EmitFn = function (
 
   return `${modifiers}${this.utils.getDeclarationKeyword(
     node,
-  )} ${node.name.getText()}${type}${initializer};`;
+  )} ${getStaticMemberName.call(this, node)}${type}${initializer};`;
+};
+
+/**
+ * Haxe forbids a static member sharing its name with an instance member
+ * (own or inherited) — such statics are renamed to static_<name>
+ */
+const hasStaticInstanceConflict = function (
+  this: Transpiler,
+  classNode: ts.ClassLikeDeclaration,
+  memberName: string,
+): boolean {
+  if (!classNode.name || classNode.name.pos === -1) return false;
+  try {
+    const classSymbol = this.typeChecker.getSymbolAtLocation(classNode.name);
+    if (!classSymbol) return false;
+    const instanceType = this.typeChecker.getDeclaredTypeOfSymbol(classSymbol);
+    return !!instanceType.getProperty(memberName);
+  } catch {
+    return false;
+  }
+};
+
+const getStaticMemberName = function (
+  this: Transpiler,
+  node: ts.PropertyDeclaration | ts.MethodDeclaration,
+): string {
+  const name = node.name.getText();
+  const isStatic = !!node.modifiers?.some(
+    (modifier) => modifier.kind === SyntaxKind.StaticKeyword,
+  );
+  if (
+    isStatic &&
+    ts.isClassLike(node.parent) &&
+    hasStaticInstanceConflict.call(this, node.parent, name)
+  ) {
+    return `static_${name}`;
+  }
+  return name;
+};
+
+/** ClassWithConflict.member ==> ClassWithConflict.static_member */
+export const transformConflictingStaticAccess: EmitFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  if (!ts.isPropertyAccessExpression(node)) return;
+  if (node.name.pos === -1) return;
+
+  let symbol: ts.Symbol | undefined;
+  try {
+    symbol = this.typeChecker.getSymbolAtLocation(node.name);
+  } catch {
+    return;
+  }
+  const declaration = symbol?.declarations?.find(
+    (dec): dec is ts.PropertyDeclaration | ts.MethodDeclaration =>
+      (ts.isPropertyDeclaration(dec) || ts.isMethodDeclaration(dec)) &&
+      !!dec.modifiers?.some(
+        (modifier) => modifier.kind === SyntaxKind.StaticKeyword,
+      ),
+  );
+  if (!declaration || !ts.isClassLike(declaration.parent)) return;
+  if (
+    !hasStaticInstanceConflict.call(this, declaration.parent, node.name.text)
+  ) {
+    return;
+  }
+
+  return `${this.emitNode(node.expression, context).trim()}.static_${
+    node.name.text
+  }`;
+};
+
+/** Haxe requires an explicit `override` on inherited methods */
+const getOverrideModifier = function (
+  this: Transpiler,
+  node: ts.MethodDeclaration,
+): string {
+  if (node.modifiers?.some((m) => m.kind === SyntaxKind.StaticKeyword)) {
+    return '';
+  }
+  const classNode = node.parent as ts.ClassLikeDeclaration;
+  const baseNode = this.utils.getExtendedNode(classNode);
+  if (!baseNode || baseNode.pos === -1 || node.name.pos === -1) return '';
+  try {
+    const baseType = this.typeChecker.getTypeAtLocation(baseNode);
+    const baseProperty = baseType.getProperty(node.name.getText());
+    const declarations = baseProperty?.declarations;
+    if (!declarations?.length) return '';
+    // implementations of abstract methods are not overrides in Haxe
+    if (
+      declarations.some(
+        (declaration) =>
+          ts.canHaveModifiers(declaration) &&
+          declaration.modifiers?.some(
+            (modifier) => modifier.kind === SyntaxKind.AbstractKeyword,
+          ),
+      )
+    ) {
+      return '';
+    }
+    // methods inherited from the TS lib (e.g. Object.toString) are not
+    // Haxe fields — except when extending Error, which maps to Exception
+    const isExternal = declarations.every((declaration) =>
+      /[\\/]node_modules[\\/]/.test(declaration.getSourceFile().fileName),
+    );
+    if (
+      isExternal &&
+      !(
+        ts.isIdentifier(
+          (baseNode as ts.ExpressionWithTypeArguments).expression,
+        ) &&
+        (
+          (baseNode as ts.ExpressionWithTypeArguments)
+            .expression as ts.Identifier
+        ).text === 'Error'
+      )
+    ) {
+      return '';
+    }
+    return 'override ';
+  } catch {
+    return '';
+  }
 };
 
 export const transformClassMethodDeclaration: EmitFn = function (
@@ -167,7 +321,25 @@ export const transformClassMethodDeclaration: EmitFn = function (
   // public static main(): void {}
   if (!(ts.isMethodDeclaration(node) && ts.isClassLike(node.parent))) return;
 
-  const modifiers = this.utils.joinModifiers(node.modifiers, context);
+  // optional methods become nullable fields of a function type:
+  // foo?(bar: string): void; ==> public var foo: Null<(bar: String) -> Void>;
+  if (node.questionToken && !node.body) {
+    const params = this.utils.joinNodes(node.parameters, {
+      ...context,
+      skipParameterInitializer: true,
+    });
+    const returnType = node.type
+      ? this.emitNode(node.type, context).trim()
+      : 'Void';
+    return `${this.utils.joinModifiers(
+      node.modifiers,
+      context,
+    )}var ${node.name.getText()}: Null<(${params}) -> ${returnType}> = null;`;
+  }
+
+  const modifiers =
+    this.utils.joinModifiers(node.modifiers, context) +
+    getOverrideModifier.call(this, node);
   const typeParams = this.utils.joinTypeParameters(
     node.typeParameters,
     context,
@@ -176,7 +348,10 @@ export const transformClassMethodDeclaration: EmitFn = function (
   const returnType = node.type ? `: ${this.emitNode(node.type, context)}` : '';
   const body = node.body ? this.emitNode(node.body, context) : ';';
 
-  return `${modifiers}function ${node.name.getText()}${typeParams}(${params})${returnType}${body}`;
+  return `${modifiers}function ${getStaticMemberName.call(
+    this,
+    node,
+  )}${typeParams}(${params})${returnType}${body}`;
 };
 
 export const transformClassGetter: EmitFn = function (

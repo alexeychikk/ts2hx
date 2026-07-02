@@ -17,15 +17,30 @@ export function toEitherType(
   this: Transpiler,
   types: ts.NodeArray<ts.TypeNode>,
   context: VisitNodeContext,
+  isReturnPosition = false,
 ): string {
   const emittedStrings = new Set<string>(
     types.map((node) => this.emitNode(node, context).trim()).filter(Boolean),
   );
 
   if (emittedStrings.size === 0) return 'Any';
-  if (emittedStrings.size === 1) return Array.from(emittedStrings)[0];
+  // Promise<void> | void — as a return type the union collapses to Void
+  // (the result is ignored); as a value type the Void part means null
+  let hasVoid = false;
+  if (emittedStrings.has('Void')) {
+    if (isReturnPosition) return 'Void';
+    emittedStrings.delete('Void');
+    hasVoid = true;
+    if (emittedStrings.size === 0) return 'Null<Any>';
+    if (emittedStrings.size === 1) {
+      return `Null<${Array.from(emittedStrings)[0]}>`;
+    }
+  }
+  if (emittedStrings.size === 1 && !hasVoid) {
+    return Array.from(emittedStrings)[0];
+  }
 
-  const hasNull = emittedStrings.delete('Null<Any>');
+  const hasNull = emittedStrings.delete('Null<Any>') || hasVoid;
   if (hasNull && emittedStrings.size === 1) {
     return `Null<${Array.from(emittedStrings)[0]}>`;
   }
@@ -75,23 +90,190 @@ export function getNodeTypeString(
   context: VisitNodeContext,
 ): string {
   const type = this.typeChecker.getTypeAtLocation(node);
+  const mapped = this.utils.getHaxeTypeString(type);
+  if (mapped) return mapped;
+
+  // anonymous structures can be emitted from their declaration
+  const declaration = (type.aliasSymbol ?? type.getSymbol())?.declarations?.[0];
+  if (declaration && ts.isTypeLiteralNode(declaration)) {
+    const result = this.emitNode(declaration, context);
+    if (result.trim()) return result;
+  }
+
+  return 'Any';
+}
+
+/**
+ * Renders a checker-resolved type as Haxe code, mapping primitives, arrays
+ * and simple named references. Returns undefined for anything that has no
+ * safe textual representation (functions, anonymous structures, external
+ * types) — callers are expected to fall back to Any.
+ */
+export function getHaxeTypeString(
+  this: Transpiler,
+  type: ts.Type,
+  depth = 0,
+): string | undefined {
+  if (depth > 4) return;
+
   const baseType = type.isLiteral()
     ? this.typeChecker.getBaseTypeOfLiteralType(type)
     : type;
-  const typeNode = this.typeChecker.typeToTypeNode(
-    baseType,
-    undefined,
-    undefined,
+
+  if (baseType.isUnion()) {
+    const parts = new Set<string>();
+    let hasNull = false;
+    for (const part of baseType.types) {
+      if (part.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined)) {
+        hasNull = true;
+        continue;
+      }
+      const partString = this.utils.getHaxeTypeString(part, depth + 1);
+      if (!partString) return;
+      parts.add(partString);
+    }
+    if (parts.size === 0) return 'Null<Any>';
+    if (parts.has('Void')) return 'Void';
+
+    let result: string;
+    if (parts.size === 1) {
+      result = Array.from(parts)[0];
+    } else {
+      this.imports.eitherType = true;
+      result =
+        Array.from(parts)
+          .map((str, i) => `${i < parts.size - 1 ? 'EitherType<' : ''}${str}`)
+          .join(', ') + '>'.repeat(parts.size - 1);
+    }
+    return hasNull ? `Null<${result}>` : result;
+  }
+
+  if (baseType.flags & (ts.TypeFlags.String | ts.TypeFlags.StringLiteral)) {
+    return 'String';
+  }
+  if (baseType.flags & (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral)) {
+    return 'Float';
+  }
+  if (baseType.flags & (ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) {
+    return 'Bool';
+  }
+  if (baseType.flags & (ts.TypeFlags.Void | ts.TypeFlags.Never)) {
+    return 'Void';
+  }
+  if (baseType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) {
+    return 'Any';
+  }
+  if (baseType.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined)) {
+    return 'Null<Any>';
+  }
+
+  const typeSymbolFlags =
+    ts.SymbolFlags.Class |
+    ts.SymbolFlags.Interface |
+    ts.SymbolFlags.TypeAlias |
+    ts.SymbolFlags.RegularEnum |
+    ts.SymbolFlags.ConstEnum |
+    ts.SymbolFlags.EnumMember |
+    ts.SymbolFlags.TypeParameter;
+
+  const symbol = baseType.aliasSymbol ?? baseType.getSymbol();
+  // the name is only usable when it belongs to an actual type declaration
+  // (and not e.g. to the property a function/object type was inferred from)
+  if (
+    !symbol ||
+    !(symbol.flags & typeSymbolFlags) ||
+    symbol.name.startsWith('__') ||
+    !/^[A-Za-z_][A-Za-z0-9_]*$/.test(symbol.name)
+  ) {
+    return getCallSignatureTypeString.call(this, baseType, depth);
+  }
+  // external types have no Haxe counterpart
+  const isExternal = !!symbol.declarations?.every((declaration) =>
+    /[\\/]node_modules[\\/]/.test(declaration.getSourceFile().fileName),
   );
-  if (!typeNode) return 'Void';
-  const result = this.emitNode(typeNode, context);
-  return (
-    result ||
-    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-    type.aliasSymbol?.name ||
-    this.emitNode(type.symbol.declarations?.[0], context) ||
-    'Void'
+  if (isExternal && !['Array', 'Promise', 'Map', 'Set'].includes(symbol.name))
+    return;
+
+  // types declared in another module may not be imported here —
+  // use their fully qualified Haxe path
+  let symbolName = symbol.name;
+  const declarationFile = symbol.declarations?.[0]?.getSourceFile();
+  if (
+    !isExternal &&
+    !(symbol.flags & ts.SymbolFlags.TypeParameter) &&
+    declarationFile &&
+    declarationFile.fileName !== this.sourceFile.fileName
+  ) {
+    symbolName = `${this.utils.getImportedPackageName(
+      declarationFile.fileName,
+    )}.${symbol.name}`;
+  }
+
+  const objectFlags =
+    baseType.flags & ts.TypeFlags.Object
+      ? (baseType as ts.ObjectType).objectFlags
+      : 0;
+  const typeArguments =
+    objectFlags & ts.ObjectFlags.Reference
+      ? this.typeChecker.getTypeArguments(baseType as ts.TypeReference)
+      : baseType.aliasSymbol
+      ? baseType.aliasTypeArguments ?? []
+      : [];
+
+  if (!typeArguments.length) return symbolName;
+
+  const argStrings: string[] = [];
+  for (const argument of typeArguments) {
+    const argString = this.utils.getHaxeTypeString(argument, depth + 1);
+    if (!argString) return;
+    argStrings.push(argString);
+  }
+  return `${symbolName}<${argStrings.join(', ')}>`;
+}
+
+/** Renders a purely-callable type as a Haxe function type */
+function getCallSignatureTypeString(
+  this: Transpiler,
+  type: ts.Type,
+  depth: number,
+): string | undefined {
+  const callSignatures = this.typeChecker.getSignaturesOfType(
+    type,
+    ts.SignatureKind.Call,
   );
+  if (callSignatures.length !== 1) return;
+  if (type.getProperties().length > 0) return;
+
+  const signature = callSignatures[0];
+  const parameterStrings: string[] = [];
+  for (const parameter of signature.getParameters()) {
+    const declaration = parameter.valueDeclaration;
+    if (!declaration) return;
+    const parameterType = this.typeChecker.getTypeOfSymbolAtLocation(
+      parameter,
+      declaration,
+    );
+    const parameterString = this.utils.getHaxeTypeString(
+      parameterType,
+      depth + 1,
+    );
+    if (!parameterString) return;
+    parameterStrings.push(parameterString);
+  }
+
+  const returnString = this.utils.getHaxeTypeString(
+    this.typeChecker.getReturnTypeOfSignature(signature),
+    depth + 1,
+  );
+  if (!returnString) return;
+
+  return `(${parameterStrings.join(', ')}) -> ${returnString}`;
+}
+
+export function isRegExpNode(this: Transpiler, node: ts.Node): boolean {
+  if (ts.isRegularExpressionLiteral(node)) return true;
+  const type = this.typeChecker.getTypeAtLocation(node).getNonNullableType();
+  return type.getSymbol()?.name === 'RegExp';
 }
 
 export function isPrimitiveInitializer(

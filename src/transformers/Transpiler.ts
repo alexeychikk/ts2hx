@@ -13,6 +13,12 @@ export class Transpiler {
 
   protected nodesToIgnore = new Set<ts.Node>();
   protected nodesToReplaceFullText = new Set<ts.Node>();
+  /**
+   * Nodes currently being converted to an explicit boolean condition.
+   * Prevents transformConditions from re-entering toExplicitBooleanCondition
+   * when the node is re-emitted to apply the regular emitters.
+   */
+  protected explicitBooleanConversions = new Set<ts.Node>();
   protected symbolsToRename: Record<string, Map<ts.Symbol, string>> = {};
   protected anonymousClassCounter = 0;
   protected imports: {
@@ -140,6 +146,9 @@ export class Transpiler {
 
   protected dump(node: ts.Node, code: string): string {
     if (node.pos === -1 || this.nodesToReplaceFullText.has(node)) return code;
+    // Nodes resolved through the type checker may belong to another source
+    // file — slicing this file's text with their positions corrupts the output
+    if (node.getSourceFile() !== this.sourceFile) return code;
 
     const fullText = this.sourceFile.getFullText();
     const leadingCode = fullText.slice(node.pos, node.getStart());

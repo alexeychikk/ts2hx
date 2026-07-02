@@ -18,9 +18,9 @@ class Foo {
         var bar = param_1.bar;
         var baz = param_2[0] ?? bar;
     }
-    final foo1 = function (param_3:  {
+    final foo1 = function (?param_3:  {
         public var ?bar:  String;
-    }, param_4:  Array< Float>, param_5): Void {
+    }, ?param_4:  Array< Float>, ?param_5): Void {
         var bar = (param_3 ?? {}).bar ?? 'bar';
         var baz = (param_4 ?? [])[0];
         var id = param_5 ?? bar;
@@ -51,14 +51,14 @@ class Foo {
 `).resolves.toMatchInlineSnapshot(`
     "final fooArrow = function (param_1:  {
         public var bar:  String;
-    },  param_2:  Array< String>,  ...rest:  String):  Null<Any> {
+    },  param_2:  Array< String>,  ...rest:  String): Null<Any> {
         var bar = param_1.bar;
         var baz = param_2[0] ?? bar;
         return null;
     };
-    final fooArrow1 = function (param_3:  {
+    final fooArrow1 = function (?param_3:  {
         public var ?bar:  String;
-    },  param_4:  Array< Float>,  ?id:  String):  Void {
+    },  ?param_4:  Array< Float>,  ?id:  String): Void {
         var bar = (param_3 ?? {}).bar ?? 'bar';
         var baz = (param_4 ?? [])[0];
     };
@@ -68,7 +68,7 @@ class Foo {
         
         public var foo=  function (param_5:  {
             public var ?bar:  String;
-        }):  Null<Any> {
+        }): Null<Any> {
             var bar = param_5.bar ?? 'bar';
             return null;
         };

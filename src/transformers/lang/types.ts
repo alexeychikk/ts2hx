@@ -48,7 +48,11 @@ export const transformUnionType: EmitFn = function (
 ) {
   // myVar: string | boolean
   if (!ts.isUnionTypeNode(node)) return;
-  return this.utils.toEitherType(node.types, context);
+  const isReturnPosition =
+    !!node.parent &&
+    ts.isFunctionLike(node.parent) &&
+    node.parent.type === node;
+  return this.utils.toEitherType(node.types, context, isReturnPosition);
 };
 
 export const transformTupleType: EmitFn = function (
@@ -158,6 +162,19 @@ export const transformConstructorSignature: EmitFn = function (
   );
 };
 
+/** Names that clash with Haxe built-in types when used as type parameters */
+const RESERVED_TYPE_PARAMETER_NAMES = new Set([
+  'Any',
+  'Array',
+  'Bool',
+  'Class',
+  'Dynamic',
+  'Enum',
+  'Float',
+  'Int',
+  'String',
+]);
+
 export const transformTypeParameter: EmitFn = function (
   this: Transpiler,
   node,
@@ -174,7 +191,319 @@ export const transformTypeParameter: EmitFn = function (
   }
   if (constraint) constraint = ` : ${constraint}`;
 
-  return `${node.name.getText()}${constraint ?? ''}`;
+  let name = node.name.getText();
+  if (RESERVED_TYPE_PARAMETER_NAMES.has(name)) {
+    name = `T${name}`;
+    this.utils.renameSymbolTo(node.name, name);
+  }
+
+  return `${name}${constraint ?? ''}`;
+};
+
+/** myVar: MyEnum.Member — enum members are not types in Haxe */
+export const transformEnumMemberType: EmitFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  if (!ts.isTypeReferenceNode(node)) return;
+  if (!ts.isQualifiedName(node.typeName)) return;
+  const symbol = this.utils.getRootSymbol(node.typeName);
+  if (!symbol || !(symbol.flags & ts.SymbolFlags.EnumMember)) return;
+
+  return this.emitNode(node.typeName.left, context).trim();
+};
+
+/**
+ * Interfaces that are never implemented or extended act as structural
+ * types (as all interfaces do in TS) — a typedef preserves that:
+ * interface Foo { bar: string; } ==> typedef Foo = { public var bar: String; }
+ */
+export const transformStructuralInterface: EmitFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  if (!ts.isInterfaceDeclaration(node)) return;
+  if (
+    !node.members.length ||
+    node.members.some(
+      (member) =>
+        ts.isCallSignatureDeclaration(member) ||
+        ts.isConstructSignatureDeclaration(member),
+    )
+  ) {
+    return;
+  }
+  if (node.name.pos === -1) return;
+  const symbol = this.typeChecker.getSymbolAtLocation(node.name);
+  if (!symbol || getNominalInterfaceSymbols.call(this).has(symbol)) return;
+
+  const typeParams = this.utils.joinTypeParameters(
+    node.typeParameters,
+    context,
+  );
+  const members = node.members
+    .map((member) => this.emitNode(member, context))
+    .join('');
+
+  // extended types become structure intersections: typedef A = B & { ... }
+  let unsupportedBases = '';
+  const bases: string[] = [];
+  for (const clause of node.heritageClauses ?? []) {
+    for (const type of clause.types) {
+      const isExternal = !!this.utils
+        .getRootSymbol(type.expression)
+        ?.declarations?.every((declaration) =>
+          /[\\/]node_modules[\\/]/.test(declaration.getSourceFile().fileName),
+        );
+      if (isExternal) {
+        logger.warn(
+          `Heritage clause with an external type is not supported at`,
+          this.utils.getNodeSourcePath(type),
+        );
+        unsupportedBases += this.utils.createComment(
+          ({ todo }) => `${todo} extends ${type.getText()}`,
+        );
+        continue;
+      }
+      bases.push(this.emitNode(type, context).trim());
+    }
+  }
+
+  return `typedef ${this.utils.toHaxeIdentifier(
+    node.name.text,
+  )}${typeParams} = ${unsupportedBases}${[
+    ...bases,
+    `{${members}\n${this.utils.getIndent(node)}}`,
+  ].join(' & ')};`;
+};
+
+/**
+ * Symbols of interfaces that must stay nominal in Haxe: everything
+ * a class implements or extends, plus the ancestors of those interfaces
+ */
+const nominalSymbolsCache = new WeakMap<ts.Program, Set<ts.Symbol>>();
+function getNominalInterfaceSymbols(this: Transpiler): Set<ts.Symbol> {
+  const cached = nominalSymbolsCache.get(this.program);
+  if (cached) return cached;
+
+  const symbols = new Set<ts.Symbol>();
+  const addWithAncestors = (symbol: ts.Symbol | undefined): void => {
+    if (!symbol || symbols.has(symbol)) return;
+    symbols.add(symbol);
+    for (const declaration of symbol.declarations ?? []) {
+      if (
+        ts.isInterfaceDeclaration(declaration) &&
+        declaration.heritageClauses
+      ) {
+        for (const clause of declaration.heritageClauses) {
+          for (const type of clause.types) {
+            addWithAncestors(this.utils.getRootSymbol(type.expression));
+          }
+        }
+      }
+    }
+  };
+
+  for (const sourceFile of this.program.getSourceFiles()) {
+    if (sourceFile.isDeclarationFile) continue;
+    const visit = (node: ts.Node): void => {
+      if (ts.isClassLike(node) && node.heritageClauses) {
+        for (const clause of node.heritageClauses) {
+          for (const type of clause.types) {
+            addWithAncestors(this.utils.getRootSymbol(type.expression));
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+  nominalSymbolsCache.set(this.program, symbols);
+  return symbols;
+}
+
+/**
+ * TS type parameters may have defaults and be omitted at the usage site,
+ * Haxe requires them all: `foo: Food` ==> `foo: Food<Meta>`
+ */
+export const transformMissingTypeArguments: EmitFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  if (
+    !(ts.isTypeReferenceNode(node) || ts.isExpressionWithTypeArguments(node))
+  ) {
+    return;
+  }
+
+  const typeNameNode = ts.isTypeReferenceNode(node)
+    ? node.typeName
+    : node.expression;
+  const symbol = this.utils.getRootSymbol(typeNameNode);
+  const declaration = symbol?.declarations?.find(
+    (
+      dec,
+    ): dec is
+      | ts.ClassDeclaration
+      | ts.InterfaceDeclaration
+      | ts.TypeAliasDeclaration =>
+      ts.isClassDeclaration(dec) ||
+      ts.isInterfaceDeclaration(dec) ||
+      ts.isTypeAliasDeclaration(dec),
+  );
+  const typeParameters = declaration?.typeParameters;
+  if (!typeParameters?.length) return;
+  if (/[\\/]node_modules[\\/]/.test(declaration!.getSourceFile().fileName)) {
+    return;
+  }
+
+  const provided = node.typeArguments?.length ?? 0;
+  if (provided >= typeParameters.length) return;
+  // only type parameters with defaults can be omitted in TS
+  if (!typeParameters.slice(provided).every((tp) => tp.default)) return;
+
+  let resolvedArguments: readonly ts.Type[] = [];
+  try {
+    const type = this.typeChecker.getTypeAtLocation(node);
+    const objectFlags =
+      type.flags & ts.TypeFlags.Object
+        ? (type as ts.ObjectType).objectFlags
+        : 0;
+    resolvedArguments =
+      objectFlags & ts.ObjectFlags.Reference
+        ? this.typeChecker.getTypeArguments(type as ts.TypeReference)
+        : type.aliasTypeArguments ?? [];
+  } catch {
+    resolvedArguments = [];
+  }
+
+  const args = typeParameters.map((typeParameter, index) => {
+    if (index < provided) {
+      return this.emitNode(node.typeArguments![index], context).trim();
+    }
+    const resolved = resolvedArguments[index]
+      ? this.utils.getHaxeTypeString(resolvedArguments[index])
+      : undefined;
+    return resolved ?? 'Any';
+  });
+
+  return `${this.emitNode(typeNameNode, context).trim()}<${args.join(', ')}>`;
+};
+
+export const transformIntersectionType: EmitFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  // myVar: Foo & Bar
+  if (!ts.isIntersectionTypeNode(node)) return;
+  // `typedef X = A & B;` is valid Haxe (structure intersection)
+  if (ts.isTypeAliasDeclaration(node.parent)) return;
+
+  logger.warn(
+    `Intersection type is only supported in a type alias at`,
+    this.utils.getNodeSourcePath(node),
+  );
+  const [first, ...rest] = node.types;
+  return `${this.emitNode(first, context).trim()} ${this.utils.createComment(
+    ({ todo }) => `${todo} & ${rest.map((type) => type.getText()).join(' & ')}`,
+  )}`;
+};
+
+export const transformTypePredicate: EmitFn = function (
+  this: Transpiler,
+  node,
+) {
+  // (foo): foo is Bar => ...
+  if (!ts.isTypePredicateNode(node)) return;
+  return 'Bool';
+};
+
+export const transformConstructorType: EmitFn = function (
+  this: Transpiler,
+  node,
+) {
+  // myVar: new (...args: any[]) => Foo
+  if (!ts.isConstructorTypeNode(node)) return;
+
+  logger.warn(
+    `Constructor type is not supported at`,
+    this.utils.getNodeSourcePath(node),
+  );
+  return (
+    this.utils.createComment(({ todo }) => `${todo} ${node.getText()}`) +
+    ' Class<Any>'
+  );
+};
+
+export const transformGenericFunctionType: EmitFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  // type Fn = <T extends Foo>(x: T) => T
+  if (!ts.isFunctionTypeNode(node) || !node.typeParameters?.length) return;
+
+  logger.warn(
+    `Function type cannot have type parameters in Haxe at`,
+    this.utils.getNodeSourcePath(node),
+  );
+
+  // substitute each type parameter with its constraint (or Any)
+  for (const typeParameter of node.typeParameters) {
+    const replacement = typeParameter.constraint
+      ? this.emitNode(typeParameter.constraint, context).trim()
+      : 'Any';
+    this.utils.renameSymbolTo(typeParameter.name, replacement);
+  }
+
+  const comment = this.utils.createComment(
+    ({ todo }) =>
+      `${todo} <${node.typeParameters!.map((tp) => tp.getText()).join(', ')}>`,
+  );
+  const params = this.utils.joinNodes(node.parameters, context);
+  const returnType = this.emitNode(node.type, context).trim();
+  return `${comment} (${params}) -> ${returnType}`;
+};
+
+export const transformInterfaceCallSignatures: EmitFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  // interface Fn<T> { (x: T): R; }
+  if (!ts.isInterfaceDeclaration(node)) return;
+  const callSignatures = node.members.filter(ts.isCallSignatureDeclaration);
+  if (!callSignatures.length) return;
+
+  // an interface that is nothing but a call signature is a function typedef
+  if (node.members.length === 1) {
+    const [signature] = callSignatures;
+    const typeParams = this.utils.joinTypeParameters(
+      [...(node.typeParameters ?? []), ...(signature.typeParameters ?? [])],
+      context,
+    );
+    const params = this.utils.joinNodes(signature.parameters, context);
+    const returnType = signature.type
+      ? this.emitNode(signature.type, context).trim()
+      : 'Void';
+    return `typedef ${this.utils.toHaxeIdentifier(
+      node.name.text,
+    )}${typeParams} = (${params}) -> ${returnType};`;
+  }
+};
+
+export const transformCallSignature: EmitFn = function (
+  this: Transpiler,
+  node,
+) {
+  // { (): void; }
+  if (!ts.isCallSignatureDeclaration(node)) return;
+
+  return this.utils.commentOutNode(node, `Call signature is not supported`);
 };
 
 export const transformConditionalType: EmitFn = function (
@@ -264,8 +593,16 @@ export const transformAsExpression: EmitFn = function (
     return this.emitNode(node.expression, context);
   }
 
-  // myVar = hisVar as T
-  if (!ts.isParenthesizedExpression(node.parent)) {
-    return `(${this.traverseChildren(node, context)})`;
-  }
+  // myVar = hisVar as T — TS 'as' is an unchecked assertion, so the value
+  // must not be typechecked against the target (cast), only retyped (: T)
+  const expression = this.emitNode(node.expression, context).trim();
+  const type =
+    node.type.kind === SyntaxKind.AnyKeyword ||
+    node.type.kind === SyntaxKind.UnknownKeyword
+      ? // Dynamic, unlike Any, allows further field access
+        'Dynamic'
+      : this.emitNode(node.type, context).trim();
+  const code = `cast ${expression} : ${type}`;
+
+  return ts.isParenthesizedExpression(node.parent) ? code : `(${code})`;
 };

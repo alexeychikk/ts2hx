@@ -50,7 +50,7 @@ import type { Class } from 'utility-types';
       )
       .run(),
   ).resolves.toMatchInlineSnapshot(`
-    "import node_modules.utility_types.Index.Class;
+    "/*  import { Class } from 'utility-types' */
     "
   `);
 });

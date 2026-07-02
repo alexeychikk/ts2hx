@@ -1,4 +1,5 @@
 import ts, { SyntaxKind } from 'typescript';
+import { logger } from '../../Logger';
 import {
   type VisitNodeContext,
   type Transpiler,
@@ -26,6 +27,10 @@ export const transformKeywords: EmitFn = function (this: Transpiler, node) {
     case SyntaxKind.UnknownKeyword:
     // myVar: any
     case SyntaxKind.AnyKeyword:
+    // myVar: object
+    case SyntaxKind.ObjectKeyword:
+    // myVar: symbol
+    case SyntaxKind.SymbolKeyword:
       return 'Any';
     // type T = ...
     case SyntaxKind.TypeKeyword:
@@ -58,6 +63,9 @@ export const transformKeywords: EmitFn = function (this: Transpiler, node) {
         // myVar = NaN
         case 'NaN':
           return 'Math.NaN';
+        // myVar = Infinity
+        case 'Infinity':
+          return 'Math.POSITIVE_INFINITY';
       }
   }
 };
@@ -148,12 +156,89 @@ export const transformInstanceOfExpression: EmitFn = function (
   return `Std.isOfType(${left}, ${right})`;
 };
 
+/**
+ * npm packages that have a Haxe shim in the ts2hx lib — their supported
+ * symbols are redirected to the shim module instead of the npm sources
+ */
+const EXTERNAL_MODULE_SHIMS: Record<
+  string,
+  { haxeModule: string; symbols: Set<string>; defaultImport?: string }
+> = {
+  seedrandom: {
+    haxeModule: 'ts2hx.SeedRandom',
+    symbols: new Set(),
+    defaultImport: 'seedRandom',
+  },
+  lodash: {
+    haxeModule: 'ts2hx.Lodash',
+    symbols: new Set([
+      'clamp',
+      'cloneDeep',
+      'compact',
+      'debounce',
+      'difference',
+      'dropRight',
+      'escapeRegExp',
+      'filter',
+      'find',
+      'first',
+      'flatMap',
+      'forEach',
+      'groupBy',
+      'head',
+      'isEmpty',
+      'isEqual',
+      'keyBy',
+      'last',
+      'map',
+      'mapValues',
+      'maxBy',
+      'memoize',
+      'minBy',
+      'noop',
+      'omit',
+      'omitBy',
+      'orderBy',
+      'pick',
+      'pickBy',
+      'pull',
+      'remove',
+      'some',
+      'sortBy',
+      'sum',
+      'sumBy',
+      'times',
+      'transform',
+      'uniq',
+      'uniqBy',
+      'without',
+    ]),
+  },
+  nanoid: {
+    haxeModule: 'ts2hx.Nanoid',
+    symbols: new Set([
+      'nanoid',
+      'customAlphabet',
+      'customRandom',
+      'urlAlphabet',
+    ]),
+  },
+};
+
+const isExternalFileName = (fileName: string): boolean =>
+  /[\\/]node_modules[\\/]/.test(fileName);
+
 export const transformImportDeclaration: EmitFn = function (
   this: Transpiler,
   node,
   context,
 ) {
   if (!ts.isImportDeclaration(node)) return;
+
+  const moduleName = ts.isStringLiteral(node.moduleSpecifier)
+    ? node.moduleSpecifier.text
+    : node.moduleSpecifier.getText().replace(/['"]/g, '');
+  const shim = EXTERNAL_MODULE_SHIMS[moduleName];
 
   // import './foo';
   if (!node.importClause) {
@@ -173,6 +258,18 @@ export const transformImportDeclaration: EmitFn = function (
     const fileName = aliasedSymbol?.declarations?.[0].getSourceFile().fileName;
     if (!fileName) return '';
 
+    if (isExternalFileName(fileName)) {
+      if (shim?.defaultImport) {
+        return `import ${shim.haxeModule}.${shim.defaultImport}${
+          symbol.name !== shim.defaultImport ? ` as ${symbol.name}` : ''
+        };`;
+      }
+      return this.utils.commentOutNode(
+        node,
+        `Import from an external module is not supported`,
+      );
+    }
+
     return `import ${this.utils.getImportedPackageName(fileName)}.${
       aliasedSymbol.name
     }${symbol.name !== aliasedSymbol.name ? ` as ${symbol.name}` : ''};`;
@@ -180,23 +277,51 @@ export const transformImportDeclaration: EmitFn = function (
 
   // import { foo, bar as quz } from './foo';
   if (ts.isNamedImports(node.importClause.namedBindings)) {
-    return node.importClause.namedBindings.elements
+    const unsupported: string[] = [];
+
+    const imports = node.importClause.namedBindings.elements
       .map((el) => {
         const fileName = this.utils.getDeclarationSourceFile(el.name)?.fileName;
         if (!fileName) return;
 
+        const importedName = el.propertyName?.text ?? el.name.text;
+
+        if (isExternalFileName(fileName)) {
+          if (shim?.symbols.has(importedName)) {
+            return `import ${shim.haxeModule}.${importedName}${
+              el.propertyName
+                ? ` as ${this.utils.toHaxeIdentifier(el.name.text)}`
+                : ''
+            };`;
+          }
+          unsupported.push(el.getText());
+          return;
+        }
+
         return `import ${this.utils.getImportedPackageName(
           fileName,
-        )}.${this.utils.toHaxeIdentifier(
-          el.propertyName?.text ?? el.name.text,
-        )}${
+        )}.${this.utils.toHaxeIdentifier(importedName)}${
           el.propertyName
             ? ` as ${this.utils.toHaxeIdentifier(el.name.text)}`
             : ''
         };`;
       })
-      .filter(Boolean)
-      .join('\n');
+      .filter(Boolean);
+
+    if (unsupported.length) {
+      logger.warn(
+        `Import from an external module is not supported at`,
+        this.utils.getNodeSourcePath(node),
+      );
+      imports.push(
+        this.utils.createComment(
+          ({ todo }) =>
+            `${todo} import { ${unsupported.join(', ')} } from '${moduleName}'`,
+        ),
+      );
+    }
+
+    return imports.filter(Boolean).join('\n');
   }
 
   // import * as Foo from './foo';

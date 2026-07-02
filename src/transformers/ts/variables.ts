@@ -52,7 +52,7 @@ export const transformDestructuredVariableDeclarationInCatch: TransformerFn =
     if (
       !ts.isCatchClause(node) ||
       !node.variableDeclaration ||
-      ts.isIdentifier(node.variableDeclaration)
+      ts.isIdentifier(node.variableDeclaration.name)
     ) {
       return;
     }

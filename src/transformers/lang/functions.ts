@@ -9,7 +9,10 @@ export const transformArrowFunction: EmitFn = function (
 ) {
   if (!ts.isArrowFunction(node)) return;
   // Arrow function without { } (inline body) behaves the same in Haxe
-  if (!ts.isBlock(node.body)) return;
+  // unless it carries type parameters or a return type annotation
+  if (!ts.isBlock(node.body) && !node.typeParameters?.length && !node.type) {
+    return;
+  }
 
   const modifiers = this.utils.joinModifiers(node.modifiers, context);
   let typeParams = this.utils.joinTypeParameters(node.typeParameters, context);
@@ -18,15 +21,62 @@ export const transformArrowFunction: EmitFn = function (
       `Arrow function cannot have type parameters in Haxe at`,
       this.utils.getNodeSourcePath(node),
     );
+    // references to the dropped type parameters resolve to
+    // their constraints (or Any)
+    for (const typeParameter of node.typeParameters!) {
+      this.utils.renameSymbolTo(
+        typeParameter.name,
+        typeParameter.constraint
+          ? this.emitNode(typeParameter.constraint, context).trim()
+          : 'Any',
+      );
+    }
     typeParams = this.utils.createComment(
       ({ todo }) => `${todo} ${typeParams}`,
     );
   }
   const params = this.utils.joinNodes(node.parameters, context);
-  const returnType = node.type ? `: ${this.emitNode(node.type, context)}` : '';
-  const body = this.emitNode(node.body, context);
+  const returnType = node.type
+    ? `: ${this.emitNode(node.type, context).trim()}`
+    : '';
+  const body = ts.isBlock(node.body)
+    ? this.emitNode(node.body, context)
+    : ` { return ${this.emitNode(node.body, context).trim()}; }`;
 
   return `${modifiers}function ${typeParams}(${params})${returnType}${body}`;
+};
+
+export const transformNewExpression: EmitFn = function (
+  this: Transpiler,
+  node,
+  context,
+) {
+  // new getClass()() — Haxe `new` only works with a type path
+  if (!ts.isNewExpression(node)) return;
+
+  if (
+    ts.isIdentifier(node.expression) ||
+    ts.isPropertyAccessExpression(node.expression)
+  ) {
+    // `new` on identifiers is fine unless they hold a class VALUE
+    // (a variable) rather than being a class declaration
+    if (node.expression.pos === -1) return;
+    const symbol = this.utils.getRootSymbol(
+      ts.isIdentifier(node.expression) ? node.expression : node.expression.name,
+    );
+    const isClassLikeSymbol =
+      !symbol ||
+      !!(
+        symbol.flags &
+        (ts.SymbolFlags.Class | ts.SymbolFlags.Interface | ts.SymbolFlags.Alias)
+      );
+    if (isClassLikeSymbol) return;
+  }
+
+  return `Type.createInstance(${this.emitNode(
+    node.expression,
+    context,
+  ).trim()}, [${this.utils.joinNodes(node.arguments, context)}])`;
 };
 
 export const transformFunctionParameter: EmitFn = function (

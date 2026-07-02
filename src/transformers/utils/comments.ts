@@ -17,6 +17,11 @@ export function getTodoString(this: Transpiler): string {
   return this.flags.includeTodos ? `TODO(ts2hx)` : '';
 }
 
+/** Block comments cannot nest in Haxe — defuse any inner comment markers */
+function escapeCommentText(text: string): string {
+  return text.replace(/\/\*/g, '/ *').replace(/\*\//g, '* /');
+}
+
 export function commentOutNode(
   this: Transpiler,
   node: ts.Node,
@@ -29,7 +34,7 @@ export function commentOutNode(
   return this.flags.includeComments
     ? `${
         this.flags.includeTodos ? `/* ${this.utils.getTodoString()} */\n` : ''
-      }${this.utils.getIndent(node)}/* ${node.getText()} */`
+      }${this.utils.getIndent(node)}/* ${escapeCommentText(node.getText())} */`
     : '';
 }
 
@@ -38,7 +43,7 @@ export function createComment(
   fn: (params: { todo: string }) => string,
 ): string {
   return this.flags.includeComments
-    ? `/* ${fn({ todo: this.utils.getTodoString() })} */`
+    ? `/* ${escapeCommentText(fn({ todo: this.utils.getTodoString() }))} */`
     : '';
 }
 

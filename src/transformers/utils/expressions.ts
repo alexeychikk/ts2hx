@@ -99,6 +99,47 @@ export function isBooleanExpressionOfVariableDeclaration(
   return true;
 }
 
+/**
+ * A boolean binary expression used for its VALUE (initializer, return,
+ * argument, …) rather than as a condition. In JS such an expression
+ * evaluates to one of its operands, which maps to the or()/and() static
+ * extensions instead of a boolean conversion.
+ */
+export function isValueBooleanExpression(
+  this: Transpiler,
+  node: ts.Node,
+): node is ts.BinaryExpression {
+  if (!isBooleanBinaryExpression(node)) return false;
+
+  let current: ts.Node = node;
+  let parent: ts.Node | undefined = node.parent;
+  while (
+    parent &&
+    (ts.isParenthesizedExpression(parent) || isBooleanBinaryExpression(parent))
+  ) {
+    current = parent;
+    parent = parent.parent;
+  }
+  if (!parent) return false;
+
+  // condition contexts coerce the value to a boolean anyway
+  if (
+    (ts.isIfStatement(parent) ||
+      ts.isWhileStatement(parent) ||
+      ts.isDoStatement(parent)) &&
+    parent.expression === current
+  ) {
+    return false;
+  }
+  if (ts.isForStatement(parent) && parent.condition === current) return false;
+  if (ts.isConditionalExpression(parent) && parent.condition === current) {
+    return false;
+  }
+  if (isBooleanNotExpression(parent)) return false;
+
+  return true;
+}
+
 export function toExplicitBooleanCondition(
   this: Transpiler,
   node: ts.Node,
@@ -146,7 +187,20 @@ export function toExplicitBooleanCondition(
     return this.emitNode(node, context);
   }
 
-  let result = this.traverseChildren(node, context);
+  // Re-emit the node itself so its regular emitters still apply
+  // (optional calls, instanceof, element access, etc.);
+  // the guard prevents transformConditions from re-entering this function
+  let result: string;
+  if (this.explicitBooleanConversions.has(node)) {
+    result = this.traverseChildren(node, context);
+  } else {
+    this.explicitBooleanConversions.add(node);
+    try {
+      result = this.emitNode(node, context);
+    } finally {
+      this.explicitBooleanConversions.delete(node);
+    }
+  }
 
   const type = this.typeChecker.getTypeAtLocation(node);
   if (
@@ -154,6 +208,16 @@ export function toExplicitBooleanCondition(
     ts.TypeFlags.BooleanLiteral & type.flags
   ) {
     return result;
+  }
+
+  // boolean | undefined and alike — a null check would invert falsy booleans
+  const nonNullable = type.getNonNullableType();
+  if (
+    nonNullable !== type &&
+    (ts.TypeFlags.Boolean & nonNullable.flags ||
+      ts.TypeFlags.BooleanLiteral & nonNullable.flags)
+  ) {
+    return this.utils.parenthesizeCode(node, `${result} == true`);
   }
 
   if (
@@ -184,7 +248,10 @@ export function toSeparateStatements(
       node.operatorToken.kind === SyntaxKind.CommaToken
     )
   ) {
-    return this.emitNode(node, context);
+    return `${this.utils.getIndent(node)}${this.emitNode(
+      node,
+      context,
+    ).trim()};\n`;
   }
   return `${this.utils.getIndent(node)}${this.emitNode(
     node.left,
