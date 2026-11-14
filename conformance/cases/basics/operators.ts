@@ -20,3 +20,4 @@ console.log(
   typeof {},
   typeof (() => 1),
 );
+console.log(1 ** NaN, (-1) ** Infinity, 1 ** Infinity, NaN ** 0, 2 ** -1);

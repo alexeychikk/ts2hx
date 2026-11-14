@@ -39,7 +39,7 @@ class Main {
       ),
     ).toContain(
       'ts2hx.Console.log(ts2hx.Console.inspectNumber(0.1 + 0.2), ts2hx.Console.inspectNumber(-0.0), ' +
-        'ts2hx.Console.inspectNumber(Math.pow(2.0, 53.0)), ts2hx.Console.inspectNumber(10.0 % 4.0), ' +
+        'ts2hx.Console.inspectNumber(ts2hx.Num.pow(2.0, 53.0)), ts2hx.Console.inspectNumber(10.0 % 4.0), ' +
         'ts2hx.Console.inspectNumber(Math.NaN), ts2hx.Console.inspectNumber(-Math.POSITIVE_INFINITY), ' +
         'ts2hx.Console.inspectNumber(1.0e+21));',
     );
@@ -57,7 +57,8 @@ class Main {
 
   it('turns unmapped constructs into reported, throwing placeholders', async () => {
     const { code, diagnostics } = await compileSources({
-      'main.ts': 'class A {}\nlet x = 1;\nconsole.log(x, [1].length);',
+      'main.ts':
+        'class A {}\nconst x = { a: 1 };\nconsole.log(x?.a, delete x.a);',
     });
     expect(code['Main_2.hx']).toMatchSnapshot();
     expect(diagnostics).toEqual([
@@ -68,16 +69,12 @@ class Main {
         column: 1,
       }),
       expect.objectContaining({
-        message: 'TODO(ts2hx): VariableStatement is not supported yet',
-        line: 2,
-      }),
-      expect.objectContaining({
-        message: 'TODO(ts2hx): Identifier is not supported yet',
+        message: 'TODO(ts2hx): PropertyAccessExpression is not supported yet',
         line: 3,
         column: 13,
       }),
       expect.objectContaining({
-        message: 'TODO(ts2hx): PropertyAccessExpression is not supported yet',
+        message: 'TODO(ts2hx): DeleteExpression is not supported yet',
         line: 3,
       }),
     ]);
@@ -90,19 +87,18 @@ class Main {
       'other.ts': 'export const v = 1;',
     });
     expect(code['Main_2.hx']).toBe('function __init():Void {}\n');
-    expect(diagnostics.map((d) => d.line)).toEqual([1]);
+    expect(diagnostics).toEqual([]);
   });
 
   it('binds lib symbols, not names: a user `String` or `console` is not the lib one', async () => {
-    const { diagnostics } = await compileSources({
+    const { code, diagnostics } = await compileSources({
       'main.ts':
         'function String(x: number) { return x; }\nconst console = { log(x: string) {} };\nconsole.log(String(1) + "");',
     });
-    const messages = diagnostics.map((d) => `${d.line}: ${d.message}`);
-    expect(messages).toContain(
-      '3: TODO(ts2hx): CallExpression is not supported yet',
+    expect(diagnostics).toEqual([]);
+    expect(code['Main_2.hx']).toContain(
+      'console.log(ts2hx.Num.toString(String(1.0)));',
     );
-    expect(messages).not.toContain(expect.stringMatching(/^3: .*Binary/));
   });
 
   it('binds `Console.log` only on the lib `console` value, never dropping its receiver', async () => {

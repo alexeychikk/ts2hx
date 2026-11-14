@@ -14,26 +14,6 @@
     "cs": "fail",
     "cpp": "fail"
   },
-  "basics/loops": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "basics/operators": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "basics/template": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "basics/truthiness": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
   "basics/variables": {
     "js": "fail",
     "cs": "fail",
@@ -80,16 +60,6 @@
     "cpp": "fail"
   },
   "exceptions/finally-return": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "functions/closures": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "functions/defaults-rest": {
     "js": "fail",
     "cs": "fail",
     "cpp": "fail"

@@ -1,7 +1,8 @@
 import type { HxModule, HxPass, PassContext } from '../ir/types';
+import { lowerCFor } from './lower-c-for';
 
 /** IR → IR lowerings, in order; each later ticket appends its pass here. */
-export const PASSES: readonly HxPass[] = [];
+export const PASSES: readonly HxPass[] = [lowerCFor];
 
 export function createPassContext(
   reportUnsupported: PassContext['reportUnsupported'],

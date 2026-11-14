@@ -5,7 +5,6 @@ const values: unknown[] = [
   NaN,
   '',
   'a',
-  null,
   undefined,
   [],
   {},
@@ -15,6 +14,8 @@ const values: unknown[] = [
 for (const v of values) {
   console.log(String(v), v ? 'truthy' : 'falsy', !v, !!v);
 }
+const nul: null = null;
+console.log(String(nul), nul ? 'truthy' : 'falsy', !nul, !!nul);
 const n = 0;
 const s = '';
 console.log(n || 42, s || 'default', n ?? 42, s ?? 'default');

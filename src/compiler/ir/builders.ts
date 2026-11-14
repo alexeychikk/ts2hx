@@ -27,7 +27,22 @@ export const RUNTIME = {
   console: typePath(['ts2hx'], 'Console'),
   num: typePath(['ts2hx'], 'Num'),
   eventLoop: typePath(['ts2hx'], 'EventLoop'),
+  jsArray: typePath(['ts2hx'], 'JsArray'),
+  jsMath: typePath(['ts2hx'], 'JsMath'),
 };
+
+export function arrayType(element: HxType): HxType {
+  return { kind: 'path', path: typePath([], 'Array'), params: [element] };
+}
+
+/** Whether two Haxe types are the same type. */
+export function sameType(a: HxType, b: HxType): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function localExpr(name: string, type: HxType, pos?: SourcePos): HxExpr {
+  return { kind: 'local', name, type, pos };
+}
 
 export function staticCall(
   owner: HxTypePath,
@@ -74,6 +89,14 @@ export function isStringType(type: HxType): boolean {
 
 export function isFloatType(type: HxType): boolean {
   return isStdType(type, 'Float');
+}
+
+export function isIntType(type: HxType): boolean {
+  return isStdType(type, 'Int');
+}
+
+export function isBoolType(type: HxType): boolean {
+  return isStdType(type, 'Bool');
 }
 
 function isStdType(type: HxType, name: string): boolean {
