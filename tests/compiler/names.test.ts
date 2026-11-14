@@ -1,5 +1,6 @@
 import {
   escapeIdentifier,
+  isValidRootPackage,
   moduleName,
   packageSegment,
 } from '@src/compiler/model/names';
@@ -33,5 +34,29 @@ describe('Haxe names', () => {
     ['9lives', '_9lives'],
   ])('identifier %s becomes %s', (name, expected) => {
     expect(escapeIdentifier(name)).toBe(expected);
+  });
+
+  it.each(['app', 'cases.basics.hello', 'my_app.v2', 'app.ts2hx', 'app.js'])(
+    'root package %s is valid',
+    (rootPackage) => {
+      expect(isValidRootPackage(rootPackage)).toBe(true);
+    },
+  );
+
+  it.each([
+    'app.class',
+    'function',
+    'app.dynamic.x',
+    'ts2hx',
+    'ts2hx.app',
+    'haxe.x',
+    'js',
+    'App',
+    'app..x',
+    'app.',
+    '1app',
+    'my-app',
+  ])('root package %s is rejected', (rootPackage) => {
+    expect(isValidRootPackage(rootPackage)).toBe(false);
   });
 });

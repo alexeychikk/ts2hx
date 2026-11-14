@@ -12,7 +12,12 @@ import {
 } from '../ir/builders';
 import type { HxBinop, HxExpr, HxModule, HxStmt, SourcePos } from '../ir/types';
 import type { ModuleInfo, ProjectModel } from '../model/project-model';
-import { CALL_BINDINGS, stdlibKey, VALUE_BINDINGS } from '../stdlib/bindings';
+import {
+  type BoundReceiver,
+  CALL_BINDINGS,
+  stdlibKey,
+  VALUE_BINDINGS,
+} from '../stdlib/bindings';
 
 export interface UnsupportedReport {
   message: string;
@@ -313,11 +318,30 @@ export class ModuleFrontend {
       return this.unsupported(node);
     }
     const bound = binding({
+      receiver: ts.isPropertyAccessExpression(callee)
+        ? this.receiver(callee.expression)
+        : undefined,
       args: node.arguments.map((a) => this.expression(a)),
       argTypes: node.arguments.map((a) => this.typeOf(a)),
       pos,
       toJsString: this.toJsString,
     });
     return bound ?? this.unsupported(node);
+  }
+
+  private receiver(expression: ts.Expression): BoundReceiver {
+    let target = expression;
+    while (ts.isParenthesizedExpression(target)) {
+      target = target.expression;
+    }
+    return {
+      libKey: ts.isIdentifier(target)
+        ? stdlibKey(
+            this.model.program,
+            this.checker,
+            this.checker.getSymbolAtLocation(target),
+          )
+        : undefined,
+    };
   }
 }

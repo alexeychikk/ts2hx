@@ -105,6 +105,25 @@ export const RESERVED_ROOT_PACKAGES: ReadonlySet<string> = new Set([
   'ts2hx',
 ]);
 
+export const ROOT_PACKAGE_RULE =
+  'expected lower-case dotted Haxe package segments, none a Haxe keyword, not rooted at a Haxe or runtime package';
+
+const PACKAGE_SEGMENT = /^[a-z][A-Za-z0-9_]*$/;
+
+/**
+ * Whether `rootPackage` is a dotted Haxe package the emitted modules can live in:
+ * lower-case identifier segments, no Haxe keyword, and no root owned by Haxe or the runtime.
+ */
+export function isValidRootPackage(rootPackage: string): boolean {
+  const segments = rootPackage.split('.');
+  return (
+    !RESERVED_ROOT_PACKAGES.has(segments[0]) &&
+    segments.every(
+      (segment) => PACKAGE_SEGMENT.test(segment) && !HAXE_KEYWORDS.has(segment),
+    )
+  );
+}
+
 function identifierChars(name: string): string {
   return name.replace(/[^A-Za-z0-9_]/g, '_');
 }

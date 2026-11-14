@@ -2,7 +2,13 @@ import * as path from 'node:path';
 import ts from 'typescript';
 
 import type { HxTypePath } from '../ir/types';
-import { moduleName, packageSegment, RESERVED_ROOT_PACKAGES } from './names';
+import {
+  isValidRootPackage,
+  moduleName,
+  packageSegment,
+  RESERVED_ROOT_PACKAGES,
+  ROOT_PACKAGE_RULE,
+} from './names';
 
 /** Name of the generated entry class in the root package. */
 export const MAIN_CLASS = 'Main';
@@ -120,6 +126,11 @@ export function buildProjectModel(
   program: ts.Program,
   options: ProjectModelOptions = {},
 ): ProjectModel {
+  if (options.rootPackage && !isValidRootPackage(options.rootPackage)) {
+    throw new Error(
+      `Invalid root package "${options.rootPackage}": ${ROOT_PACKAGE_RULE}`,
+    );
+  }
   const checker = program.getTypeChecker();
   const rootPackage = options.rootPackage
     ? options.rootPackage.split('.').filter(Boolean)

@@ -11,8 +11,18 @@ import {
 } from '../ir/builders';
 import type { HxExpr, SourcePos } from '../ir/types';
 
-/** What a call binding gets from the frontend: converted arguments and their TS types. */
+/** The object a method is called on (`console` in `console.log(x)`). */
+export interface BoundReceiver {
+  /** Binding key of the receiver when it is a plain reference to a lib value. */
+  libKey?: string;
+}
+
+/**
+ * What a call binding gets from the frontend: converted arguments and their TS types.
+ * A binding returns `undefined` for a receiver it does not consume, so its side effects are never dropped.
+ */
 export interface BoundCall {
+  receiver?: BoundReceiver;
   args: HxExpr[];
   argTypes: ts.Type[];
   pos?: SourcePos;
@@ -34,27 +44,37 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
 >([
   [
     'Console.log',
-    ({ args, argTypes, pos }) =>
-      staticCall(
-        RUNTIME.console,
-        'log',
-        args.map((arg, i) =>
-          argTypes[i].flags & ts.TypeFlags.NumberLike
-            ? staticCall(RUNTIME.console, 'inspectNumber', [arg], STRING, pos)
-            : arg,
-        ),
-        VOID,
-        pos,
-      ),
+    ({ receiver, args, argTypes, pos }) =>
+      receiver?.libKey !== 'console'
+        ? undefined
+        : staticCall(
+            RUNTIME.console,
+            'log',
+            args.map((arg, i) =>
+              argTypes[i].flags & ts.TypeFlags.NumberLike
+                ? staticCall(
+                    RUNTIME.console,
+                    'inspectNumber',
+                    [arg],
+                    STRING,
+                    pos,
+                  )
+                : arg,
+            ),
+            VOID,
+            pos,
+          ),
   ],
   [
     'String',
-    ({ args, argTypes, pos, toJsString }) =>
-      args.length === 0
-        ? constExpr('', pos)
-        : args.length === 1
-          ? toJsString(args[0], argTypes[0])
-          : undefined,
+    ({ receiver, args, argTypes, pos, toJsString }) =>
+      receiver
+        ? undefined
+        : args.length === 0
+          ? constExpr('', pos)
+          : args.length === 1
+            ? toJsString(args[0], argTypes[0])
+            : undefined,
   ],
 ]);
 
@@ -88,6 +108,7 @@ export const VALUE_BINDINGS: ReadonlyMap<string, ValueBinding> = new Map<
 /** `@types/node` declares the same globals inside namespaces: map them to the lib name. */
 const NODE_TYPES_ALIASES: ReadonlyMap<string, string> = new Map([
   ['console.Console.log', 'Console.log'],
+  ['global.console', 'console'],
 ]);
 
 function isLibDeclaration(program: ts.Program, decl: ts.Declaration): boolean {

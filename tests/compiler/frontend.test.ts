@@ -104,4 +104,27 @@ class Main {
     );
     expect(messages).not.toContain(expect.stringMatching(/^3: .*Binary/));
   });
+
+  it('binds `Console.log` only on the lib `console` value, never dropping its receiver', async () => {
+    const { code, diagnostics } = await compileSources({
+      'main.ts': [
+        'console.log("a");',
+        '(console).log("b");',
+        '(console.log("c"), console).log("d");',
+        'const logger = console;',
+        'logger.log("e");',
+      ].join('\n'),
+    });
+    const init = code['Main_2.hx'];
+    expect(init).toContain('ts2hx.Console.log("a");');
+    expect(init).toContain('ts2hx.Console.log("b");');
+    expect(init).not.toContain('ts2hx.Console.log("d")');
+    expect(init).not.toContain('ts2hx.Console.log("e")');
+    expect(diagnostics.map((d) => `${d.line}: ${d.message}`)).toEqual(
+      expect.arrayContaining([
+        '3: TODO(ts2hx): CallExpression is not supported yet',
+        '5: TODO(ts2hx): CallExpression is not supported yet',
+      ]),
+    );
+  });
 });

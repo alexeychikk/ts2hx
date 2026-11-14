@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import ts from 'typescript';
 
 import { compileProject, type CompileDiagnostic } from './index';
+import { isValidRootPackage, ROOT_PACKAGE_RULE } from './model/names';
 
 export interface ConvertProjectOptions {
   tsconfigPath: string;
@@ -12,12 +13,6 @@ export interface ConvertProjectOptions {
   rootPackage?: string;
   /** Empty `outDir` first. */
   clean?: boolean;
-}
-
-const ROOT_PACKAGE = /^[a-z][A-Za-z0-9_]*(\.[a-z][A-Za-z0-9_]*)*$/;
-
-export function isValidRootPackage(rootPackage: string): boolean {
-  return ROOT_PACKAGE.test(rootPackage);
 }
 
 function formatTsDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {
@@ -56,7 +51,7 @@ export async function convertProject(
 ): Promise<CompileDiagnostic[]> {
   if (options.rootPackage && !isValidRootPackage(options.rootPackage)) {
     throw new Error(
-      `Invalid --rootPackage "${options.rootPackage}": expected lower-case dotted Haxe package segments`,
+      `Invalid --rootPackage "${options.rootPackage}": ${ROOT_PACKAGE_RULE}`,
     );
   }
   const program = createProgramFromTsconfig(options.tsconfigPath);

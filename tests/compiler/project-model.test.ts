@@ -71,4 +71,13 @@ describe('ProjectModel', () => {
       buildProjectModel(project.program, { entry: project.file('other.ts') }),
     ).toThrow(/not a source file/);
   });
+
+  it.each(['app.class', 'ts2hx'])(
+    'rejects the root package %s',
+    (rootPackage) => {
+      expect(() => pathsOf({ 'main.ts': 'export {};' }, rootPackage)).toThrow(
+        `Invalid root package "${rootPackage}"`,
+      );
+    },
+  );
 });
