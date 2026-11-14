@@ -65,6 +65,23 @@ function elementArgs(
     : args;
 }
 
+/** A spread array passed into an `Array<Dynamic>`, cast so Haxe binds `T=Dynamic`. */
+function spreadElements(args: HxExpr[], element: HxType): HxExpr[] {
+  return element.kind === 'dynamic'
+    ? args.map((arg) =>
+        sameType(arg.type, arrayType(DYNAMIC))
+          ? arg
+          : {
+              kind: 'cast',
+              expr: arg,
+              checked: false,
+              type: arrayType(DYNAMIC),
+              pos: arg.pos,
+            },
+      )
+    : args;
+}
+
 /** The receiver of an array method, with its element type. */
 function arrayReceiver(
   call: BoundCall,
@@ -122,7 +139,7 @@ function variadicMethod(name: string): CallBinding {
       return undefined;
     }
     const items = call.spreadLast
-      ? call.args
+      ? spreadElements(call.args, receiver.element)
       : elementArgs(call.args, receiver.element, () => true);
     return {
       ...staticCall(

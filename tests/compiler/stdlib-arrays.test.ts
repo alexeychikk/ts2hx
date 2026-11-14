@@ -130,6 +130,18 @@ describe('stdlib: arrays', () => {
     );
   });
 
+  it('casts a spread pushed into a Dynamic-element array', async () => {
+    const hx = await moduleOf([
+      'const u: Array<number | string> = [1];',
+      "const nums = [2]; const more: Array<number | string> = ['m'];",
+      'u.push(...nums); u.unshift(...more);',
+    ]);
+    expect(hx).toContain(
+      'ts2hx.JsArray.push(u, ...((cast nums : Array<Dynamic>)))',
+    );
+    expect(hx).toContain('ts2hx.JsArray.unshift(u, ...more)');
+  });
+
   it('fixes the type of an inline array literal receiver', async () => {
     const hx = await moduleOf([
       "console.log([1, 'a'].join('-'), [1, 2].indexOf(2));",
