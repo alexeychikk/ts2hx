@@ -7,8 +7,12 @@ import {
 
 import { createProject } from './helpers';
 
-function pathsOf(files: Record<string, string>, rootPackage?: string) {
-  const project = createProject(files);
+function pathsOf(
+  files: Record<string, string>,
+  rootPackage?: string,
+  options?: ts.CompilerOptions,
+) {
+  const project = createProject(files, options);
   const model = buildProjectModel(project.program, {
     entry: project.file(Object.keys(files)[0]),
     rootPackage,
@@ -106,6 +110,38 @@ describe('ProjectModel', () => {
     ]);
   });
 
+  it('keeps every import but `import type` under verbatimModuleSyntax', () => {
+    const { initOrder } = pathsOf(
+      {
+        'main.ts': [
+          "import type { T } from './type-import';",
+          "import { type U } from './inline-type';",
+          "import { v } from './query';",
+          "import { unused } from './unused';",
+          "export type { W } from './type-export';",
+          "export * from './types-only';",
+          'let q: typeof v = 1;',
+          'let u: U = q;',
+        ].join('\n'),
+        'type-import.ts': 'export type T = number;',
+        'inline-type.ts': 'export type U = number;',
+        'query.ts': 'export const v = 1;',
+        'unused.ts': 'export const unused = 1;',
+        'type-export.ts': 'export type W = number;',
+        'types-only.ts': 'export type A = string;',
+      },
+      undefined,
+      { verbatimModuleSyntax: true },
+    );
+    expect(initOrder).toEqual([
+      'Inline_type',
+      'Query',
+      'Unused',
+      'Types_only',
+      'Main_2',
+    ]);
+  });
+
   it('keeps an import whose binding is only re-exported as a value', () => {
     const { initOrder } = pathsOf({
       'main.ts':
@@ -142,6 +178,7 @@ describe('ProjectModel', () => {
       'default_',
     ]);
     expect([...model.reservedLocalNames].sort()).toEqual([
+      'Main_2',
       'haxe',
       'lib',
       'ts2hx',

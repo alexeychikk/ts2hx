@@ -41,7 +41,10 @@ export interface ProjectModel {
   entry?: ModuleInfo;
   /** Modules in Node's ESM evaluation order (post-order DFS over imports from the entry). */
   initOrder: ModuleInfo[];
-  /** Root packages generated code names (`ts2hx`, `haxe`, project roots): locals must not shadow them. */
+  /**
+   * First segments of the paths generated code names (`ts2hx`, `haxe`, project root
+   * packages, modules of the empty package): locals must not shadow them.
+   */
   reservedLocalNames: ReadonlySet<string>;
   moduleOf(sourceFile: ts.SourceFile): ModuleInfo | undefined;
   /**
@@ -120,8 +123,33 @@ function assignPaths(
   return paths;
 }
 
+/**
+ * Whether `export default <expression>` aliases a binding rather than snapshotting a
+ * value: ESM evaluates the expression once, so only bindings that never change alias.
+ */
+function exportsImmutableBinding(
+  expression: ts.Expression,
+  checker: ts.TypeChecker,
+): boolean {
+  if (!ts.isIdentifier(expression)) {
+    return false;
+  }
+  const symbol = checker.getSymbolAtLocation(expression);
+  const declaration = symbol && resolveAlias(symbol, checker).valueDeclaration;
+  return (
+    !!declaration &&
+    !(
+      ts.isVariableDeclaration(declaration) &&
+      !(ts.getCombinedNodeFlags(declaration) & ts.NodeFlags.Const)
+    )
+  );
+}
+
 /** Module-level value declarations of a file with their TS names, in source order. */
-function fieldDeclarations(sf: ts.SourceFile): Array<[ts.Node, string]> {
+function fieldDeclarations(
+  sf: ts.SourceFile,
+  checker: ts.TypeChecker,
+): Array<[ts.Node, string]> {
   const result: Array<[ts.Node, string]> = [];
   for (const statement of sf.statements) {
     if (ts.isVariableStatement(statement)) {
@@ -135,7 +163,7 @@ function fieldDeclarations(sf: ts.SourceFile): Array<[ts.Node, string]> {
     } else if (
       ts.isExportAssignment(statement) &&
       !statement.isExportEquals &&
-      !ts.isIdentifier(statement.expression)
+      !exportsImmutableBinding(statement.expression, checker)
     ) {
       result.push([statement, 'default']);
     }
@@ -150,6 +178,7 @@ function fieldDeclarations(sf: ts.SourceFile): Array<[ts.Node, string]> {
 export function assignFieldNames(
   sf: ts.SourceFile,
   modulePath: HxTypePath,
+  checker: ts.TypeChecker,
   reserved: ReadonlySet<string> = new Set(),
 ): Map<ts.Node, string> {
   const taken = new Set([...reserved, MODULE_INIT, modulePath.module]);
@@ -162,7 +191,7 @@ export function assignFieldNames(
     }
   }
   const names = new Map<ts.Node, string>();
-  for (const [declaration, tsName] of fieldDeclarations(sf)) {
+  for (const [declaration, tsName] of fieldDeclarations(sf, checker)) {
     const base = escapeIdentifier(tsName);
     let name = base;
     for (let n = 2; taken.has(name); n++) {
@@ -253,13 +282,16 @@ function importBindings(clause: ts.ImportClause): ts.Identifier[] {
 }
 
 /**
- * Modules a file evaluates, in source order. Like TS's emit, it drops an import none
- * of whose bindings is read as a value, and a re-export of types only.
+ * Modules a file evaluates, in source order. Like TS's emit, it drops `import type` and
+ * `export type … from`; unless `verbatimModuleSyntax` is on, also an import none of
+ * whose bindings is read as a value, and a re-export of types only.
  */
 export function evaluatedImports(
   sf: ts.SourceFile,
   checker: ts.TypeChecker,
+  options: ts.CompilerOptions = {},
 ): ts.SourceFile[] {
+  const verbatim = !!options.verbatimModuleSyntax;
   let references: Set<ts.Symbol> | undefined;
   const isReferenced = (name: ts.Identifier): boolean => {
     references ??= valueReferences(sf, checker);
@@ -275,7 +307,8 @@ export function evaluatedImports(
       const clause = stmt.importClause;
       if (
         !clause ||
-        (!clause.isTypeOnly && importBindings(clause).some(isReferenced))
+        (!clause.isTypeOnly &&
+          (verbatim || importBindings(clause).some(isReferenced)))
       ) {
         specifier = stmt.moduleSpecifier;
       }
@@ -286,20 +319,22 @@ export function evaluatedImports(
     ) {
       const clause = stmt.exportClause;
       const target = moduleSymbol(stmt.moduleSpecifier);
-      const kept = !clause
-        ? !!target &&
-          checker
-            .getExportsOfModule(target)
-            .some((s) => isValueSymbol(s, checker))
-        : ts.isNamespaceExport(clause) ||
-          clause.elements.some(
-            (e) =>
-              !e.isTypeOnly &&
-              isValueSymbol(
-                checker.getExportSpecifierLocalTargetSymbol(e),
-                checker,
-              ),
-          );
+      const kept =
+        verbatim ||
+        (!clause
+          ? !!target &&
+            checker
+              .getExportsOfModule(target)
+              .some((s) => isValueSymbol(s, checker))
+          : ts.isNamespaceExport(clause) ||
+            clause.elements.some(
+              (e) =>
+                !e.isTypeOnly &&
+                isValueSymbol(
+                  checker.getExportSpecifierLocalTargetSymbol(e),
+                  checker,
+                ),
+            ));
       if (kept) {
         specifier = stmt.moduleSpecifier;
       }
@@ -328,15 +363,20 @@ export function buildProjectModel(
   const files = projectSourceFiles(program);
   const paths = assignPaths(files, rootPackage);
   const reservedLocalNames = new Set(['haxe', 'ts2hx']);
-  for (const { pack } of paths.values()) {
-    if (pack.length > 0) reservedLocalNames.add(pack[0]);
+  for (const { pack, module } of paths.values()) {
+    reservedLocalNames.add(pack.length > 0 ? pack[0] : module);
   }
   const modules = files.map((sourceFile): ModuleInfo => {
     const modulePath = paths.get(sourceFile)!;
     return {
       sourceFile,
       path: modulePath,
-      fields: assignFieldNames(sourceFile, modulePath, reservedLocalNames),
+      fields: assignFieldNames(
+        sourceFile,
+        modulePath,
+        checker,
+        reservedLocalNames,
+      ),
     };
   });
   const bySourceFile = new Map(modules.map((m) => [m.sourceFile, m]));
@@ -360,7 +400,7 @@ export function buildProjectModel(
       return;
     }
     visited.add(sf);
-    evaluatedImports(sf, checker).forEach(visit);
+    evaluatedImports(sf, checker, program.getCompilerOptions()).forEach(visit);
     initOrder.push(info);
   };
   if (entry) {

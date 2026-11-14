@@ -29,17 +29,20 @@ export interface TestProject {
 }
 
 /** Writes `files` (relative path → source) to a temp dir and creates their program. */
-export function createProject(files: Record<string, string>): TestProject {
+export function createProject(
+  files: Record<string, string>,
+  options: ts.CompilerOptions = {},
+): TestProject {
   const dir = fs.realpathSync(tempDir());
   const file = (relative: string) => path.join(dir, relative);
   for (const [relative, source] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(file(relative)), { recursive: true });
     fs.writeFileSync(file(relative), source);
   }
-  const program = ts.createProgram(
-    Object.keys(files).map(file),
-    CASE_COMPILER_OPTIONS,
-  );
+  const program = ts.createProgram(Object.keys(files).map(file), {
+    ...CASE_COMPILER_OPTIONS,
+    ...options,
+  });
   return { dir, program, file };
 }
 

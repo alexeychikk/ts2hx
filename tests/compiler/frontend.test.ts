@@ -238,6 +238,39 @@ console.log(t[0], xs[i], xs[0], Array.isArray(xs), (xs as unknown) instanceof Ar
       expect(code['Main_2.hx']).toContain('ts2hx.Console.log(D.default_);');
     });
 
+    it('snapshots `export default` of a mutable binding, aliases functions and consts', async () => {
+      const { code, diagnostics } = await compileSources({
+        'main.ts': [
+          "import n, { m } from './n';",
+          "import f from './f';",
+          'console.log(n, m, f());',
+        ].join('\n'),
+        'n.ts': 'export let m = 1;\nexport default m;\nm = 2;',
+        'f.ts': 'function g() { return 1; }\nexport default g;',
+      });
+      expect(diagnostics).toEqual([]);
+      expect(code['N.hx']).toContain('\tdefault_ = m;\n\tm = 2.0;\n');
+      expect(code['Main_2.hx']).toContain('N.default_');
+      expect(code['Main_2.hx']).toContain('F.g()');
+    });
+
+    it('keeps modules of the empty package from being shadowed by fields and locals', async () => {
+      const { code, diagnostics } = await compileSources({
+        'main.ts': [
+          "import { load } from './config';",
+          'export const Config = load();',
+          'function f() { const Config = load(); return Config; }',
+          'console.log(Config, f());',
+        ].join('\n'),
+        'config.ts': 'export function load() { return 1; }',
+      });
+      expect(diagnostics).toEqual([]);
+      expect(code['Main_2.hx']).toContain('Config_2 = Config.load();');
+      expect(code['Main_2.hx']).toContain(
+        'final Config_:Float = Config.load();',
+      );
+    });
+
     it('emits nothing for re-export-only modules and leaves them out of Main', async () => {
       const { code, diagnostics } = await compileSources({
         'main.ts': "import { v } from './index';\nconsole.log(v);",
