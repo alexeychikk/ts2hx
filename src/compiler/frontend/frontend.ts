@@ -51,7 +51,11 @@ import {
   VALUE_BINDINGS,
 } from '../stdlib/bindings';
 import {
+  accessorPair,
   assignsAtTopLevel,
+  inheritedAccessors,
+  overridesAccessor,
+  privateMemberName,
   extendsClause,
   type FieldDeclaration,
   hasModifier,
@@ -60,6 +64,12 @@ import {
   isStatic,
   mayReadFieldsBeforeInit,
   redeclaredWrittenFields,
+  boundClassExpression,
+  isHoistedClass,
+  structuralAccessorMembers,
+  structuralMemberConflicts,
+  structuralOptionalMembers,
+  inheritsStructuralMember,
   overridesImplementation,
   owningClass,
   rootField,
@@ -259,12 +269,29 @@ type FunctionNode =
   | ts.FunctionExpression
   | ts.ArrowFunction
   | ts.MethodDeclaration
+  | ts.AccessorDeclaration
   | ts.ConstructorDeclaration;
 
 /** The class whose member is being converted: `this` is its instance, or the class in a static member. */
 interface ClassContext {
   path: HxTypePath;
   isStatic: boolean;
+  /** Locals a hoisted class captures, read from the instance field they are copied to. */
+  captures?: ReadonlyMap<ts.Symbol, Capture>;
+  /** In a constructor: the captures read from its capture parameters, set before the fields are. */
+  captureLocals?: ReadonlyMap<ts.Symbol, HxExpr>;
+  /** In a constructor: the captures `super(...)` passes first to a hoisted base class. */
+  superCaptures?: HxExpr[];
+}
+
+/** A local a hoisted class captures: passed to its constructor, kept in `field`. */
+interface Capture {
+  symbol: ts.Symbol;
+  declaration: ts.Declaration;
+  field: string;
+  type: HxType;
+  /** Captured by a hoisted base class, which declares `field` and receives it through `super`. */
+  inherited?: boolean;
 }
 
 /** Field initialisers of the constructor being converted, run after `after` (its `super()` call) or first. */
@@ -279,20 +306,98 @@ function isConstantInit(expr: HxExpr): boolean {
 }
 
 function memberAccess(member: ts.Node): HxAccess {
-  return hasModifier(
-    member,
-    ts.ModifierFlags.Private | ts.ModifierFlags.Protected,
-  )
+  const name = (member as ts.NamedDeclaration).name;
+  return (name && ts.isPrivateIdentifier(name)) ||
+    hasModifier(member, ts.ModifierFlags.Private | ts.ModifierFlags.Protected)
     ? 'private'
     : 'public';
 }
 
-/** Name of a class member Haxe can declare: an identifier or a string literal. */
-function memberName(member: ts.NamedDeclaration): string | undefined {
+/** Name of a class member Haxe can declare: an identifier, a string literal or a `#name`. */
+function memberName(
+  member: ts.NamedDeclaration,
+  checker: ts.TypeChecker,
+): string | undefined {
   const name = member.name;
+  if (name && ts.isPrivateIdentifier(name)) {
+    return privateMemberName(
+      checker,
+      member as ts.NamedDeclaration & { name: ts.PrivateIdentifier },
+    );
+  }
   return name && (ts.isIdentifier(name) || ts.isStringLiteral(name))
     ? escapeIdentifier(name.text)
     : undefined;
+}
+
+/** The function or class whose `this` a `this` keyword denotes: arrows are transparent. */
+function thisContainer(node: ts.Node): ts.Node | undefined {
+  return ts.findAncestor(
+    node.parent,
+    (n) =>
+      (ts.isFunctionLike(n) && !ts.isArrowFunction(n)) ||
+      ts.isClassLike(n) ||
+      ts.isPropertyDeclaration(n) ||
+      ts.isClassStaticBlockDeclaration(n),
+  );
+}
+
+/** Whether a function body reads its own `this` (arrows included, nested functions not). */
+function usesThis(body: ts.Node): boolean {
+  const visit = (n: ts.Node): boolean =>
+    n.kind === ts.SyntaxKind.ThisKeyword ||
+    (!(ts.isFunctionLike(n) && !ts.isArrowFunction(n)) &&
+      !ts.isClassLike(n) &&
+      (ts.forEachChild(n, visit) ?? false));
+  return ts.forEachChild(body, visit) ?? false;
+}
+
+/** The node a local is scoped to: its block, function, loop or source file. */
+function scopeOf(declaration: ts.Declaration): ts.Node | undefined {
+  return ts.findAncestor(
+    declaration.parent,
+    (n) =>
+      ts.isBlock(n) ||
+      ts.isSourceFile(n) ||
+      ts.isFunctionLike(n) ||
+      ts.isCaseBlock(n) ||
+      ts.isIterationStatement(n, false),
+  );
+}
+
+/** Whether a local is assigned after its declaration (`=`, compound, `++`/`--`). */
+function isReassigned(
+  checker: ts.TypeChecker,
+  symbol: ts.Symbol,
+  declaration: ts.Declaration,
+): boolean {
+  if (
+    ts.isVariableDeclaration(declaration) &&
+    ts.isVariableDeclarationList(declaration.parent) &&
+    declaration.parent.flags & ts.NodeFlags.Const
+  ) {
+    return false;
+  }
+  const writes = (n: ts.Node): boolean => {
+    const target =
+      ts.isBinaryExpression(n) &&
+      n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      n.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+        ? n.left
+        : (ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) &&
+            (n.operator === ts.SyntaxKind.PlusPlusToken ||
+              n.operator === ts.SyntaxKind.MinusMinusToken)
+          ? n.operand
+          : undefined;
+    return (
+      (!!target &&
+        ts.isIdentifier(target) &&
+        checker.getSymbolAtLocation(target) === symbol) ||
+      (ts.forEachChild(n, writes) ?? false)
+    );
+  };
+  const scope = scopeOf(declaration);
+  return !!scope && writes(scope);
 }
 
 /** Converts one TS source file into a Haxe IR module (ADR 0001, Frontend). */
@@ -308,6 +413,16 @@ export class ModuleFrontend {
   private readonly returnTypes: HxType[] = [];
   private readonly classContexts: ClassContext[] = [];
   private pendingInits?: PendingInits;
+  /** Classes hoisted out of functions and expressions, declared after the module's own. */
+  private readonly hoistedDecls: HxDecl[] = [];
+  /** The local an object literal is bound to while its methods read `this`. */
+  private readonly objectSelves = new Map<ts.ObjectLiteralExpression, HxExpr>();
+  private readonly captureCache = new Map<
+    ts.ClassLikeDeclaration,
+    Capture[] | undefined
+  >();
+  /** The value a setter returns, for `return;` at its `returnTypes` depth. */
+  private setterResult?: { depth: number; value: HxExpr & { kind: 'local' } };
   private tempCounter = 0;
 
   constructor(
@@ -320,6 +435,13 @@ export class ModuleFrontend {
     this.types = new TypeMapper(
       this.checker,
       (sourceFile) => model.moduleOf(sourceFile)?.path,
+      (node) => {
+        const module = model.moduleOf(node.getSourceFile());
+        const name = module?.hoistedClasses.get(node);
+        return module && name
+          ? { pack: module.path.pack, module: module.path.module, name }
+          : undefined;
+      },
     );
   }
 
@@ -329,6 +451,7 @@ export class ModuleFrontend {
       this.sourceFile.statements,
       true,
     )) {
+      if (boundClassExpression(declaration)) continue;
       const symbol = this.checker.getSymbolAtLocation(declaration.name)!;
       this.hoisted.add(symbol);
       decls.push({
@@ -362,7 +485,7 @@ export class ModuleFrontend {
       name: this.info.path.module,
       sourceFile: this.sourceFile.fileName,
       imports: [],
-      decls,
+      decls: [...decls, ...this.hoistedDecls],
       init,
     };
   }
@@ -868,6 +991,9 @@ export class ModuleFrontend {
     if (ts.isVariableStatement(node)) {
       return this.variableList(node.declarationList);
     }
+    if (ts.isClassDeclaration(node)) {
+      return this.hoistClass(node);
+    }
     if (ts.isFunctionDeclaration(node)) {
       return node.name && node.body
         ? [
@@ -1004,9 +1130,13 @@ export class ModuleFrontend {
       ];
     }
     const effect = node.expression && this.effect(node.expression);
+    const exit: HxStmt =
+      this.setterResult?.depth === this.returnTypes.length
+        ? { kind: 'return', value: this.setterResult.value }
+        : { kind: 'return' };
     return effect && !isPure(effect)
-      ? [{ kind: 'expr', expr: effect }, { kind: 'return' }]
-      : [{ kind: 'return' }];
+      ? [{ kind: 'expr', expr: effect }, exit]
+      : [exit];
   }
 
   private variableList(list: ts.VariableDeclarationList): HxStmt[] {
@@ -1017,6 +1147,10 @@ export class ModuleFrontend {
           declaration,
           'destructuring declarations are not supported yet',
         );
+      }
+      const classExpression = boundClassExpression(declaration);
+      if (classExpression) {
+        return this.hoistClass(classExpression);
       }
       const symbol = this.checker.getSymbolAtLocation(declaration.name)!;
       const name = this.bindingName(declaration);
@@ -1238,11 +1372,14 @@ export class ModuleFrontend {
    * A top-level class (ADR 0005): its Haxe class, plus the statements its non-constant
    * static initialisers and static blocks add to the module `__init()` in TS order.
    */
-  private classDeclaration(node: ts.ClassDeclaration): {
+  private classDeclaration(
+    node: ts.ClassLikeDeclaration,
+    captures: Capture[] = [],
+  ): {
     decl?: HxDecl;
     init: HxStmt[];
   } {
-    const symbol = node.name && this.checker.getSymbolAtLocation(node.name);
+    const symbol = this.classSymbol(node);
     const path = symbol && this.types.classPath(symbol);
     if (!symbol || !path) {
       return {
@@ -1265,10 +1402,42 @@ export class ModuleFrontend {
         ),
       };
     }
-    const instance: ClassContext = { path, isStatic: false };
-    const statics: ClassContext = { path, isStatic: true };
-    const fields: HxClassField[] = [];
-    const inits: HxStmt[] = [];
+    const captured = new Map(captures.map((c) => [c.symbol, c]));
+    const instance: ClassContext = {
+      path,
+      isStatic: false,
+      captures: captured,
+    };
+    const statics: ClassContext = { path, isStatic: true, captures: captured };
+    const own = captures.filter((c) => !c.inherited);
+    const fields: HxClassField[] = own.map((c): HxClassField => ({
+      kind: 'var',
+      name: c.field,
+      access: 'private',
+      isStatic: false,
+      final: false,
+      type: c.type,
+    }));
+    const captureParams: HxParam[] = captures.map((c) => ({
+      name: this.freshName(c.symbol.name),
+      type: c.type,
+    }));
+    const captureLocals = new Map(
+      captures.map((c, i) => [
+        c.symbol,
+        localExpr(captureParams[i].name, c.type),
+      ]),
+    );
+    const inits: HxStmt[] = own.map((c) =>
+      this.thisAssignment(c.field, c.type, captureLocals.get(c.symbol)!),
+    );
+    const constructorContext: ClassContext = {
+      ...instance,
+      captureLocals,
+      superCaptures: captures
+        .filter((c) => c.inherited)
+        .map((c) => captureLocals.get(c.symbol)!),
+    };
     const init: HxStmt[] = [];
     const ctor = node.members.find(
       (m): m is ts.ConstructorDeclaration =>
@@ -1276,7 +1445,7 @@ export class ModuleFrontend {
     );
     for (const parameter of ctor?.parameters.filter(isParameterProperty) ??
       []) {
-      const name = memberName(parameter);
+      const name = memberName(parameter, this.checker);
       if (!name || !ts.isIdentifier(parameter.name)) {
         inits.push(
           ...this.unsupportedStmt(
@@ -1304,13 +1473,22 @@ export class ModuleFrontend {
       ) {
         continue;
       }
-      const name = memberName(member);
+      const name = memberName(member, this.checker);
       if (ts.isClassStaticBlockDeclaration(member)) {
         init.push({
           kind: 'block',
           body: this.inClass(statics, () => this.block(member.body.statements)),
         });
-      } else if (!name || ts.isAccessor(member)) {
+      } else if (name && ts.isAccessor(member)) {
+        fields.push(
+          ...this.accessor(
+            node,
+            member,
+            name,
+            isStatic(member) ? statics : instance,
+          ),
+        );
+      } else if (!name) {
         this.unsupported(
           member,
           `${syntaxKindName(member.kind)} class members are not supported yet`,
@@ -1364,14 +1542,40 @@ export class ModuleFrontend {
         this.unsupported(member);
       }
     }
+    for (const [added, property] of structuralOptionalMembers(
+      this.model.program,
+    ).get(node) ?? []) {
+      fields.push({
+        kind: 'var',
+        name: escapeIdentifier(added),
+        access: 'public',
+        isStatic: false,
+        final: false,
+        type: nullable(this.types.map(this.checker.getTypeOfSymbol(property))),
+      });
+    }
+    for (const conflict of structuralMemberConflicts(this.model.program).get(
+      node,
+    ) ?? []) {
+      this.unsupported(
+        node,
+        `optional member ${conflict} is not added, as a subclass declares it as a method or accessor: reading it on this class fails on C#`,
+      );
+    }
     const constructor = this.classConstructor(
       node,
       symbol,
       ctor,
       inits,
       base !== undefined,
-      instance,
+      constructorContext,
     );
+    if (constructor?.kind === 'method') {
+      constructor.fn = {
+        ...constructor.fn,
+        params: [...captureParams, ...constructor.fn.params],
+      };
+    }
     if (constructor) fields.unshift(constructor);
     return {
       decl: {
@@ -1391,6 +1595,115 @@ export class ModuleFrontend {
       },
       init,
     };
+  }
+
+  /**
+   * A `get`/`set` accessor: a `get_name`/`set_name` method, plus the Haxe property
+   * on the first accessor of the topmost class declaring the name. A setter returns
+   * the assigned value, as a JS assignment evaluates to it.
+   */
+  private accessor(
+    node: ts.ClassLikeDeclaration,
+    member: ts.AccessorDeclaration,
+    name: string,
+    context: ClassContext,
+  ): HxClassField[] {
+    if (!ts.isIdentifier(member.name) && !ts.isStringLiteral(member.name)) {
+      this.unsupported(member, 'private accessors are not supported yet');
+      return [];
+    }
+    const sourceName = member.name.text;
+    const kind = ts.isGetAccessor(member) ? 'get' : 'set';
+    const pair = accessorPair(node, sourceName, context.isStatic);
+    const inherited = context.isStatic
+      ? undefined
+      : inheritedAccessors(this.checker, node, sourceName);
+    if (inherited === 'conflict') {
+      this.unsupported(
+        member,
+        'an accessor overriding a field or method is not supported',
+      );
+      return [];
+    }
+    if (inherited && !inherited.pair[kind]) {
+      this.unsupported(
+        member,
+        `a ${kind} accessor its base class lacks is not supported`,
+      );
+      return [];
+    }
+    const root = inherited
+      ? (inherited.pair.get ?? inherited.pair.set)!
+      : member;
+    const type = this.types.map(
+      this.checker.getTypeOfSymbol(
+        this.checker.getSymbolAtLocation(root.name)!,
+      ),
+    );
+    const fields: HxClassField[] = [];
+    if (!inherited && member === (pair.get ?? pair.set)) {
+      fields.push({
+        kind: 'property',
+        name,
+        access: memberAccess(member),
+        isStatic: context.isStatic,
+        get: pair.get ? 'get' : 'never',
+        set: pair.set ? 'set' : 'never',
+        isVar: false,
+        type,
+      });
+    }
+    const isAbstract = hasModifier(member, ts.ModifierFlags.Abstract);
+    if (!member.body && !isAbstract) {
+      return fields;
+    }
+    const fn =
+      kind === 'get'
+        ? this.inClass(context, () => this.function(member))
+        : this.setterFunction(
+            member as ts.SetAccessorDeclaration,
+            type,
+            context,
+          );
+    fields.push({
+      kind: 'method',
+      name: `${kind}_${name}`,
+      access: 'public',
+      isStatic: context.isStatic,
+      isOverride:
+        !!inherited && overridesAccessor(this.checker, node, sourceName, kind),
+      isAbstract,
+      fn: isAbstract ? { ...fn, body: undefined } : fn,
+    });
+    return fields;
+  }
+
+  /** `set_name(__value)`: the TS setter body, returning the assigned value. */
+  private setterFunction(
+    member: ts.SetAccessorDeclaration,
+    type: HxType,
+    context: ClassContext,
+  ): HxFunction {
+    const value = localExpr(this.freshName('value'), type) as HxExpr & {
+      kind: 'local';
+    };
+    const saved = this.setterResult;
+    this.setterResult = { depth: this.returnTypes.length + 1, value };
+    try {
+      const fn = this.inClass(context, () => this.function(member));
+      const [param] = fn.params;
+      const prologue: HxStmt[] = param
+        ? [{ kind: 'var', name: param.name, final: false, type, init: value }]
+        : [];
+      return {
+        ...fn,
+        params: [{ name: value.name, type }],
+        ret: type,
+        body: [...prologue, ...(fn.body ?? []), { kind: 'return', value }],
+      };
+    } finally {
+      this.setterResult = saved;
+    }
   }
 
   /** `this.name = value`. */
@@ -1421,7 +1734,10 @@ export class ModuleFrontend {
     name: string,
     type: HxType,
   ): HxClassField[] {
-    if (rootField(this.checker, field) !== field) {
+    if (
+      rootField(this.checker, field) !== field ||
+      inheritsStructuralMember(this.model.program, owningClass(field), name)
+    ) {
       return [];
     }
     return [
@@ -1505,7 +1821,7 @@ export class ModuleFrontend {
    * its parent's, as in Haxe.
    */
   private classConstructor(
-    node: ts.ClassDeclaration,
+    node: ts.ClassLikeDeclaration,
     symbol: ts.Symbol,
     ctor: ts.ConstructorDeclaration | undefined,
     inits: HxStmt[],
@@ -1529,17 +1845,19 @@ export class ModuleFrontend {
           'a constructor initialising fields needs a top-level super() call',
         );
       }
+      const outer = this.pendingInits;
       this.pendingInits = { after, stmts: inits };
       try {
         return field(this.inClass(context, () => this.function(ctor)));
       } finally {
-        this.pendingInits = undefined;
+        this.pendingInits = outer;
       }
     }
     if (!hasBase) {
       return field({ typeParams: [], params: [], ret: VOID, body: inits });
     }
-    if (inits.length === 0) {
+    const superCaptures = context.superCaptures ?? [];
+    if (inits.length === 0 && superCaptures.length === 0) {
       return undefined;
     }
     const [signature] = this.checker
@@ -1558,7 +1876,10 @@ export class ModuleFrontend {
       expr: {
         kind: 'call',
         callee: { kind: 'super', type: DYNAMIC },
-        args: params.map((p) => localExpr(p.name, p.type)),
+        args: [
+          ...superCaptures,
+          ...params.map((p) => localExpr(p.name, p.type)),
+        ],
         spreadLast: params[params.length - 1]?.rest,
         type: VOID,
       },
@@ -1573,14 +1894,184 @@ export class ModuleFrontend {
 
   /** The Haxe class a class reference (identifier, `ns.C`, import alias) names. */
   private classOf(node: ts.Expression): HxTypePath | undefined {
+    const symbol = this.classSymbolOf(node);
+    return symbol && this.types.classPath(symbol);
+  }
+
+  /** The class symbol a class reference names, a `const` bound to a class expression included. */
+  private classSymbolOf(node: ts.Expression): ts.Symbol | undefined {
     const target = ts.isPropertyAccessExpression(node) ? node.name : node;
     let symbol = this.checker.getSymbolAtLocation(target);
     if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
       symbol = this.checker.getAliasedSymbol(symbol);
     }
-    return symbol && symbol.flags & ts.SymbolFlags.Class
-      ? this.types.classPath(symbol)
-      : undefined;
+    const bound =
+      symbol?.valueDeclaration && boundClassExpression(symbol.valueDeclaration);
+    if (bound) {
+      return this.classSymbol(bound);
+    }
+    return symbol && symbol.flags & ts.SymbolFlags.Class ? symbol : undefined;
+  }
+
+  private classSymbol(node: ts.ClassLikeDeclaration): ts.Symbol | undefined {
+    if (node.name) {
+      return this.checker.getSymbolAtLocation(node.name);
+    }
+    const type = this.checker.getTypeAtLocation(node);
+    const parts = type.isIntersection() ? type.types : [type];
+    return parts
+      .map((part) => part.getSymbol())
+      .find((symbol) => symbol?.declarations?.includes(node));
+  }
+
+  /**
+   * A class expression or local class: declared at module level (ADR 0005), its static
+   * initialisers left in place. The locals it captures are passed to its constructor.
+   */
+  private hoistClass(node: ts.ClassLikeDeclaration): HxStmt[] {
+    const captures = this.captures(node);
+    if (!captures) {
+      return this.unsupportedStmt(
+        node,
+        'a class capturing a reassigned local is not supported',
+      );
+    }
+    const converted = this.classDeclaration(node, captures);
+    if (converted.decl) this.hoistedDecls.push(converted.decl);
+    return converted.init;
+  }
+
+  /**
+   * The locals of enclosing functions a hoisted class reads, in order of first use;
+   * `undefined` when one is reassigned, as the class only keeps a copy.
+   */
+  private captures(node: ts.ClassLikeDeclaration): Capture[] | undefined {
+    if (this.captureCache.has(node)) {
+      return this.captureCache.get(node);
+    }
+    const symbol = this.classSymbol(node);
+    const path = symbol && this.types.classPath(symbol);
+    const inherited = this.baseCaptures(node);
+    if (!inherited) {
+      this.captureCache.set(node, undefined);
+      return undefined;
+    }
+    const result: Capture[] = inherited.map((c) => ({ ...c, inherited: true }));
+    const seen = new Set<ts.Symbol>(inherited.map((c) => c.symbol));
+    let reassigned = false;
+    const visit = (n: ts.Node): void => {
+      if (ts.isIdentifier(n)) {
+        const local =
+          ts.isShorthandPropertyAssignment(n.parent) && n.parent.name === n
+            ? this.checker.getShorthandAssignmentValueSymbol(n.parent)
+            : this.checker.getSymbolAtLocation(n);
+        const declaration = local?.valueDeclaration;
+        if (
+          local &&
+          declaration &&
+          !seen.has(local) &&
+          local.flags & (ts.SymbolFlags.Variable | ts.SymbolFlags.Function) &&
+          !(local.flags & ts.SymbolFlags.Property) &&
+          (ts.isVariableDeclaration(declaration) ||
+            ts.isParameter(declaration) ||
+            ts.isFunctionDeclaration(declaration)) &&
+          declaration.getSourceFile() === node.getSourceFile() &&
+          !(declaration.pos >= node.pos && declaration.end <= node.end) &&
+          !boundClassExpression(declaration) &&
+          !this.model.resolveValue(local)
+        ) {
+          seen.add(local);
+          reassigned ||= isReassigned(this.checker, local, declaration);
+          result.push({
+            symbol: local,
+            declaration,
+            field: `__${path?.name ?? 'Class'}_${local.name}`,
+            type: ts.isVariableDeclaration(declaration)
+              ? this.declaredType(declaration)
+              : ts.isParameter(declaration)
+                ? this.parameterType(declaration)
+                : this.types.map(this.checker.getTypeOfSymbol(local)),
+          });
+        }
+      }
+      ts.forEachChild(n, visit);
+    };
+    ts.forEachChild(node, visit);
+    const captures = reassigned ? undefined : result;
+    this.captureCache.set(node, captures);
+    return captures;
+  }
+
+  /** The captures of the hoisted class `node` extends, which its constructor forwards to `super`. */
+  private baseCaptures(node: ts.ClassLikeDeclaration): Capture[] | undefined {
+    const heritage = extendsClause(node);
+    const base =
+      heritage &&
+      this.classSymbolOf(heritage.expression)?.declarations?.find(
+        isHoistedClass,
+      );
+    return base ? this.captures(base) : [];
+  }
+
+  /**
+   * A captured local inside a hoisted class: the field its constructor copied it to,
+   * or in the constructor the capture parameter, as the field is set only after `super()`.
+   */
+  private capturedLocal(
+    node: ts.Node,
+    symbol: ts.Symbol,
+    pos?: SourcePos,
+  ): HxExpr | undefined {
+    const context = this.classContexts[this.classContexts.length - 1];
+    const capture = context?.captures?.get(symbol);
+    if (!context || !capture) {
+      return undefined;
+    }
+    const local = context.captureLocals?.get(symbol);
+    if (local) {
+      return { ...local, pos };
+    }
+    if (context.isStatic) {
+      return this.unsupported(
+        node,
+        'a static member reading a captured local is not supported',
+      );
+    }
+    return {
+      kind: 'field',
+      target: { kind: 'this', type: DYNAMIC },
+      name: capture.field,
+      type: capture.type,
+      pos,
+    };
+  }
+
+  /** The values `new` passes for a hoisted class's captures; `undefined` out of their scope. */
+  private captureArguments(
+    node: ts.NewExpression,
+    pos: SourcePos,
+  ): HxExpr[] | string {
+    const symbol = this.classSymbolOf(node.expression);
+    const declaration = symbol?.declarations?.find(isHoistedClass);
+    if (!declaration) {
+      return [];
+    }
+    const captures = this.captures(declaration);
+    if (!captures) {
+      return 'constructing a class that is not supported';
+    }
+    if (
+      captures.some(
+        (c) => !ts.findAncestor(node, (n) => n === scopeOf(c.declaration)),
+      )
+    ) {
+      return 'constructing a class outside the scope of the locals it captures is not supported';
+    }
+    return captures.map(
+      (c) =>
+        this.capturedLocal(node, c.symbol, pos) ??
+        localExpr(this.localName(c.symbol.name), c.type, pos),
+    );
   }
 
   /**
@@ -1598,7 +2089,8 @@ export class ModuleFrontend {
       !declaration ||
       !(
         ts.isPropertyDeclaration(declaration) ||
-        ts.isMethodDeclaration(declaration)
+        ts.isMethodDeclaration(declaration) ||
+        ts.isAccessor(declaration)
       ) ||
       !isStatic(declaration) ||
       !ts.isClassDeclaration(declaration.parent) ||
@@ -1610,7 +2102,7 @@ export class ModuleFrontend {
       declaration.parent.name,
     );
     const owner = classSymbol && this.types.classPath(classSymbol);
-    const name = memberName(declaration);
+    const name = memberName(declaration, this.checker);
     if (!owner || !name) {
       return undefined;
     }
@@ -1621,6 +2113,16 @@ export class ModuleFrontend {
   }
 
   private thisExpression(node: ts.Node, pos: SourcePos): HxExpr {
+    const container = thisContainer(node);
+    if (container && ts.isObjectLiteralExpression(container.parent)) {
+      const self = this.objectSelves.get(container.parent);
+      return self
+        ? { ...self, pos }
+        : this.unsupported(
+            node,
+            '`this` in this object method is not supported',
+          );
+    }
     const context = this.classContexts[this.classContexts.length - 1];
     if (!context) {
       return this.unsupported(node, '`this` outside a class is not supported');
@@ -1636,15 +2138,22 @@ export class ModuleFrontend {
     if (!path || args.some(ts.isSpreadElement)) {
       return this.unsupported(node);
     }
+    const captured = this.captureArguments(node, pos);
+    if (typeof captured === 'string') {
+      return this.unsupported(node, captured);
+    }
     return {
       kind: 'new',
       path,
       typeArgs: [],
-      args: this.arguments(
-        node,
-        args.map((a) => this.expression(a)),
-        false,
-      ),
+      args: [
+        ...captured,
+        ...this.arguments(
+          node,
+          args.map((a) => this.expression(a)),
+          false,
+        ),
+      ],
       type: this.hxTypeOf(node),
       pos,
     };
@@ -2090,6 +2599,19 @@ export class ModuleFrontend {
     if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
       return this.functionExpr(node, pos);
     }
+    if (ts.isClassExpression(node)) {
+      const declared = this.hoistedDecls.length;
+      const stmts = this.hoistClass(node);
+      const symbol = this.classSymbol(node);
+      const path =
+        this.hoistedDecls.length > declared &&
+        symbol &&
+        this.types.classPath(symbol);
+      const ref: HxExpr = path
+        ? { kind: 'typeRef', path, type: DYNAMIC, pos }
+        : constExpr(null, pos);
+      return this.withStmts(stmts, ref);
+    }
     if (ts.isArrayLiteralExpression(node)) {
       return this.arrayLiteral(node, pos);
     }
@@ -2149,6 +2671,10 @@ export class ModuleFrontend {
     const value = symbol && this.model.resolveValue(symbol);
     if (value) {
       return this.moduleValue(node, value, pos);
+    }
+    const captured = symbol && this.capturedLocal(node, symbol, pos);
+    if (captured) {
+      return captured;
     }
     const declaration = this.localDeclaration(symbol);
     if (!symbol || !declaration) {
@@ -2238,7 +2764,7 @@ export class ModuleFrontend {
       }
       return VALUE_BINDINGS.get(key)?.(pos) ?? this.unsupported(node);
     }
-    if (node.questionDotToken || ts.isPrivateIdentifier(node.name)) {
+    if (node.questionDotToken) {
       return this.unsupported(node);
     }
     const member = this.staticMember(node, pos);
@@ -2246,20 +2772,58 @@ export class ModuleFrontend {
       return member;
     }
     const symbol = this.checker.getSymbolAtLocation(node.name);
-    if (symbol && symbol.flags & ts.SymbolFlags.Accessor) {
+    if (
+      symbol &&
+      symbol.flags & ts.SymbolFlags.Accessor &&
+      !(symbol.declarations ?? []).every(
+        (d) => ts.isAccessor(d) && ts.isClassLike(d.parent),
+      )
+    ) {
       return this.unsupported(node, 'accessors are not supported yet');
     }
     const target = this.expression(node.expression);
     if (dictValue(target.type)) {
       return this.dictGet(target, constExpr(node.name.text, pos), pos);
     }
+    const name = ts.isPrivateIdentifier(node.name)
+      ? symbol?.valueDeclaration &&
+        memberName(symbol.valueDeclaration, this.checker)
+      : escapeIdentifier(node.name.text);
+    if (name === undefined) {
+      return this.unsupported(node);
+    }
+    if (this.isAccessorBacked(node)) {
+      return staticCall(
+        REFLECT,
+        'getProperty',
+        [target, constExpr(name, pos)],
+        this.fieldType(target, node),
+        pos,
+      );
+    }
     return {
       kind: 'field',
       target,
-      name: escapeIdentifier(node.name.text),
+      name,
       type: this.fieldType(target, node),
       pos,
     };
+  }
+
+  /** Whether a structure member read may hit a class accessor, which Haxe only runs through `Reflect.getProperty`. */
+  private isAccessorBacked(node: ts.PropertyAccessExpression): boolean {
+    const backed = structuralAccessorMembers(this.model.program);
+    if (backed.size === 0) {
+      return false;
+    }
+    const receiver = this.checker.getNonNullableType(
+      this.checker.getTypeAtLocation(node.expression),
+    );
+    const parts = receiver.isUnion() ? receiver.types : [receiver];
+    return parts.some((part) => {
+      const property = this.checker.getPropertyOfType(part, node.name.text);
+      return !!property && backed.has(property);
+    });
   }
 
   /**
@@ -3005,6 +3569,16 @@ export class ModuleFrontend {
     if (dictValueType) {
       return this.dictLiteral(node, this.types.map(dictValueType), pos);
     }
+    const type = this.hxTypeOf(node);
+    const self = node.properties.some(
+      (p) =>
+        (ts.isMethodDeclaration(p) || ts.isAccessor(p)) &&
+        !!p.body &&
+        usesThis(p.body),
+    )
+      ? localExpr(this.freshName('self'), type, pos)
+      : undefined;
+    if (self) this.objectSelves.set(node, self);
     const fields: Array<{ name: string; value: HxExpr }> = [];
     for (const property of node.properties) {
       const name =
@@ -3037,7 +3611,29 @@ export class ModuleFrontend {
         return this.unsupported(node);
       }
     }
-    return { kind: 'objectLit', fields, type: this.hxTypeOf(node), pos };
+    const literal: HxExpr = { kind: 'objectLit', fields, type, pos };
+    if (!self || self.kind !== 'local') {
+      return literal;
+    }
+    return {
+      kind: 'blockExpr',
+      stmts: [
+        {
+          kind: 'var',
+          name: self.name,
+          final: false,
+          type,
+          init: constExpr(null),
+        },
+        {
+          kind: 'expr',
+          expr: { kind: 'assign', op: '=', target: self, value: literal, type },
+        },
+      ],
+      result: self,
+      type,
+      pos,
+    };
   }
 
   /** An object literal typed as a dictionary: `Dict.of(keys, values)` in source order. */
@@ -3149,10 +3745,15 @@ export class ModuleFrontend {
     const ret = signature
       ? this.types.mapReturn(signature.getReturnType())
       : DYNAMIC;
+    const superCaptures =
+      callee.kind === ts.SyntaxKind.SuperKeyword
+        ? (this.classContexts[this.classContexts.length - 1]?.superCaptures ??
+          [])
+        : [];
     return {
       kind: 'call',
       callee: this.expression(callee),
-      args: this.arguments(node, args, spreadLast),
+      args: [...superCaptures, ...this.arguments(node, args, spreadLast)],
       spreadLast,
       type: ret,
       pos,

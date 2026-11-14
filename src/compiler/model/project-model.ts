@@ -5,6 +5,11 @@ import type { HxTypePath } from '../ir/types';
 import { MODULE_INIT } from '../printer/printer';
 import { className, typedefName } from '../frontend/types';
 import {
+  boundClassExpression,
+  hoistedClassName,
+  isHoistedClass,
+} from '../frontend/classes';
+import {
   escapeIdentifier,
   isValidRootPackage,
   moduleName,
@@ -25,6 +30,8 @@ export interface ModuleInfo {
    * the `default` export of an expression (`export default 1 + 1`).
    */
   fields: Map<ts.Node, string>;
+  /** Haxe names of the class expressions and local classes the module declares at its top level. */
+  hoistedClasses: Map<ts.ClassLikeDeclaration, string>;
 }
 
 /** What a value reference resolves to through import and export aliases. */
@@ -154,7 +161,10 @@ function fieldDeclarations(
   for (const statement of sf.statements) {
     if (ts.isVariableStatement(statement)) {
       for (const declaration of statement.declarationList.declarations) {
-        if (ts.isIdentifier(declaration.name)) {
+        if (
+          ts.isIdentifier(declaration.name) &&
+          !boundClassExpression(declaration)
+        ) {
           result.push([declaration, declaration.name.text]);
         }
       }
@@ -203,6 +213,44 @@ export function assignFieldNames(
     taken.add(name);
     names.set(declaration, name);
   }
+  return names;
+}
+
+/**
+ * Haxe names of a module's hoisted classes (class expressions and local classes, ADR
+ * 0005), in source order: named like a class, after the class or its `const`, and
+ * renamed `Name_2`, … when they collide with the module's other names.
+ */
+export function assignHoistedClassNames(
+  sf: ts.SourceFile,
+  modulePath: HxTypePath,
+  fields: ReadonlyMap<ts.Node, string>,
+): Map<ts.ClassLikeDeclaration, string> {
+  const taken = new Set([modulePath.module, ...fields.values()]);
+  for (const statement of sf.statements) {
+    if (
+      ts.isInterfaceDeclaration(statement) ||
+      ts.isTypeAliasDeclaration(statement)
+    ) {
+      taken.add(typedefName(statement.name.text, modulePath.module));
+    } else if (ts.isClassDeclaration(statement) && statement.name) {
+      taken.add(className(statement.name.text, modulePath.module));
+    }
+  }
+  const names = new Map<ts.ClassLikeDeclaration, string>();
+  const visit = (node: ts.Node): void => {
+    if (isHoistedClass(node)) {
+      const base = className(hoistedClassName(node), modulePath.module);
+      let name = base;
+      for (let n = 2; taken.has(name); n++) {
+        name = `${base}_${n}`;
+      }
+      taken.add(name);
+      names.set(node, name);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
   return names;
 }
 
@@ -371,15 +419,17 @@ export function buildProjectModel(
   }
   const modules = files.map((sourceFile): ModuleInfo => {
     const modulePath = paths.get(sourceFile)!;
+    const fields = assignFieldNames(
+      sourceFile,
+      modulePath,
+      checker,
+      reservedLocalNames,
+    );
     return {
       sourceFile,
       path: modulePath,
-      fields: assignFieldNames(
-        sourceFile,
-        modulePath,
-        checker,
-        reservedLocalNames,
-      ),
+      fields,
+      hoistedClasses: assignHoistedClassNames(sourceFile, modulePath, fields),
     };
   });
   const bySourceFile = new Map(modules.map((m) => [m.sourceFile, m]));

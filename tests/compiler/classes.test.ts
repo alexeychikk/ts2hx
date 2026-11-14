@@ -1,7 +1,13 @@
 import ts from 'typescript';
 
 import {
+  hoistedClassName,
+  isHoistedClass,
   mayReadFieldsBeforeInit,
+  privateMemberName,
+  structuralAccessorMembers,
+  structuralMemberConflicts,
+  structuralOptionalMembers,
   redeclaredWrittenFields,
   overridesImplementation,
   rootField,
@@ -228,5 +234,307 @@ describe('classes in the frontend', () => {
       console.log(a instanceof A);
     `);
     expect(code).toContain('Std.isOfType(a, Main_2.A)');
+  });
+});
+
+describe('classes II helpers', () => {
+  it('suffixes a #private name redeclared below an ancestor with the same name', () => {
+    const { checker, member } = classesOf(`
+      class A { #x = 1; }
+      class B extends A { #y = 2; }
+      class C extends B { #x = 3; }
+    `);
+    const privateOf = (cls: string, name: string) =>
+      privateMemberName(
+        checker,
+        member(cls, name) as ts.PropertyDeclaration & {
+          name: ts.PrivateIdentifier;
+        },
+      );
+    expect(privateOf('A', '#x')).toBe('__x');
+    expect(privateOf('B', '#y')).toBe('__y');
+    expect(privateOf('C', '#x')).toBe('__x_2');
+  });
+
+  it('collects optional structure members a class used as that structure lacks', () => {
+    const { program, classes } = classesOf(`
+      interface L { name: string; label?: string; rank?: number }
+      interface D { describe(): string; note?: string }
+      class P { name = 'p'; rank = 1; }
+      class I implements D { describe() { return ''; } }
+      class S extends I { note = 's'; }
+      class Q extends P {}
+      class Unused { name = 'u'; }
+      const list: L[] = [new P()];
+      function show(l: L | undefined) { return l; }
+      show(new Q());
+    `);
+    const added = structuralOptionalMembers(program);
+    const names = (cls: string) => [
+      ...(added.get(classes.get(cls)!)?.keys() ?? []),
+    ];
+    expect(names('P')).toEqual(['label']);
+    expect(names('I')).toEqual(['note']);
+    expect(names('S')).toEqual([]);
+    expect(names('Q')).toEqual([]);
+    expect(names('Unused')).toEqual([]);
+  });
+
+  it('leaves off an optional member a subclass declares as a method or accessor', () => {
+    const { program, classes } = classesOf(`
+      interface I { greet?(): string; label?: string; size?: number }
+      class A implements I {}
+      class B extends A { greet() { return 'b'; } get size() { return 1; } }
+      class C extends A { label = 'c'; }
+    `);
+    const a = classes.get('A')!;
+    expect([
+      ...(structuralOptionalMembers(program).get(a)?.keys() ?? []),
+    ]).toEqual(['label']);
+    expect([...(structuralMemberConflicts(program).get(a) ?? [])]).toEqual([
+      'greet',
+      'size',
+    ]);
+  });
+
+  it('collects optional structure members of class expressions from their instance type', () => {
+    const { program, file } = createProject({
+      'main.ts': `
+        interface S { area(): number; name?: string; length?: number }
+        const E = class implements S { area() { return 1; } };
+        const U = class { area() { return 2; } get name() { return 'u'; } };
+        const s: S = new U();
+      `,
+    });
+    const expressions: ts.ClassExpression[] = [];
+    const visit = (node: ts.Node): void => {
+      if (ts.isClassExpression(node)) {
+        expressions.push(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(program.getSourceFile(file('main.ts'))!);
+    const added = structuralOptionalMembers(program);
+    const names = (node: ts.ClassExpression) => [
+      ...(added.get(node)?.keys() ?? []),
+    ];
+    expect(names(expressions[0])).toEqual(['name', 'length']);
+    expect(names(expressions[1])).toEqual(['length']);
+    expect(
+      [...structuralAccessorMembers(program)].map((symbol) => symbol.name),
+    ).toEqual(['name']);
+  });
+
+  it('marks structure members a class implements with an accessor', () => {
+    const { program } = classesOf(`
+      interface H { readonly area: number; label?: string }
+      class Sq implements H { get area() { return 1; } }
+      class Plain { area = 2; }
+      const h: H = new Plain();
+    `);
+    expect(
+      [...structuralAccessorMembers(program)].map((symbol) => symbol.name),
+    ).toEqual(['area']);
+  });
+
+  it('hoists class expressions and local classes, named after their binding', () => {
+    const { program, file } = createProject({
+      'main.ts': `
+        class Top {}
+        const Bound = class {};
+        const Named = class Inner {};
+        function f() { class Local {} return [Local, class {}]; }
+      `,
+    });
+    program.getTypeChecker();
+    const hoisted: string[] = [];
+    const visit = (node: ts.Node): void => {
+      if (isHoistedClass(node)) {
+        hoisted.push(hoistedClassName(node));
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(program.getSourceFile(file('main.ts'))!);
+    expect(hoisted).toEqual(['Bound', 'Inner', 'Local', 'Class']);
+  });
+});
+
+describe('classes II in the frontend', () => {
+  it('maps accessors to a property whose setter returns the assigned value', async () => {
+    const code = await moduleOf(`
+      class T {
+        #c = 0;
+        get c(): number { return this.#c; }
+        set c(v: number) { if (v < 0) return; this.#c = v; }
+        get only(): number { return 1; }
+      }
+      const t = new T();
+      t.c = 2;
+      console.log(t.c + t.only);
+    `);
+    expect(code).toContain('public var c(get, set):Float;');
+    expect(code).toContain('public var only(get, never):Float;');
+    expect(code).toContain(
+      '\tpublic function set_c(__value_1:Float):Float {\n' +
+        '\t\tvar v:Float = __value_1;\n' +
+        '\t\tif (v < 0.0) {\n' +
+        '\t\t\treturn __value_1;\n' +
+        '\t\t}\n' +
+        '\t\tthis.__c = v;\n' +
+        '\t\treturn __value_1;\n' +
+        '\t}',
+    );
+  });
+
+  it('declares an overridden accessor once, overriding only implemented methods', async () => {
+    const code = await moduleOf(`
+      abstract class Shape {
+        abstract get area(): number;
+        get kind(): string { return 'shape'; }
+      }
+      class Sq extends Shape {
+        get area() { return 4; }
+        override get kind() { return 'sq'; }
+      }
+      console.log(new Sq().kind);
+    `);
+    expect(code.match(/var kind\(get, never\)/g)).toHaveLength(1);
+    expect(code.match(/var area\(get, never\)/g)).toHaveLength(1);
+    expect(code).toContain('public override function get_kind():String');
+    expect(code).toContain('\tpublic function get_area():Float');
+  });
+
+  it('reads accessor-backed structure members through Reflect.getProperty', async () => {
+    const code = await moduleOf(`
+      interface H { readonly area: number; label?: string }
+      class Sq implements H { get area() { return 1; } }
+      const h: H = new Sq();
+      console.log(h.area, h.label);
+    `);
+    expect(code).toContain('Reflect.getProperty(h, "area")');
+    expect(code).toContain('h.label');
+    expect(code).toContain('public var label:');
+  });
+
+  it('hoists a local class and passes its captured locals to the constructor', async () => {
+    const code = await moduleOf(`
+      function make(step: number) {
+        class Counter { n = 0; inc() { this.n += step; return this.n; } }
+        return new Counter();
+      }
+      console.log(make(2).inc());
+    `);
+    expect(code).toContain('return new Main_2.Counter(step);');
+    expect(code).toContain(
+      '\tpublic function new(__step_1:Float) {\n' +
+        '\t\tthis.__Counter_step = __step_1;\n',
+    );
+    expect(code).toContain('this.n += this.__Counter_step;');
+  });
+
+  it('does not capture the property of a parameter property read through a local', async () => {
+    const code = await moduleOf(`
+      class Base { constructor(public label: string) {} }
+      function f(b: Base) { class X { g() { return b.label; } } return new X(); }
+      console.log(f(new Base('l')).g());
+    `);
+    expect(code).toContain('return new Main_2.X(b);');
+    expect(code).toContain('return this.__X_b.label;');
+  });
+
+  it('forwards the captures of a hoisted base class to super', async () => {
+    const code = await moduleOf(`
+      function f(k: number, m: string) {
+        class A { v() { return k; } }
+        class B extends A {}
+        class C extends A { constructor() { super(); } w() { return m; } }
+        return [new B().v(), new C().w()];
+      }
+      console.log(f(1, 'm'));
+    `);
+    expect(code).toContain('new Main_2.B(k)');
+    expect(code).toContain('new Main_2.C(k, m)');
+    expect(code).toContain(
+      '\tpublic function new(__k_2:Float) {\n\t\tsuper(__k_2);\n\t}',
+    );
+    expect(code).toContain(
+      '\tpublic function new(__k_3:Float, __m_4:String) {\n' +
+        '\t\tsuper(__k_3);\n' +
+        '\t\tthis.__C_m = __m_4;\n',
+    );
+  });
+
+  it('reads captures from the capture parameters inside the constructor', async () => {
+    const code = await moduleOf(`
+      class Failure { constructor(public message: string) {} }
+      function f(prefix: string) {
+        class Tagged extends Failure {
+          constructor(detail: string = prefix) { super(prefix + detail); }
+        }
+        return new Tagged();
+      }
+      console.log(f('p').message);
+    `);
+    expect(code).toContain('detail = __prefix_1;');
+    expect(code).toContain('super(__prefix_1 + detail);');
+  });
+
+  it('reports an optional structure member clashing with a subclass method', async () => {
+    const { diagnostics } = await compileSources({
+      'main.ts': `
+        interface I { greet?(): string }
+        class A implements I {}
+        class B extends A { greet() { return 'b'; } }
+        const i: I = new B();
+        console.log(i.greet!());
+      `,
+    });
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'TODO(ts2hx): optional member greet is not added, as a subclass declares it as a method or accessor: reading it on this class fails on C#',
+    ]);
+  });
+
+  it('reports an anonymous class extending a constructor parameter as unsupported', async () => {
+    for (const base of ['T', 'typeof Plain']) {
+      const { code, diagnostics } = await compileSources({
+        'main.ts': `
+          class Plain { hi() { return 'hi'; } }
+          function mixin<T extends new (...args: any[]) => object>(B: ${base}) {
+            return class extends B { extra(): string { return 'extra'; } };
+          }
+          console.log(typeof mixin);
+        `,
+      });
+      expect(diagnostics.map((d) => d.message)).toEqual([
+        'TODO(ts2hx): extending B is not supported yet',
+      ]);
+      expect(code['Main_2.hx']).not.toMatch(/Main_2\.Class\b/);
+    }
+  });
+
+  it('reports a class capturing a reassigned local as unsupported', async () => {
+    const { diagnostics } = await compileSources({
+      'main.ts': `
+        function bad(step: number) {
+          let s = step; s++;
+          class R { v() { return s; } }
+          return new R();
+        }
+        console.log(bad(1).v());
+      `,
+    });
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'TODO(ts2hx): a class capturing a reassigned local is not supported',
+      'TODO(ts2hx): constructing a class that is not supported',
+    ]);
+  });
+
+  it('binds this in object-literal methods to a self local', async () => {
+    const code = await moduleOf(`
+      const o = { n: 1, get() { return this.n; } };
+      console.log(o.get());
+    `);
+    expect(code).toContain('__self_1 = {n: 1.0, get: function():Float {');
+    expect(code).toContain('return __self_1.n;');
   });
 });
