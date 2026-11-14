@@ -79,7 +79,7 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 | destructuring (declaration, parameter, assignment, `for…of`, `catch`), defaults, rest | temporaries plus assignments | |
 | spread in arrays and objects | `concat` / runtime `Obj.spread` with the static key order | |
 | `?.`, `??`, `??=`, `\|\|=`, `&&=` | Haxe 4.3 `?.` and `??` where equivalent, otherwise lowered with temporaries | `a?.[i]` and `a?.()` are lowered. |
-| truthiness, `!`, `\|\|`, `&&` | type-directed (0002) | A value whose type is only `null`/`undefined` (e.g. narrowed by assignment) is `false`. |
+| truthiness, `!`, `\|\|`, `&&` | type-directed (0002) | A value whose type is only `null`/`undefined` (e.g. narrowed by assignment) is `false` only when it is a literal; any other expression goes through `Ts2hx.truthy`, because TS keeps that narrowing across closure calls that reassign the variable. `String`/template of such a value is `x == null ? "undefined" : Ts2hx.string(x)` for the same reason. |
 | `==`/`!=` (loose) | `==` when both sides have the same primitive or class type, otherwise `Ts2hx.looseEq` | `===` becomes Haxe `==`. |
 | arithmetic, `%`, `**`, bitwise, `++` on fields and indexes | Float arithmetic, `Num.pow` (JS `NaN`/`±1 ** ±Infinity` results), `Num.toInt32`, `Num.shl`/`shr`/`ushr` | `+` with a string operand converts the other side with `Num.toString` or `Ts2hx.string`. |
 | `typeof x` | static constant when the type is known, otherwise `Ts2hx.typeOf` | |

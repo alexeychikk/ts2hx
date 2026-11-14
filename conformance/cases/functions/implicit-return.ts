@@ -49,3 +49,25 @@ console.log(s ? 'yes' : 'no');
 const n: number | null = null;
 console.log(n ? 'yes' : 'no', !n);
 console.log(calls);
+
+let found: number | undefined = undefined;
+const setFound = () => {
+  found = 2;
+};
+setFound();
+console.log(found ? 'yes' : 'no', !found, `${found}`, String(found));
+
+let last: string | null = null;
+const each = (xs: string[], visit: (v: string) => void) => {
+  for (const x of xs) visit(x);
+};
+each(['a', 'b'], (v) => {
+  last = v;
+});
+if (last) console.log('last', last);
+console.log(last ? 'set' : 'unset', `${last}`);
+
+let pending: number | undefined = undefined;
+console.log(pending ? 'yes' : 'no', `${pending}`, String(pending));
+let none: string | null = null;
+console.log(none ? 'yes' : 'no', `${none}`);

@@ -1051,25 +1051,49 @@ export class ModuleFrontend {
 
   /** JS `String(value)` for a value of the given TS type. */
   private toJsString = (expr: HxExpr, type: ts.Type): HxExpr => {
+    const nullishText =
+      type.flags & ts.TypeFlags.Null
+        ? 'null'
+        : type.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)
+          ? 'undefined'
+          : undefined;
     if (
       everyConstituent(type, ts.TypeFlags.StringLike) ||
-      isStringType(expr.type)
+      (nullishText === undefined && isStringType(expr.type))
     ) {
       return expr;
     }
     if (everyConstituent(type, ts.TypeFlags.NumberLike)) {
       return staticCall(RUNTIME.num, 'toString', [expr], STRING, expr.pos);
     }
-    if (isPure(expr) && type.flags & ts.TypeFlags.Null) {
-      return constExpr('null', expr.pos);
+    const converted = staticCall(
+      RUNTIME.ts2hx,
+      'string',
+      [expr],
+      STRING,
+      expr.pos,
+    );
+    if (nullishText === undefined || !isPure(expr)) {
+      return converted;
     }
-    if (
-      isPure(expr) &&
-      type.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)
-    ) {
-      return constExpr('undefined', expr.pos);
+    if (expr.kind === 'const') {
+      return constExpr(nullishText, expr.pos);
     }
-    return staticCall(RUNTIME.ts2hx, 'string', [expr], STRING, expr.pos);
+    return {
+      kind: 'ternary',
+      cond: {
+        kind: 'binop',
+        op: '==',
+        left: expr,
+        right: constExpr(null),
+        type: BOOL,
+        pos: expr.pos,
+      },
+      then: constExpr(nullishText, expr.pos),
+      else: converted,
+      type: STRING,
+      pos: expr.pos,
+    };
   };
 
   private stringOf(node: ts.Expression): HxExpr {
@@ -1100,7 +1124,7 @@ export class ModuleFrontend {
   private truthy(expr: HxExpr, type: ts.Type): HxExpr {
     const pos = expr.pos;
     if (everyConstituent(type, NULLISH_FLAGS)) {
-      return isPure(expr)
+      return expr.kind === 'const'
         ? constExpr(false, pos)
         : staticCall(RUNTIME.ts2hx, 'truthy', [expr], BOOL, pos);
     }

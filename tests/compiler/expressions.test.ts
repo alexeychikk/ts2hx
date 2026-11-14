@@ -263,13 +263,23 @@ describe('frontend: expressions, statements and functions', () => {
     expect(hx).toMatch(/ts2hx\.Console\.log\(\{\s*noop\(\);\s*null;\s*\}\);/);
   });
 
-  it('makes a value narrowed to undefined falsy', async () => {
+  it('reads a variable narrowed to undefined at runtime', async () => {
     const hx = await moduleOf(
       [
         'const f: (() => number) | undefined = undefined;',
-        'console.log(f ? 1 : 2, !f);',
+        'console.log(f ? 1 : 2, !f, undefined ? 1 : 2);',
+        'let found: number | undefined = undefined;',
+        'const set = () => { found = 2; };',
+        'set();',
+        'console.log(found ? "yes" : "no", `${found}`);',
       ].join('\n'),
     );
-    expect(hx).toContain('ts2hx.Console.log(false ? 1.0 : 2.0, !false);');
+    expect(hx).toContain(
+      'ts2hx.Console.log(ts2hx.Ts2hx.truthy(f) ? 1.0 : 2.0, !ts2hx.Ts2hx.truthy(f), false ? 1.0 : 2.0);',
+    );
+    expect(hx).toContain('ts2hx.Ts2hx.truthy(found) ? "yes" : "no"');
+    expect(hx).toMatch(
+      /found == null \? "undefined" : ts2hx\.Ts2hx\.string\(found\)/,
+    );
   });
 });
