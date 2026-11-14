@@ -43,3 +43,36 @@ jobs:
           name: coverage
           path: coverage/
           if-no-files-found: ignore
+
+  conformance:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [js, cs, cpp]
+    env:
+      TS2HX_SELFTEST_TARGETS: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: node haxe neko ${{ matrix.target == 'cs' && 'dotnet' || '' }}
+      - run: npm ci
+      - uses: actions/cache@v6
+        with:
+          path: .haxelib
+          key: haxelib-${{ runner.os }}-${{ hashFiles('scripts/setup-haxe.sh') }}
+      - if: matrix.target == 'cpp'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ts2hx/hxcpp
+          key: hxcpp-cache-${{ runner.os }}-${{ hashFiles('scripts/setup-haxe.sh') }}-${{ github.sha }}
+          restore-keys: hxcpp-cache-${{ runner.os }}-${{ hashFiles('scripts/setup-haxe.sh') }}-
+      - if: matrix.target == 'cs'
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('mise.toml') }}
+      - run: npm run setup:haxe
+      - run: npx jest tests/conformance --runInBand
+      - run: npm run conformance -- --targets ${{ matrix.target }}

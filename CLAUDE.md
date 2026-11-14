@@ -24,7 +24,7 @@ architecture, runtime semantics or tooling:
   - `printer/` prints the IR.
   - The public API is `compileProject` in `src/compiler/index.ts`.
 - `runtime/ts2hx/`: the Haxe runtime with JS semantics, copied into the output. It is cross-target: no `js.lib`, and target-specific code goes behind `#if js`/`#if cs`/`#if cpp`.
-- `conformance/`: the end-to-end corpus (ADR 0004).
+- `conformance/`: the end-to-end corpus and its runner (ADR 0004). See `conformance/CLAUDE.md` for adding cases.
 - `src/transformers/`, `lib/`, `tests/<area>/`: the **legacy engine** (string emitters). It is frozen: only critical fixes, no new features. It is deleted when the new engine becomes the default.
 - `src/cli.ts`, `src/Converter.ts`: the CLI and the legacy orchestration.
 

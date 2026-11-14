@@ -26,7 +26,8 @@
 		"test": "jest",
 		"pretest:coverage": "rimraf ./coverage",
 		"test:coverage": "npm run test -- --coverage",
-		"setup:haxe": "bash scripts/setup-haxe.sh"
+		"setup:haxe": "bash scripts/setup-haxe.sh",
+		"conformance": "npm run ts && node dist/conformance/run.js"
 	},
 	"author": "",
 	"license": "ISC",

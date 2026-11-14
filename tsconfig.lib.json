@@ -8,6 +8,7 @@
   "exclude": [
     "**/*.spec.ts",
     "tests/**/*.ts",
+    "conformance/cases",
     ".vscode",
     "dist",
     "examples",
