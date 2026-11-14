@@ -191,8 +191,13 @@ export type UnloweredStmt =
       perIterationBindings: string[];
     }
   | {
+      /**
+       * A JS `switch`: `subject` is declared once as `final name = value`
+       * before the tests run; each `test` is the clause's `Bool` match against
+       * it (absent for `default`). Bodies fall through; `break` exits.
+       */
       kind: 'tsSwitch';
-      subject: HxExpr;
+      subject?: { name: string; value: HxExpr };
       clauses: Array<{ test?: HxExpr; body: HxStmt[] }>;
     }
   | { kind: 'tryFinally'; body: HxStmt[]; catch?: HxCatch; finally: HxStmt[] };

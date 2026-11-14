@@ -157,6 +157,42 @@ function isPure(expr: HxExpr): boolean {
   }
 }
 
+/**
+ * `target op= value`, or `target = target op value` when `spelledOut`: Haxe 4.3's
+ * JS generator breaks a compound assignment to a module var used as a value.
+ */
+function compoundExpr(
+  target: HxExpr,
+  op: HxBinop,
+  value: HxExpr,
+  type: HxType,
+  pos: SourcePos,
+  spelledOut: boolean,
+): HxExpr {
+  return spelledOut
+    ? {
+        kind: 'assign',
+        op: '=',
+        target,
+        value: { kind: 'binop', op, left: target, right: value, type, pos },
+        type,
+        pos,
+      }
+    : { kind: 'assign', op: `${op}=` as HxAssignOp, target, value, type, pos };
+}
+
+/** Whether the value of `node` is read, rather than discarded by a statement position. */
+function isValueUsed(node: ts.Expression): boolean {
+  const { parent } = node;
+  return !(
+    ts.isExpressionStatement(parent) ||
+    (ts.isForStatement(parent) && parent.incrementor === node) ||
+    (ts.isBinaryExpression(parent) &&
+      parent.operatorToken.kind === ts.SyntaxKind.CommaToken &&
+      parent.left === node)
+  );
+}
+
 function isVarDeclarationList(list: ts.VariableDeclarationList): boolean {
   return (list.flags & ts.NodeFlags.BlockScoped) === 0;
 }
@@ -685,13 +721,81 @@ export class ModuleFrontend {
     if (ts.isReturnStatement(node)) {
       return this.returnStatement(node);
     }
-    if (ts.isBreakStatement(node) && !node.label) {
-      return [{ kind: 'break' }];
+    if (ts.isBreakStatement(node)) {
+      return [
+        node.label
+          ? { kind: 'labeledBreak', label: node.label.text }
+          : { kind: 'break' },
+      ];
     }
-    if (ts.isContinueStatement(node) && !node.label) {
-      return [{ kind: 'continue' }];
+    if (ts.isContinueStatement(node)) {
+      return [
+        node.label
+          ? { kind: 'labeledContinue', label: node.label.text }
+          : { kind: 'continue' },
+      ];
+    }
+    if (ts.isLabeledStatement(node)) {
+      const body = this.statement(node.statement);
+      return [
+        {
+          kind: 'labeled',
+          label: node.label.text,
+          body: body.length === 1 ? body[0] : { kind: 'block', body },
+        },
+      ];
+    }
+    if (ts.isSwitchStatement(node)) {
+      return this.switchStatement(node);
     }
     return this.unsupportedStmt(node);
+  }
+
+  /** A `switch` whose clauses are tested with `===` against its subject, read once. */
+  private switchStatement(node: ts.SwitchStatement): HxStmt[] {
+    const { clauses } = node.caseBlock;
+    const shared = clauses.some((clause) =>
+      clause.statements.some(
+        (statement) =>
+          ts.isVariableStatement(statement) &&
+          !isVarDeclarationList(statement.declarationList) &&
+          statement.declarationList.declarations.some((declaration) => {
+            const symbol = this.checker.getSymbolAtLocation(declaration.name);
+            return (
+              symbol &&
+              clauses.some(
+                (other) => other !== clause && this.refersTo(other, symbol),
+              )
+            );
+          }),
+      ),
+    );
+    if (shared) {
+      return this.unsupportedStmt(
+        node,
+        'a let/const shared between switch clauses is not supported yet',
+      );
+    }
+    const value = this.expression(node.expression);
+    const name = this.freshName('switch');
+    const subject = localExpr(name, value.type);
+    return [
+      {
+        kind: 'tsSwitch',
+        subject: { name, value },
+        clauses: clauses.map((clause) => ({
+          test: ts.isCaseClause(clause)
+            ? this.equality(
+                subject,
+                this.expression(clause.expression),
+                false,
+                this.pos(clause),
+              )
+            : undefined,
+          body: this.block(clause.statements),
+        })),
+      },
+    ];
   }
 
   private returnStatement(node: ts.ReturnStatement): HxStmt[] {
@@ -1275,6 +1379,18 @@ export class ModuleFrontend {
     if (ts.isTypeOfExpression(node)) {
       return this.typeOfExpression(node, pos);
     }
+    if (ts.isVoidExpression(node)) {
+      const operand = this.effect(node.expression);
+      return isPure(operand)
+        ? constExpr(null, pos)
+        : {
+            kind: 'blockExpr',
+            stmts: [{ kind: 'expr', expr: operand }],
+            result: constExpr(null, pos),
+            type: DYNAMIC,
+            pos,
+          };
+    }
     if (ts.isCallExpression(node)) {
       return this.call(node, pos);
     }
@@ -1617,24 +1733,24 @@ export class ModuleFrontend {
     const numeric =
       this.isNumberLike(node.left) && this.isNumberLike(node.right);
     if (floatOp && numeric) {
-      return {
-        kind: 'assign',
-        op: `${floatOp}=` as HxAssignOp,
+      return compoundExpr(
         target,
-        value: this.expression(node.right),
-        type: FLOAT,
+        floatOp,
+        this.expression(node.right),
+        FLOAT,
         pos,
-      };
+        this.isModuleVar(node.left) && isValueUsed(node),
+      );
     }
     if (operator === ts.SyntaxKind.PlusToken && this.isStringLike(node.left)) {
-      return {
-        kind: 'assign',
-        op: '+=',
+      return compoundExpr(
         target,
-        value: this.stringOf(node.right),
-        type: STRING,
+        '+',
+        this.stringOf(node.right),
+        STRING,
         pos,
-      };
+        this.isModuleVar(node.left) && isValueUsed(node),
+      );
     }
     if (target.kind !== 'local') {
       return this.unsupported(node);
@@ -1650,6 +1766,17 @@ export class ModuleFrontend {
           pos,
         }
       : this.unsupported(node);
+  }
+
+  /** Whether `node` names a variable declared outside every function: a Haxe module var. */
+  private isModuleVar(node: ts.Expression): boolean {
+    const declaration =
+      ts.isIdentifier(node) && this.localDeclaration(this.valueSymbol(node));
+    return (
+      !!declaration &&
+      ts.isVariableDeclaration(declaration) &&
+      !ts.findAncestor(declaration, isFunctionLike)
+    );
   }
 
   private logical(
