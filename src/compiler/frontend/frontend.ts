@@ -439,7 +439,8 @@ export class ModuleFrontend {
    * those capturing a `let`/`const` declared after them. `assignAt` maps each to the
    * index of the statement its assignment precedes: right after the last `let`/`const`
    * it captures, or 0 when it captures none or an earlier statement may reach it. The
-   * `let`/`const`s captured by a function assigned at 0 are `hoistedLexicals`.
+   * `let`/`const`s captured by a function assigned at 0, or by a closure appearing before
+   * their declaration, are `hoistedLexicals`.
    */
   private deferredFunctions(statements: readonly ts.Statement[]): {
     assignAt: Map<ts.FunctionDeclaration, number>;
@@ -499,6 +500,9 @@ export class ModuleFrontend {
         assignAt.set(declaration, index);
       }
     }
+    this.lexicalsCapturedBeforeDeclaration(statements, functions).forEach((d) =>
+      hoistedLexicals.add(d),
+    );
     return {
       assignAt,
       hoistedLexicals: [...hoistedLexicals].sort(
@@ -536,6 +540,34 @@ export class ModuleFrontend {
           !blockFunctions.has(statement) &&
           [...reaching].some((s) => this.refersTo(statement, s)),
       );
+  }
+
+  /**
+   * The `let`/`const`s of `statements` read by a closure (an arrow, a function expression
+   * or a nested function) that appears before their declaration, outside the block's own
+   * function declarations, which `deferredFunctions` places.
+   */
+  private lexicalsCapturedBeforeDeclaration(
+    statements: readonly ts.Statement[],
+    functions: ReadonlyMap<ts.Symbol, ts.FunctionDeclaration>,
+  ): ts.VariableDeclaration[] {
+    const blockFunctions = new Set<ts.Statement>(functions.values());
+    const captured = new Set<ts.VariableDeclaration>();
+    const visit = (node: ts.Node): void => {
+      if (isFunctionLike(node)) {
+        for (const declaration of this.capturedLexicals(node, statements)) {
+          if (declaration.getStart() >= node.getEnd()) {
+            captured.add(declaration);
+          }
+        }
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    statements
+      .filter((statement) => !blockFunctions.has(statement))
+      .forEach(visit);
+    return [...captured];
   }
 
   /** The `let`/`const` declarations of `statements` that `node` reads. */

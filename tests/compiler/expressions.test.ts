@@ -186,6 +186,24 @@ describe('frontend: expressions, statements and functions', () => {
     );
   });
 
+  it('hoists the lets and consts a closure reads before their declaration', async () => {
+    const hx = await moduleOf(
+      [
+        'function outer(): number {',
+        '  const get = () => x;',
+        '  const self = (): number => self();',
+        '  const x = 1;',
+        '  return get();',
+        '}',
+      ].join('\n'),
+    );
+    expect(hx).toMatch(
+      /var x:Null<Float> = null;\s*final get:\(\) -> Float = function\(\):Float \{\s*return x;\s*\};/,
+    );
+    expect(hx).toMatch(/x = 1\.0;/);
+    expect(hx).not.toMatch(/var self:Null/);
+  });
+
   it('reports generic functions used before their declaration as unsupported', async () => {
     const { code, diagnostics } = await compileSources({
       'main.ts':

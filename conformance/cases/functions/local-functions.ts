@@ -113,3 +113,40 @@ function reachedThroughAnotherFunction(): number {
   return g() * 10 + y;
 }
 console.log(reachedThroughAnotherFunction());
+
+function arrowCapturesLaterConst(): number {
+  const get = () => x;
+  const x = 1;
+  return get();
+}
+console.log(arrowCapturesLaterConst());
+
+function closuresCaptureLaterBindings(): string {
+  const log: string[] = [];
+  const onDone = function (): void {
+    log.push(`done ${count} ${label}`);
+  };
+  const handlers = { bump: () => count++ };
+  const later = (): number => helper() + 1;
+  let count = 0;
+  const label = 'ok';
+  const helper = (): number => count * 10;
+  handlers.bump();
+  handlers.bump();
+  onDone();
+  return `${log.join(',')} ${later()}`;
+}
+console.log(closuresCaptureLaterBindings());
+
+function nestedFunctionCapturesLaterConst(flag: boolean): number {
+  if (flag) {
+    function inner(): number {
+      return limit * 2;
+    }
+    const first = (): number => inner();
+    const limit = 21;
+    return first();
+  }
+  return 0;
+}
+console.log(nestedFunctionCapturesLaterConst(true));
