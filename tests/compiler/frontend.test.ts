@@ -58,13 +58,13 @@ class Main {
   it('turns unmapped constructs into reported, throwing placeholders', async () => {
     const { code, diagnostics } = await compileSources({
       'main.ts':
-        'enum A { B }\nconst x = { a: 1 };\nconsole.log(x.a, new Date());',
+        'debugger;\nconst x = { a: 1 };\nconsole.log(x.a, new Date());',
     });
     expect(code['Main_2.hx']).toMatchSnapshot();
     expect(diagnostics).toEqual([
       expect.objectContaining({
         severity: 'warning',
-        message: 'TODO(ts2hx): EnumDeclaration is not supported yet',
+        message: 'TODO(ts2hx): DebuggerStatement is not supported yet',
         line: 1,
         column: 1,
       }),
@@ -266,6 +266,38 @@ console.log(t[0], xs[i], xs[0], Array.isArray(xs), (xs as unknown) instanceof Ar
       );
     });
 
+    it('keeps modules of the empty package from being shadowed by type names', async () => {
+      const { code, diagnostics } = await compileSources({
+        'main.ts': [
+          "import { load } from './config';",
+          "import { tag } from './tone';",
+          "import { run } from './tools';",
+          'interface Config { n: number }',
+          'type Main = { ok: boolean };',
+          'enum Tone { A }',
+          'namespace Tools { export const v = 1; }',
+          'const c: Config = load();',
+          'const t: Main = { ok: true };',
+          'console.log(c.n, t.ok, tag(), run(), Tone.A, Tools.v);',
+        ].join('\n'),
+        'config.ts': 'export function load() { return { n: 1 }; }',
+        'tone.ts': "export function tag() { return 't'; }",
+        'tools.ts': 'export function run() { return 2; }',
+      });
+      expect(diagnostics).toEqual([]);
+      const main = code['Main_2.hx'];
+      expect(main).toContain('typedef Config_ = { var n:Float; };');
+      expect(main).toContain('typedef Main_ = { var ok:Bool; };');
+      expect(main).toContain('enum abstract Tone_(Float)');
+      expect(main).toContain('class Tools_ {');
+      expect(main).toContain('var c:Main_2.Config_;');
+      expect(main).toContain('Config.load()');
+      expect(main).toContain('Tone.tag()');
+      expect(main).toContain('Tools.run()');
+      expect(main).toContain('(cast Main_2.Tone_.A : Float)');
+      expect(main).toContain('Main_2.Tools_.v');
+    });
+
     it('emits nothing for re-export-only modules and leaves them out of Main', async () => {
       const { code, diagnostics } = await compileSources({
         'main.ts': "import { v } from './index';\nconsole.log(v);",
@@ -293,6 +325,137 @@ console.log(t[0], xs[i], xs[0], Array.isArray(xs), (xs as unknown) instanceof Ar
           message:
             'TODO(ts2hx): a module namespace object used as a value is not supported yet',
         }),
+      ]);
+    });
+  });
+
+  describe('enums', () => {
+    it('declares an enum abstract with constant values and a reverse mapping', async () => {
+      const { code, diagnostics } = await compileSources({
+        'main.ts': [
+          'enum Direction { Up, Down, Left = 10, Right, name = 1 << 5 }',
+          'const d: Direction = Direction.Right;',
+          "console.log(d + 1, Direction[0], Direction[d], Direction['Left']);",
+          'console.log(Object.keys(Direction), Object.values(Direction));',
+        ].join('\n'),
+      });
+      expect(diagnostics).toEqual([]);
+      const main = code['Main_2.hx'];
+      expect(main).toContain(
+        [
+          'enum abstract Direction(Float) from Float to Float {',
+          '\tvar Up = 0.0;',
+          '\tvar Down = 1.0;',
+          '\tvar Left = 10.0;',
+          '\tvar Right = 11.0;',
+          '\tvar name = 32.0;',
+          '',
+          '\tpublic static function name_2(value:Float):String {',
+          '\t\tif (value == 0.0) {',
+          '\t\t\treturn "Up";',
+          '\t\t}',
+        ].join('\n'),
+      );
+      expect(main).toContain('d = ((cast Main_2.Direction.Right : Float));');
+      expect(main).toContain('Main_2.Direction.name_2(0.0)');
+      expect(main).toContain('Main_2.Direction.name_2(d)');
+      expect(main).toContain('(cast Main_2.Direction.Left : Float)');
+      expect(main).toContain(
+        '["0", "1", "10", "11", "32", "Up", "Down", "Left", "Right", "name"]',
+      );
+    });
+
+    it('declares string enums without reverse mapping and degrades heterogeneous ones', async () => {
+      const { code, diagnostics } = await compileSources({
+        'main.ts': [
+          "enum Color { Red = 'RED', Green = 'GREEN' }",
+          "const enum Mode { Fast = 'FAST' }",
+          "enum Mixed { No = 0, Yes = 'YES' }",
+          'console.log(Color.Red, Mode.Fast, Mixed.Yes, Object.values(Color));',
+        ].join('\n'),
+      });
+      expect(diagnostics).toEqual([]);
+      const main = code['Main_2.hx'];
+      expect(main).toContain(
+        'enum abstract Color(String) from String to String {\n\tvar Red = "RED";\n\tvar Green = "GREEN";\n}',
+      );
+      expect(main).toContain('enum abstract Mode(String)');
+      expect(main).toContain(
+        '// TODO(ts2hx): heterogeneous enum: values are Dynamic\nenum abstract Mixed(Dynamic) from Dynamic to Dynamic {',
+      );
+      expect(main).toContain('(cast Main_2.Mixed.Yes : String)');
+      expect(main).toContain('["RED", "GREEN"]');
+    });
+
+    it('reports computed members and enum objects used as values', async () => {
+      const { diagnostics } = await compileSources({
+        'main.ts': [
+          "enum E { A = 'abc'.length, B = 1 }",
+          'const e = E;',
+          'console.log(E.A, E.B, e);',
+        ].join('\n'),
+      });
+      expect(diagnostics.map((d) => d.message)).toEqual([
+        'TODO(ts2hx): computed enum members are not supported',
+        'TODO(ts2hx): an enum or namespace object used as a value is not supported',
+        'TODO(ts2hx): computed enum members are not supported',
+      ]);
+    });
+  });
+
+  describe('namespaces', () => {
+    it('declares namespaces as classes of statics, nested ones as Outer_Inner', async () => {
+      const { code, diagnostics } = await compileSources({
+        'main.ts': [
+          'namespace N {',
+          '  export let count = 0;',
+          '  const cast = 1;',
+          '  export function bump() { count += cast; return count; }',
+          '  export namespace M { export const v = bump(); }',
+          '}',
+          'namespace A.B { export const deep = 1; }',
+          'N.count++;',
+          'console.log(N.bump(), N.M.v, A.B.deep);',
+        ].join('\n'),
+      });
+      expect(diagnostics).toEqual([]);
+      const main = code['Main_2.hx'];
+      expect(main).toContain('class N {\n\tpublic static var count:Float;');
+      expect(main).toContain('public static var cast_:Float;');
+      expect(main).toContain('public static function bump():Float {');
+      expect(main).toContain('class N_M {\n\tpublic static var v:Float;\n}');
+      expect(main).toContain('class A_B {');
+      expect(main).toContain('Main_2.N.count = 0.0;');
+      expect(main).toContain('Main_2.N_M.v = Main_2.N.bump();');
+      expect(main).toContain('Main_2.N.count++;');
+      expect(main).toContain('Main_2.A_B.deep');
+    });
+
+    it('adds the statics of a namespace merged with a class to that class', async () => {
+      const { code, diagnostics } = await compileSources({
+        'main.ts': [
+          'class Point { constructor(public x: number) {} }',
+          'namespace Point { export const origin = new Point(0); }',
+          'console.log(Point.origin.x);',
+        ].join('\n'),
+      });
+      expect(diagnostics).toEqual([]);
+      const main = code['Main_2.hx'];
+      expect(main).toContain('public static var origin:Main_2.Point;');
+      expect(main).not.toContain('class Point_');
+      expect(main).toContain('Main_2.Point.origin = new Main_2.Point(0.0);');
+    });
+
+    it('reports a namespace merged with a function', async () => {
+      const { diagnostics } = await compileSources({
+        'main.ts': [
+          'function f() { return 1; }',
+          'namespace f { export const v = 2; }',
+          'console.log(f());',
+        ].join('\n'),
+      });
+      expect(diagnostics.map((d) => d.message)).toEqual([
+        'TODO(ts2hx): this namespace merge is not supported',
       ]);
     });
   });

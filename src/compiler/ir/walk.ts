@@ -45,6 +45,7 @@ function transformDecl(decl: HxDecl, transform: IrTransform): HxDecl {
           ...m,
           value: transformExpr(m.value, transform),
         })),
+        fields: decl.fields?.map((f) => transformField(f, transform)),
       };
     case 'typedef':
       return decl;

@@ -296,7 +296,9 @@ describe('printer', () => {
         underlying: STRING,
         members: [{ name: 'Red', value: constExpr('red') }],
       }),
-    ).toBe('enum abstract Color(String) {\n\tvar Red = "red";\n}');
+    ).toBe(
+      'enum abstract Color(String) from String to String {\n\tvar Red = "red";\n}',
+    );
     expect(
       printDecl({
         kind: 'moduleVar',
