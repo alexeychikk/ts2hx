@@ -42,3 +42,14 @@ console.log(
   String([null, undefined, 1]),
 );
 console.log(new Array(3).fill(0), nums.entries().next().value);
+
+const mixed = [1, 'a', null];
+const nested = [1, [2]];
+console.log(mixed.includes('a'), mixed.indexOf('a'), mixed.lastIndexOf(null));
+console.log(mixed.includes(1), nested.includes(1), nested.indexOf(1));
+console.log([1, 'a', null].join('-'), [1, 'a'].indexOf('a'), [true, 2].includes(2));
+const unions: Array<number | string> = [1];
+unions.push('b', 2);
+unions.unshift('z');
+unions.splice(1, 0, 'q', 3);
+console.log(unions, unions.fill('f', 4).indexOf('f'));

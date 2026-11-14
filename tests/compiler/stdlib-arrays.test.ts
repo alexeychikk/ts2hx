@@ -112,6 +112,36 @@ describe('stdlib: arrays', () => {
     expect(hx).toContain('ys = ts2hx.JsArray.flat(rows)');
   });
 
+  it('passes element arguments of a Dynamic-element array as Dynamic', async () => {
+    const hx = await moduleOf([
+      "const u = [1, 'a', null];",
+      "console.log(u.includes('a'), u.indexOf(1, 1), u.fill('f', 2));",
+      "u.push('b', 2);",
+      "u.splice(0, 1, 'q');",
+    ]);
+    expect(hx).toContain('ts2hx.JsArray.includes(u, (cast "a" : Dynamic))');
+    expect(hx).toContain('ts2hx.JsArray.indexOf(u, (cast 1.0 : Dynamic), 1.0)');
+    expect(hx).toContain('ts2hx.JsArray.fill(u, (cast "f" : Dynamic), 2.0)');
+    expect(hx).toContain(
+      'ts2hx.JsArray.push(u, (cast "b" : Dynamic), (cast 2.0 : Dynamic))',
+    );
+    expect(hx).toContain(
+      'ts2hx.JsArray.splice(u, 0.0, 1.0, (cast "q" : Dynamic))',
+    );
+  });
+
+  it('fixes the type of an inline array literal receiver', async () => {
+    const hx = await moduleOf([
+      "console.log([1, 'a'].join('-'), [1, 2].indexOf(2));",
+    ]);
+    expect(hx).toContain(
+      'ts2hx.JsArray.join((cast [(cast 1.0 : Dynamic), (cast "a" : Dynamic)] : Array<Dynamic>), "-")',
+    );
+    expect(hx).toContain(
+      'ts2hx.JsArray.indexOf((cast [1.0, 2.0] : Array<Float>), 2.0)',
+    );
+  });
+
   it('reads iterator results of entries() dynamically', async () => {
     const hx = await moduleOf([
       'const xs: number[] = [1];',

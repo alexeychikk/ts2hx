@@ -35,6 +35,36 @@ function nullableOf(type: HxType): HxType {
     : { kind: 'null', inner: type };
 }
 
+function asDynamic(expr: HxExpr): HxExpr {
+  return expr.type.kind === 'dynamic'
+    ? expr
+    : { kind: 'cast', expr, checked: false, type: DYNAMIC, pos: expr.pos };
+}
+
+/**
+ * An inline array literal typed by its own elements: Haxe would otherwise type it
+ * against the runtime's `Array<T>` and C# would cast it to the raw `Array`.
+ */
+function fixedLiteral(expr: HxExpr): HxExpr {
+  return expr.kind === 'arrayLit'
+    ? { kind: 'cast', expr, checked: false, type: expr.type, pos: expr.pos }
+    : expr;
+}
+
+/**
+ * Arguments the runtime types `T`. On an `Array<Dynamic>` Haxe leaves `T` open and
+ * binds it from such an argument, so C# casts the array to e.g. `Array<String>`.
+ */
+function elementArgs(
+  args: HxExpr[],
+  element: HxType,
+  positions: (index: number) => boolean,
+): HxExpr[] {
+  return element.kind === 'dynamic'
+    ? args.map((arg, i) => (positions(i) ? asDynamic(arg) : arg))
+    : args;
+}
+
 /** The receiver of an array method, with its element type. */
 function arrayReceiver(
   call: BoundCall,
@@ -42,8 +72,12 @@ function arrayReceiver(
   if (!call.receiver) return undefined;
   const expr = call.receiver.expr;
   const element = arrayElement(expr.type);
-  return element ? { expr, type: nonNull(expr.type), element } : undefined;
+  return element
+    ? { expr: fixedLiteral(expr), type: nonNull(expr.type), element }
+    : undefined;
 }
+
+const firstArg = (index: number): boolean => index === 0;
 
 type ResultType = (
   receiver: HxType,
@@ -63,6 +97,7 @@ function arrayMethod(
   name: string,
   result: ResultType,
   maxArgs: number,
+  elementArg: (index: number) => boolean = () => false,
 ): CallBinding {
   return (call) => {
     const receiver = arrayReceiver(call);
@@ -72,7 +107,7 @@ function arrayMethod(
     return staticCall(
       RUNTIME.jsArray,
       name,
-      [receiver.expr, ...call.args],
+      [receiver.expr, ...elementArgs(call.args, receiver.element, elementArg)],
       result(receiver.type, receiver.element, call),
       call.pos,
     );
@@ -86,11 +121,14 @@ function variadicMethod(name: string): CallBinding {
     if (!receiver || (call.spreadLast && call.args.length !== 1)) {
       return undefined;
     }
+    const items = call.spreadLast
+      ? call.args
+      : elementArgs(call.args, receiver.element, () => true);
     return {
       ...staticCall(
         RUNTIME.jsArray,
         name,
-        [receiver.expr, ...call.args],
+        [receiver.expr, ...items],
         FLOAT,
         call.pos,
       ),
@@ -238,7 +276,7 @@ const splice: CallBinding = (call) => {
   const args =
     call.args.length === 1
       ? [call.args[0], spliceAll(receiver.expr)]
-      : call.args;
+      : elementArgs(call.args, receiver.element, (i) => i >= 2);
   return staticCall(
     RUNTIME.jsArray,
     'splice',
@@ -340,7 +378,7 @@ const arrayMethods: Array<[string, CallBinding]> = [
   ['findIndex', callbackMethod('findIndex', fixed(FLOAT), true)],
   ['findLast', callbackMethod('findLast', maybeElement, true)],
   ['findLastIndex', callbackMethod('findLastIndex', fixed(FLOAT), true)],
-  ['fill', arrayMethod('fill', sameArray, 3)],
+  ['fill', arrayMethod('fill', sameArray, 3, firstArg)],
   [
     'flat',
     arrayMethod(
@@ -358,9 +396,9 @@ const arrayMethods: Array<[string, CallBinding]> = [
     }),
   ],
   ['forEach', callbackMethod('forEach', fixed(VOID))],
-  ['includes', arrayMethod('includes', fixed(BOOL), 2)],
-  ['indexOf', arrayMethod('indexOf', fixed(FLOAT), 2)],
-  ['lastIndexOf', arrayMethod('lastIndexOf', fixed(FLOAT), 2)],
+  ['includes', arrayMethod('includes', fixed(BOOL), 2, firstArg)],
+  ['indexOf', arrayMethod('indexOf', fixed(FLOAT), 2, firstArg)],
+  ['lastIndexOf', arrayMethod('lastIndexOf', fixed(FLOAT), 2, firstArg)],
   ['join', arrayMethod('join', fixed(STRING), 1)],
   ['map', map],
   ['pop', arrayMethod('pop', maybeElement, 0)],
