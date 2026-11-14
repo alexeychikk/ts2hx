@@ -1,0 +1,12 @@
+{
+  "selftest/broken": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "selftest/mismatch": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  }
+}

@@ -1,0 +1,147 @@
+{
+  "arrays/methods": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "arrays/sort": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "async/basic": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "basics/hello": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "basics/loops": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "basics/operators": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "basics/template": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "basics/truthiness": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "basics/variables": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "classes/inheritance": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "classes/init-order": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "classes/statics": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "collections/map-set": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "control/labels": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "control/switch-fallthrough": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "enums/numeric": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "exceptions/basic": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "exceptions/finally-return": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "functions/closures": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "functions/defaults-rest": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "generators/basic": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "modules/imports": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "numbers/format": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "numbers/math": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "objects/keys-order": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "objects/literals": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "promise/ordering": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "strings/methods": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
+  "strings/unicode": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  }
+}

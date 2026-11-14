@@ -48,11 +48,17 @@ conformance/
   change that fixed it). Implementation tickets are accepted by naming the
   cases they remove from this manifest.
 - **Runner self-test:** the converter is pluggable
-  (`(caseDir, outDir, rootPackage) => Promise<void>`). A Jest test runs the
-  runner on two fixture cases, using a fake converter that copies
-  hand-written `.hx` files: one case matches Node and one deliberately does
-  not. This proves the Node baseline, the three target builds, the batch
-  fallback and the expectation logic, independently of the compiler.
+  (`({ caseId, caseDir, entry, files, outDir, rootPackage }) => Promise<void>`).
+  It writes a Haxe class path to `<outDir>/src` with
+  `<rootPackage>.Main.main()` as the entry, and throws when the case can't be
+  converted. The runner adds `runtime/` (the `ts2hx` package) to every build.
+  A Jest test (`tests/conformance/`) runs the runner on fixture cases, using a
+  fake converter that copies hand-written `.hx` files: one case matches Node,
+  one deliberately does not, and one does not compile (on C# and C++ it fails
+  in the native compiler, so the batch build drops it and rebuilds). This
+  proves the Node baseline, the three target builds, the batch fallback and
+  the expectation logic, independently of the compiler.
+  `TS2HX_SELFTEST_TARGETS` (default `js`) selects the targets it builds.
 - **CLI:** `npm run conformance -- [--targets js,cs,cpp] [--filter <glob>] [--update-expectations] [--keep]`.
   The report prints one line per case and target, and a diff of
   expected/actual stdout for failures. `--keep` leaves the generated Haxe
@@ -66,8 +72,10 @@ with `jdx/mise-action` for the toolchain and `npm ci`. Jobs:
 - `lint`: `npm run lint`, `prettier --check`.
 - `unit`: `npm test`.
 - `conformance`: a matrix over `js`, `cs` and `cpp`, each running
-  `npm run setup:haxe && npm run conformance -- --targets <t>`. Caches:
-  `.haxelib/`, the hxcpp compile cache and `~/.nuget/packages`.
+  `npm run setup:haxe`, the self-test for `<t>` and
+  `npm run conformance -- --targets <t>`. Caches: `.haxelib/`, the hxcpp
+  compile cache (`~/.cache/ts2hx/hxcpp` unless `HXCPP_COMPILE_CACHE` is set)
+  and `~/.nuget/packages`.
 
 The coverage job that force-pushes a `coverage` branch on every push to `main`
 is replaced by uploading the coverage summary as an artifact. Rewriting a
