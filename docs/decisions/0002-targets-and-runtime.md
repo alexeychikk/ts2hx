@@ -67,8 +67,10 @@ reason it is not a gate.)
   object spread) therefore pass the key order of the static type to the
   runtime (`Obj.keys(o, ["b", "a"])`), with any extra runtime fields after
   it. Dictionaries (index signatures, `Record<string, T>`, objects used as
-  maps) become `ts2hx.Dict<T>`, an insertion-ordered map abstract with
-  field-like access. Enumerating a value typed `any` follows the target's
+  maps) become `ts2hx.Dict<T>`, an insertion-ordered map class. The
+  frontend lowers `d.k`, `d[k]`, `in`, `delete` and `for…in` on it to
+  `get`/`set`/`exists`/`remove`/`keys()`, and its keys follow JS order
+  (array-index keys ascending, then insertion order). Enumerating a value typed `any` follows the target's
   `Reflect.fields` order (documented as degraded).
 - **Collections.** `Map` and `Set` become `ts2hx.JsMap` and `ts2hx.JsSet`.
   They keep insertion order and use SameValueZero keys: primitives by value,

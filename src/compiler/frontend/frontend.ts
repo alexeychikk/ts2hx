@@ -1,8 +1,12 @@
 import ts from 'typescript';
 
 import {
+  ANY,
+  arrayType,
   BOOL,
   constExpr,
+  dictType,
+  dictValue,
   DYNAMIC,
   FLOAT,
   INT,
@@ -13,6 +17,7 @@ import {
   sameType,
   staticCall,
   STRING,
+  typePath,
   unsupportedExpr,
   VOID,
 } from '../ir/builders';
@@ -108,6 +113,19 @@ const NULLISH_FLAGS =
 const OBJECT_FLAGS = ts.TypeFlags.Object | ts.TypeFlags.NonPrimitive;
 
 const MAX_SOURCE_SNIPPET = 80;
+
+const STD = typePath([], 'Std');
+const REFLECT = typePath([], 'Reflect');
+
+function isArray(
+  type: HxType,
+): type is Extract<HxType, { kind: 'path' }> & { params: [HxType] } {
+  return (
+    type.kind === 'path' &&
+    type.path.pack.length === 0 &&
+    type.path.name === 'Array'
+  );
+}
 
 const SYNTAX_KIND_NAMES: ReadonlyMap<ts.SyntaxKind, string> = (() => {
   const names = new Map<ts.SyntaxKind, string>();
@@ -235,11 +253,14 @@ export class ModuleFrontend {
   ) {
     this.checker = model.checker;
     this.sourceFile = info.sourceFile;
-    this.types = new TypeMapper(this.checker);
+    this.types = new TypeMapper(
+      this.checker,
+      (sourceFile) => model.moduleOf(sourceFile)?.path,
+    );
   }
 
   convert(): HxModule {
-    const decls: HxDecl[] = [];
+    const decls: HxDecl[] = this.types.typedefs(this.sourceFile);
     for (const declaration of this.varDeclarations(
       this.sourceFile.statements,
       true,
@@ -308,6 +329,11 @@ export class ModuleFrontend {
     return this.checker.getTypeAtLocation(node);
   }
 
+  private isDict(node: ts.Node): boolean {
+    const type = this.checker.getNonNullableType(this.typeOf(node));
+    return this.types.dictValueType(type) !== undefined;
+  }
+
   private hxTypeOf(node: ts.Node): HxType {
     return this.types.map(this.typeOf(node));
   }
@@ -363,14 +389,41 @@ export class ModuleFrontend {
     ) {
       return from.path.name === 'Int';
     }
-    return (
-      (from.kind === 'fn' && to.kind === 'fn') ||
-      (from.kind === 'anon' && to.kind === 'anon') ||
-      (from.kind === 'path' &&
-        to.kind === 'path' &&
-        from.path.name === 'Array' &&
-        to.path.name === 'Array')
-    );
+    if (isArray(from) && isArray(to)) {
+      const [fromElement, toElement] = [from.params[0], to.params[0]];
+      return (
+        sameType(fromElement, toElement) ||
+        fromElement.kind === 'dynamic' ||
+        toElement.kind === 'dynamic' ||
+        (fromElement.kind === 'fn' && toElement.kind === 'fn')
+      );
+    }
+    return from.kind === 'fn' && to.kind === 'fn';
+  }
+
+  /**
+   * `value` read where the checker narrows its type (ADR 0005): a `Dynamic` union
+   * narrowed to a type Haxe knows (a member, a primitive) is cast to it.
+   */
+  private narrow(value: HxExpr, node: ts.Expression): HxExpr {
+    const declared = value.type.kind === 'null' ? value.type.inner : value.type;
+    if (
+      value.kind === 'unsupported' ||
+      (declared.kind !== 'dynamic' && !sameType(declared, ANY))
+    ) {
+      return value;
+    }
+    const narrowed = this.hxTypeOf(node);
+    if (narrowed.kind === 'dynamic' || sameType(narrowed, value.type)) {
+      return value;
+    }
+    return {
+      kind: 'cast',
+      expr: value,
+      checked: false,
+      type: narrowed,
+      pos: value.pos,
+    };
   }
 
   /** `value` as one alternative of a `?:` or `||` typed `type`: Haxe unifies the branches, so a `Dynamic` result casts each. */
@@ -718,6 +771,9 @@ export class ModuleFrontend {
     if (ts.isForOfStatement(node)) {
       return this.forOf(node);
     }
+    if (ts.isForInStatement(node)) {
+      return this.forIn(node);
+    }
     if (ts.isReturnStatement(node)) {
       return this.returnStatement(node);
     }
@@ -805,7 +861,7 @@ export class ModuleFrontend {
         {
           kind: 'return',
           value: node.expression
-            ? this.expression(node.expression)
+            ? this.coerce(this.expression(node.expression), ret)
             : constExpr(null),
         },
       ];
@@ -984,6 +1040,50 @@ export class ModuleFrontend {
           init: localExpr(element, type),
         };
     return [{ kind: 'forIn', name: element, iterable, body: [bind, ...body] }];
+  }
+
+  /** `for (const k in dict)`: the dictionary's keys in JS order. */
+  private forIn(node: ts.ForInStatement): HxStmt[] {
+    const initializer = node.initializer;
+    const iterated = this.expression(node.expression);
+    if (
+      !dictValue(iterated.type) ||
+      !ts.isVariableDeclarationList(initializer) ||
+      isVarDeclarationList(initializer) ||
+      initializer.declarations.length !== 1 ||
+      !ts.isIdentifier(initializer.declarations[0].name)
+    ) {
+      return this.unsupportedStmt(node);
+    }
+    const name = escapeIdentifier(initializer.declarations[0].name.text);
+    const keys: HxExpr = {
+      kind: 'call',
+      callee: { kind: 'field', target: iterated, name: 'keys', type: DYNAMIC },
+      args: [],
+      type: arrayType(STRING),
+    };
+    const body = this.body(node.statement);
+    if ((initializer.flags & ts.NodeFlags.Const) !== 0) {
+      return [{ kind: 'forIn', name, iterable: keys, body }];
+    }
+    const element = this.freshName(name);
+    return [
+      {
+        kind: 'forIn',
+        name: element,
+        iterable: keys,
+        body: [
+          {
+            kind: 'var',
+            name,
+            final: false,
+            type: STRING,
+            init: localExpr(element, STRING),
+          },
+          ...body,
+        ],
+      },
+    ];
   }
 
   // ------------------------------------------------------------ functions
@@ -1353,16 +1453,26 @@ export class ModuleFrontend {
       return this.expression(node.expression);
     }
     if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
-      return this.coerce(this.expression(node.expression), this.hxTypeOf(node));
+      const value = this.expression(node.expression);
+      const type = this.hxTypeOf(node);
+      return sameType(value.type, type) || type.kind === 'dynamic'
+        ? value
+        : { kind: 'cast', expr: value, checked: false, type, pos };
     }
     if (ts.isTemplateExpression(node)) {
       return this.template(node, pos);
     }
     if (ts.isIdentifier(node)) {
-      return this.identifier(node, pos);
+      return this.narrow(this.identifier(node, pos), node);
     }
     if (ts.isPropertyAccessExpression(node)) {
-      return this.propertyAccess(node, pos);
+      return this.narrow(this.propertyAccess(node, pos), node);
+    }
+    if (ts.isElementAccessExpression(node)) {
+      return this.narrow(this.elementAccess(node, pos), node);
+    }
+    if (ts.isDeleteExpression(node)) {
+      return this.deleteExpression(node, pos);
     }
     if (ts.isPrefixUnaryExpression(node)) {
       return this.prefixUnary(node, pos);
@@ -1496,13 +1606,149 @@ export class ModuleFrontend {
     if (node.questionDotToken || ts.isPrivateIdentifier(node.name)) {
       return this.unsupported(node);
     }
+    const target = this.expression(node.expression);
+    if (dictValue(target.type)) {
+      return this.dictGet(target, constExpr(node.name.text, pos), pos);
+    }
     return {
       kind: 'field',
-      target: this.expression(node.expression),
+      target,
       name: escapeIdentifier(node.name.text),
-      type: this.hxTypeOf(node),
+      type: this.fieldType(target, node),
       pos,
     };
+  }
+
+  /**
+   * Haxe type of a field read: the property's declared type, or `Dynamic` when the
+   * target is (Haxe resolves the field at run time); `narrow` applies flow types.
+   */
+  private fieldType(
+    target: HxExpr,
+    node: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+  ): HxType {
+    const targetType =
+      target.type.kind === 'null' ? target.type.inner : target.type;
+    if (targetType.kind === 'dynamic' || sameType(targetType, ANY)) {
+      return DYNAMIC;
+    }
+    const symbol = this.checker.getSymbolAtLocation(
+      ts.isPropertyAccessExpression(node) ? node.name : node.argumentExpression,
+    );
+    if (!symbol) {
+      return this.hxTypeOf(node);
+    }
+    const type = this.types.map(this.checker.getTypeOfSymbol(symbol));
+    return symbol.flags & ts.SymbolFlags.Optional ? nullable(type) : type;
+  }
+
+  private dictGet(dict: HxExpr, key: HxExpr, pos: SourcePos): HxExpr {
+    return {
+      kind: 'call',
+      callee: { kind: 'field', target: dict, name: 'get', type: DYNAMIC, pos },
+      args: [key],
+      type: nullable(dictValue(dict.type) ?? DYNAMIC),
+      pos,
+    };
+  }
+
+  /** JS property key of an index expression: numbers convert to their string form. */
+  private propertyKey(node: ts.Expression): HxExpr {
+    return this.stringOf(node);
+  }
+
+  /** `Int` index of an array element access (ADR 0002: `Int` only at index sites). */
+  private arrayIndex(node: ts.Expression): HxExpr | undefined {
+    if (!this.isNumberLike(node)) {
+      return undefined;
+    }
+    const index = this.expression(node);
+    if (
+      index.kind === 'const' &&
+      typeof index.value === 'number' &&
+      Number.isInteger(index.value) &&
+      index.value >= 0 &&
+      index.value <= 0x7fffffff
+    ) {
+      return { ...index, int: true, type: INT };
+    }
+    return staticCall(STD, 'int', [index], INT, index.pos);
+  }
+
+  /** `a[i]` on arrays and tuples, `d[k]` on dictionaries, `o["name"]` on structures. */
+  private elementAccess(
+    node: ts.ElementAccessExpression,
+    pos: SourcePos,
+    assigned = false,
+  ): HxExpr {
+    if (node.questionDotToken) {
+      return this.unsupported(node);
+    }
+    const target = this.expression(node.expression);
+    if (dictValue(target.type)) {
+      return this.dictGet(
+        target,
+        this.propertyKey(node.argumentExpression),
+        pos,
+      );
+    }
+    if (isArray(target.type)) {
+      const index = this.arrayIndex(node.argumentExpression);
+      if (!index) return this.unsupported(node);
+      const element = target.type.params[0];
+      const read: HxExpr = { kind: 'index', target, index, type: element, pos };
+      const type = this.hxTypeOf(node);
+      return !assigned && element.kind === 'dynamic' && type.kind !== 'dynamic'
+        ? { kind: 'cast', expr: read, checked: false, type, pos }
+        : read;
+    }
+    const argument = node.argumentExpression;
+    if (
+      (ts.isStringLiteral(argument) ||
+        ts.isNoSubstitutionTemplateLiteral(argument)) &&
+      !this.isStringLike(node.expression) &&
+      this.checker.getSymbolAtLocation(argument) !== undefined
+    ) {
+      return {
+        kind: 'field',
+        target,
+        name: escapeIdentifier(argument.text),
+        type: this.fieldType(target, node),
+        pos,
+      };
+    }
+    return this.unsupported(node);
+  }
+
+  private deleteExpression(node: ts.DeleteExpression, pos: SourcePos): HxExpr {
+    let operand: ts.Expression = node.expression;
+    while (ts.isParenthesizedExpression(operand)) operand = operand.expression;
+    if (
+      !ts.isPropertyAccessExpression(operand) &&
+      !ts.isElementAccessExpression(operand)
+    ) {
+      return this.unsupported(node);
+    }
+    const target = this.expression(operand.expression);
+    const key = ts.isPropertyAccessExpression(operand)
+      ? ts.isPrivateIdentifier(operand.name)
+        ? undefined
+        : constExpr(operand.name.text, pos)
+      : this.isNumberLike(operand.argumentExpression) && isArray(target.type)
+        ? undefined
+        : this.propertyKey(operand.argumentExpression);
+    if (!key) return this.unsupported(node);
+    if (dictValue(target.type)) {
+      return {
+        kind: 'call',
+        callee: { kind: 'field', target, name: 'remove', type: DYNAMIC, pos },
+        args: [key],
+        type: BOOL,
+        pos,
+      };
+    }
+    if (isArray(target.type)) return this.unsupported(node);
+    return staticCall(REFLECT, 'deleteField', [target, key], BOOL, pos);
   }
 
   /** An assignable reference: a binding of this module or a field. */
@@ -1521,7 +1767,73 @@ export class ModuleFrontend {
       const target = this.propertyAccess(node, this.pos(node));
       return target.kind === 'field' ? target : undefined;
     }
+    if (ts.isElementAccessExpression(node)) {
+      const target = this.elementAccess(node, this.pos(node), true);
+      return target.kind === 'field' || target.kind === 'index'
+        ? target
+        : undefined;
+    }
     return undefined;
+  }
+
+  /** `d[k] = v` / `d.k = v` on a dictionary: `d.set(k, v)`, which evaluates to `v`. */
+  private dictAssign(
+    node: ts.BinaryExpression,
+    pos: SourcePos,
+    operator?: ts.BinaryOperator,
+  ): HxExpr | undefined {
+    let left = node.left;
+    while (ts.isParenthesizedExpression(left) || ts.isNonNullExpression(left)) {
+      left = left.expression;
+    }
+    if (
+      !ts.isPropertyAccessExpression(left) &&
+      !ts.isElementAccessExpression(left)
+    ) {
+      return undefined;
+    }
+    if (
+      ts.isPropertyAccessExpression(left) &&
+      this.libKey(left.name) !== undefined
+    ) {
+      return undefined;
+    }
+    if (!this.isDict(left.expression)) {
+      return undefined;
+    }
+    const target = this.expression(left.expression);
+    const key = ts.isPropertyAccessExpression(left)
+      ? constExpr(left.name.text, pos)
+      : this.propertyKey(left.argumentExpression);
+    if (operator === undefined) {
+      return this.dictSet(target, key, this.expression(node.right), pos);
+    }
+    const dict = this.once(target);
+    const name = this.once(key);
+    const current = this.dictGet(dict.ref, name.ref, pos);
+    const updated = this.operation(operator, left, node.right, pos, current);
+    return updated
+      ? this.withStmts(
+          [...dict.stmts, ...name.stmts],
+          this.dictSet(dict.ref, name.ref, updated, pos),
+        )
+      : this.unsupported(node);
+  }
+
+  private dictSet(
+    dict: HxExpr,
+    key: HxExpr,
+    value: HxExpr,
+    pos: SourcePos,
+  ): HxExpr {
+    const type = dictValue(dict.type) ?? DYNAMIC;
+    return {
+      kind: 'call',
+      callee: { kind: 'field', target: dict, name: 'set', type: DYNAMIC, pos },
+      args: [key, this.coerce(value, type)],
+      type,
+      pos,
+    };
   }
 
   private prefixUnary(node: ts.PrefixUnaryExpression, pos: SourcePos): HxExpr {
@@ -1632,6 +1944,10 @@ export class ModuleFrontend {
           kind === ts.SyntaxKind.ExclamationEqualsToken,
           pos,
         );
+      case ts.SyntaxKind.InKeyword:
+        return this.inExpression(node, pos);
+      case ts.SyntaxKind.InstanceOfKeyword:
+        return this.instanceOf(node, pos);
     }
     const compound = COMPOUND_ASSIGNMENTS.get(kind);
     if (compound !== undefined) {
@@ -1705,7 +2021,53 @@ export class ModuleFrontend {
       : undefined;
   }
 
+  /** `key in object`: `Dict.exists` on dictionaries, `Reflect.hasField` on structures. */
+  private inExpression(node: ts.BinaryExpression, pos: SourcePos): HxExpr {
+    if (ts.isPrivateIdentifier(node.left)) {
+      return this.unsupported(node);
+    }
+    const key = this.propertyKey(node.left);
+    const target = this.expression(node.right);
+    if (dictValue(target.type)) {
+      return {
+        kind: 'call',
+        callee: { kind: 'field', target, name: 'exists', type: DYNAMIC, pos },
+        args: [key],
+        type: BOOL,
+        pos,
+      };
+    }
+    if (isArray(target.type) || this.isStringLike(node.right)) {
+      return this.unsupported(node);
+    }
+    return staticCall(REFLECT, 'hasField', [target, key], BOOL, pos);
+  }
+
+  /** `x instanceof C` for the classes Haxe has a runtime type of (`Array`). */
+  private instanceOf(node: ts.BinaryExpression, pos: SourcePos): HxExpr {
+    const key = ts.isIdentifier(node.right)
+      ? this.libKey(node.right)
+      : undefined;
+    if (key !== 'Array') {
+      return this.unsupported(
+        node,
+        'instanceof is only supported for Array yet',
+      );
+    }
+    return {
+      kind: 'isOfType',
+      expr: this.expression(node.left),
+      path: typePath([], 'Array'),
+      type: BOOL,
+      pos,
+    };
+  }
+
   private assign(node: ts.BinaryExpression, pos: SourcePos): HxExpr {
+    const dict = this.dictAssign(node, pos);
+    if (dict) {
+      return dict;
+    }
     const target = this.lvalue(node.left);
     if (!target) {
       return this.unsupported(node);
@@ -1725,6 +2087,10 @@ export class ModuleFrontend {
     operator: ts.BinaryOperator,
     pos: SourcePos,
   ): HxExpr {
+    const dict = this.dictAssign(node, pos, operator);
+    if (dict) {
+      return dict;
+    }
     const target = this.lvalue(node.left);
     if (!target) {
       return this.unsupported(node);
@@ -1958,7 +2324,7 @@ export class ModuleFrontend {
     return {
       kind: 'arrayLit',
       elements: node.elements.map((e) =>
-        this.coerce(this.expression(e), element),
+        this.branch(this.expression(e), element),
       ),
       type,
       pos,
@@ -1969,6 +2335,13 @@ export class ModuleFrontend {
     node: ts.ObjectLiteralExpression,
     pos: SourcePos,
   ): HxExpr {
+    const contextual = this.checker.getContextualType(node);
+    const dictValueType =
+      contextual &&
+      this.types.dictValueType(this.checker.getNonNullableType(contextual));
+    if (dictValueType) {
+      return this.dictLiteral(node, this.types.map(dictValueType), pos);
+    }
     const fields: Array<{ name: string; value: HxExpr }> = [];
     for (const property of node.properties) {
       const name =
@@ -2002,6 +2375,67 @@ export class ModuleFrontend {
       }
     }
     return { kind: 'objectLit', fields, type: this.hxTypeOf(node), pos };
+  }
+
+  /** An object literal typed as a dictionary: `Dict.of(keys, values)` in source order. */
+  private dictLiteral(
+    node: ts.ObjectLiteralExpression,
+    value: HxType,
+    pos: SourcePos,
+  ): HxExpr {
+    const keys: HxExpr[] = [];
+    const values: HxExpr[] = [];
+    for (const property of node.properties) {
+      const name = property.name;
+      const key =
+        name &&
+        (ts.isIdentifier(name) ||
+          ts.isStringLiteral(name) ||
+          ts.isNumericLiteral(name))
+          ? name.text
+          : undefined;
+      if (key === undefined) {
+        return this.unsupported(node);
+      }
+      keys.push(
+        constExpr(ts.isNumericLiteral(name!) ? String(Number(key)) : key, pos),
+      );
+      if (ts.isPropertyAssignment(property)) {
+        values.push(this.coerce(this.expression(property.initializer), value));
+      } else if (
+        ts.isShorthandPropertyAssignment(property) &&
+        !property.objectAssignmentInitializer
+      ) {
+        values.push(this.coerce(this.expression(property.name), value));
+      } else if (ts.isMethodDeclaration(property) && !property.asteriskToken) {
+        values.push(
+          this.coerce(this.functionExpr(property, this.pos(property)), value),
+        );
+      } else {
+        return this.unsupported(node);
+      }
+    }
+    const type = dictType(value);
+    if (keys.length === 0) {
+      return {
+        kind: 'new',
+        path: RUNTIME.dict,
+        typeArgs: [value],
+        args: [],
+        type,
+        pos,
+      };
+    }
+    return staticCall(
+      RUNTIME.dict,
+      'of',
+      [
+        { kind: 'arrayLit', elements: keys, type: arrayType(STRING), pos },
+        { kind: 'arrayLit', elements: values, type: arrayType(value), pos },
+      ],
+      type,
+      pos,
+    );
   }
 
   private call(node: ts.CallExpression, pos: SourcePos): HxExpr {

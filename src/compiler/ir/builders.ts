@@ -18,6 +18,7 @@ export const STRING = stdType('String');
 export const BOOL = stdType('Bool');
 export const VOID = stdType('Void');
 export const DYNAMIC: HxType = { kind: 'dynamic' };
+export const ANY = stdType('Any');
 
 export const HX_MATH = typePath([], 'Math');
 
@@ -29,10 +30,26 @@ export const RUNTIME = {
   eventLoop: typePath(['ts2hx'], 'EventLoop'),
   jsArray: typePath(['ts2hx'], 'JsArray'),
   jsMath: typePath(['ts2hx'], 'JsMath'),
+  dict: typePath(['ts2hx'], 'Dict'),
 };
 
 export function arrayType(element: HxType): HxType {
   return { kind: 'path', path: typePath([], 'Array'), params: [element] };
+}
+
+/** `ts2hx.Dict<V>`: index signatures and `Record<string, V>` (ADR 0002). */
+export function dictType(value: HxType): HxType {
+  return { kind: 'path', path: RUNTIME.dict, params: [value] };
+}
+
+/** Value type of a `ts2hx.Dict<V>`, or `undefined` for other types. */
+export function dictValue(type: HxType): HxType | undefined {
+  const inner = type.kind === 'null' ? type.inner : type;
+  return inner.kind === 'path' &&
+    inner.path.pack.join('.') === 'ts2hx' &&
+    inner.path.name === 'Dict'
+    ? inner.params[0]
+    : undefined;
 }
 
 /** Whether two Haxe types are the same type. */

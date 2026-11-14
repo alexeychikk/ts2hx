@@ -58,7 +58,7 @@ class Main {
   it('turns unmapped constructs into reported, throwing placeholders', async () => {
     const { code, diagnostics } = await compileSources({
       'main.ts':
-        'class A {}\nconst x = { a: 1 };\nconsole.log(x?.a, delete x.a);',
+        'class A {}\nconst x = { a: 1 };\nconsole.log(x?.a, new Date());',
     });
     expect(code['Main_2.hx']).toMatchSnapshot();
     expect(diagnostics).toEqual([
@@ -74,19 +74,21 @@ class Main {
         column: 13,
       }),
       expect.objectContaining({
-        message: 'TODO(ts2hx): DeleteExpression is not supported yet',
+        message: 'TODO(ts2hx): NewExpression is not supported yet',
         line: 3,
       }),
     ]);
   });
 
-  it('emits nothing for type-only and import/export declarations', async () => {
+  it('emits only typedefs for type-only and import/export declarations', async () => {
     const { code, diagnostics } = await compileSources({
       'main.ts':
         "import { v } from './other';\nexport * from './other';\ninterface I { a: number }\ntype T = I;\n;",
       'other.ts': 'export const v = 1;',
     });
-    expect(code['Main_2.hx']).toBe('function __init():Void {}\n');
+    expect(code['Main_2.hx']).toBe(
+      'typedef I = { var a:Float; };\n\ntypedef T = Main_2.I;\n\nfunction __init():Void {}\n',
+    );
     expect(diagnostics).toEqual([]);
   });
 
@@ -121,6 +123,76 @@ class Main {
         '3: TODO(ts2hx): CallExpression is not supported yet',
         '5: TODO(ts2hx): CallExpression is not supported yet',
       ]),
+    );
+  });
+  it('casts unions to the checker-narrowed type for discriminants, typeof and in', async () => {
+    const { code, diagnostics } = await compileSources({
+      'main.ts': `type Shape = { kind: 'c'; r: number } | { kind: 's'; side: number };
+function area(s: Shape): number { if (s.kind === 'c') return s.r; return s.side; }
+function len(v: string | number): number { if (typeof v === 'string') return v.length; return v; }
+function fly(a: { fly(): void } | { swim(): void }): void { if ('fly' in a) a.fly(); }`,
+    });
+    expect(diagnostics).toEqual([]);
+    const body = code['Main_2.hx'];
+    expect(body).toContain('function area(s:Dynamic):Float {');
+    expect(body).toContain('if (((cast s.kind : String)) == "c") {');
+    expect(body).toContain(
+      'return ((cast s : { var kind:String; var r:Float; })).r;',
+    );
+    expect(body).toContain(
+      'return ((cast s : { var kind:String; var side:Float; })).side;',
+    );
+    expect(body).toContain('if (ts2hx.Ts2hx.typeOf(v) == "string") {');
+    expect(body).toContain('return ((cast v : String)).length;');
+    expect(body).toContain('return (cast v : Float);');
+    expect(body).toContain('if (Reflect.hasField(a, "fly")) {');
+    expect(body).toContain('((cast a : { function fly():Void; })).fly();');
+  });
+
+  it('maps Record and index-signature reads, writes, in, delete and keys onto ts2hx.Dict', async () => {
+    expect(
+      await initOf(`const d: Record<string, number> = { a: 1, 2: 2 };
+d['b'] = 3; d.c = 4; d.a += 1;
+console.log('a' in d, delete d.a, Object.keys(d), {} as Record<string, number>);`),
+    ).toBe(
+      'function __init():Void {\n' +
+        '\td = ts2hx.Dict.of(["a", "2"], [1.0, 2.0]);\n' +
+        '\td.set("b", 3.0);\n' +
+        '\td.set("c", 4.0);\n' +
+        '\td.set("a", d.get("a") + 1.0);\n' +
+        '\tts2hx.Console.log(d.exists("a"), d.remove("a"), d.keys(), new ts2hx.Dict<Float>());\n' +
+        '}\n',
+    );
+  });
+
+  it('builds a ts2hx.Dict for literals in optional or undefined-able Record positions', async () => {
+    const init =
+      await initOf(`const o: { counts?: Record<string, number> } = { counts: { a: 1 } };
+const u: Record<string, number> | undefined = { b: 2 };
+function f(d?: Record<string, number>): number { return d ? Object.keys(d).length : 0; }
+console.log(f({ c: 3 }), u, o);`);
+    expect(init).toContain('counts: ts2hx.Dict.of(["a"], [1.0])');
+    expect(init).toContain('u = ts2hx.Dict.of(["b"], [2.0]);');
+    expect(init).toContain('f(ts2hx.Dict.of(["c"], [3.0]))');
+  });
+
+  it('reports an unsupported node inside an assignment target once', async () => {
+    const { diagnostics } = await compileSources({
+      'main.ts': '(new Date() as any).x = 1;',
+    });
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'TODO(ts2hx): NewExpression is not supported yet',
+    ]);
+  });
+
+  it('casts tuple element reads, truncates Float indexes and maps array checks', async () => {
+    const init = await initOf(`const t: [string, number] = ['a', 1];
+const xs: number[] = [1, 2]; let i = 1;
+console.log(t[0], xs[i], xs[0], Array.isArray(xs), (xs as unknown) instanceof Array);`);
+    expect(init).toContain('t = [(cast "a" : Dynamic), (cast 1.0 : Dynamic)];');
+    expect(init).toContain(
+      'ts2hx.Console.log((cast t[0] : String), ts2hx.Console.inspectNumber(xs[Std.int(i)]), ' +
+        'ts2hx.Console.inspectNumber(xs[0]), Std.isOfType(xs, Array), Std.isOfType((cast xs : Any), Array));',
     );
   });
 });
