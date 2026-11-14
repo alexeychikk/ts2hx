@@ -209,6 +209,46 @@ describe('ProjectModel', () => {
     ]);
   });
 
+  it('names enums, namespaces and their statics, avoiding empty-package modules', () => {
+    const project = createProject({
+      'main.ts': [
+        "import { f } from './config';",
+        'enum Config { cast, B = 2 }',
+        'namespace N {',
+        '  export const x = 1, { y } = { y: 2 };',
+        '  export function haxe() {}',
+        '  export namespace Inner { export let v = f(); }',
+        '  export enum E { A }',
+        '}',
+        'class Point {}',
+        'namespace Point { export const origin = new Point(); }',
+        'declare namespace Ambient { const z: number; }',
+      ].join('\n'),
+      'config.ts': 'export function f() { return 1; }',
+    });
+    const model = buildProjectModel(project.program);
+    const main = model.modules.find((m) => m.path.module === 'Main_2')!;
+    expect([...main.types.values()]).toEqual([
+      'Config_',
+      'N',
+      'N_Inner',
+      'N_E',
+      'Point',
+    ]);
+    expect(
+      [...main.statics.values()].map(({ owner, name }) => `${owner}.${name}`),
+    ).toEqual([
+      'Config_.cast_',
+      'Config_.B',
+      'N.x',
+      'N.y',
+      'N.haxe_',
+      'N_Inner.v',
+      'N_E.A',
+      'Point.origin',
+    ]);
+  });
+
   it('resolves imports, re-exports and namespaces to the declaring module', () => {
     const project = createProject({
       'main.ts': [

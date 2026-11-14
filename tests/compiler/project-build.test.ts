@@ -13,7 +13,7 @@ const TIMEOUT_MS = 10 * 60_000;
 
 /** A program whose unmapped constructs sit in statement, numeric and string positions. */
 const SOURCE = `console.log('before', 0.1 + 0.2);
-enum Unmapped { A }
+debugger;
 console.log(1 + [1].length, \`t\${[2].length}\`, String([3].length));
 console.log('after');
 `;
@@ -71,7 +71,7 @@ describe.each(TARGETS)('emitted project on %s', (target) => {
       );
       expect(run.status).toBe(1);
       expect(run.stderr).toContain(
-        'ts2hx: unsupported: EnumDeclaration is not supported yet',
+        'ts2hx: unsupported: DebuggerStatement is not supported yet',
       );
     },
     TIMEOUT_MS,

@@ -43,7 +43,17 @@ import type {
   ProjectModel,
 } from '../model/project-model';
 import { escapeIdentifier } from '../model/names';
-import { bindingElements } from '../model/project-model';
+import {
+  bindingElements,
+  isAmbient,
+  namespaceStatements,
+} from '../model/project-model';
+import {
+  enumAbstract,
+  enumMembers,
+  enumObjectEntries,
+  reverseMappingName,
+} from './enums';
 import {
   type BoundReceiver,
   CALL_BINDINGS,
@@ -491,6 +501,7 @@ export class ModuleFrontend {
           ? { pack: module.path.pack, module: module.path.module, name }
           : undefined;
       },
+      model.reservedLocalNames,
     );
   }
 
@@ -530,6 +541,10 @@ export class ModuleFrontend {
         init.push(...converted.init);
       } else if (ts.isExportAssignment(statement)) {
         init.push(...this.exportAssignment(statement, decls));
+      } else if (ts.isEnumDeclaration(statement)) {
+        init.push(...this.enumDeclaration(statement, decls));
+      } else if (ts.isModuleDeclaration(statement)) {
+        init.push(...this.namespaceDeclaration(statement, decls));
       } else {
         init.push(...this.statement(statement));
       }
@@ -585,8 +600,27 @@ export class ModuleFrontend {
   private bindingName(declaration: Binding): string {
     return (
       this.info.fields.get(declaration) ??
+      this.info.statics.get(declaration)?.name ??
       this.localName((declaration.name as ts.Identifier).text)
     );
+  }
+
+  /** What assigning a hoisted binding writes: a namespace static, or the module field or local. */
+  private bindingTarget(declaration: Binding, type: HxType): HxExpr {
+    const member = this.info.statics.get(declaration);
+    return member
+      ? {
+          kind: 'staticField',
+          owner: this.ownType(member.owner),
+          name: member.name,
+          type,
+        }
+      : localExpr(this.bindingName(declaration), type);
+  }
+
+  /** The path of a type this module declares. */
+  private ownType(name: string): HxTypePath {
+    return { pack: this.info.path.pack, module: this.info.path.module, name };
   }
 
   private freshName(hint: string): string {
@@ -1121,6 +1155,12 @@ export class ModuleFrontend {
     if (ts.isSwitchStatement(node)) {
       return this.switchStatement(node);
     }
+    if (
+      (ts.isEnumDeclaration(node) || ts.isModuleDeclaration(node)) &&
+      isAmbient(node)
+    ) {
+      return [];
+    }
     return this.unsupportedStmt(node);
   }
 
@@ -1223,7 +1263,7 @@ export class ModuleFrontend {
                 expr: {
                   kind: 'assign',
                   op: '=',
-                  target: localExpr(name, type),
+                  target: this.bindingTarget(declaration, type),
                   value: init,
                   type,
                 },
@@ -1546,7 +1586,7 @@ export class ModuleFrontend {
           expr: {
             kind: 'assign',
             op: '=',
-            target: localExpr(name, type),
+            target: this.bindingTarget(element, type),
             value: init,
             type,
           },
@@ -1936,6 +1976,104 @@ export class ModuleFrontend {
     } finally {
       this.classContexts.pop();
     }
+  }
+
+  /**
+   * An enum's `enum abstract` (ADR 0005), declared with its first declaration. A
+   * computed member is reported where it stands and left out.
+   */
+  private enumDeclaration(node: ts.EnumDeclaration, decls: HxDecl[]): HxStmt[] {
+    const name = this.info.types.get(node);
+    if (name === undefined) {
+      return isAmbient(node)
+        ? []
+        : this.unsupportedStmt(node, 'this enum merge is not supported');
+    }
+    const symbol = this.checker.getSymbolAtLocation(node.name)!;
+    if (symbol.declarations?.find(ts.isEnumDeclaration) !== node) {
+      return [];
+    }
+    const members = enumMembers(symbol, this.checker);
+    decls.push(enumAbstract(name, members, this.info.statics));
+    return members
+      .filter((m) => m.value === undefined)
+      .flatMap((m) =>
+        this.unsupportedStmt(
+          m.member,
+          'computed enum members are not supported',
+        ),
+      );
+  }
+
+  /**
+   * A namespace (ADR 0005): its values and functions become statics of a class (the
+   * class it merges with, or one of its own); its statements run where it stands.
+   */
+  private namespaceDeclaration(
+    node: ts.ModuleDeclaration,
+    decls: HxDecl[],
+  ): HxStmt[] {
+    const owner = this.info.types.get(node);
+    if (owner === undefined) {
+      return isAmbient(node)
+        ? []
+        : this.unsupportedStmt(node, 'this namespace merge is not supported');
+    }
+    const fields: HxClassField[] = [];
+    const init: HxStmt[] = [];
+    for (const statement of namespaceStatements(node)) {
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of this.varDeclarations([statement], true)) {
+          const member = this.info.statics.get(declaration);
+          if (!member) continue;
+          this.hoisted.add(this.checker.getSymbolAtLocation(declaration.name)!);
+          fields.push({
+            kind: 'var',
+            name: member.name,
+            access: 'public',
+            isStatic: true,
+            final: false,
+            type: this.declaredType(declaration),
+          });
+        }
+        init.push(...this.statement(statement));
+      } else if (ts.isFunctionDeclaration(statement)) {
+        const member = this.info.statics.get(statement);
+        if (!member) continue;
+        fields.push({
+          kind: 'method',
+          name: member.name,
+          access: 'public',
+          isStatic: true,
+          isOverride: false,
+          isAbstract: false,
+          fn: this.function(statement),
+        });
+      } else if (ts.isModuleDeclaration(statement)) {
+        init.push(...this.namespaceDeclaration(statement, decls));
+      } else if (ts.isEnumDeclaration(statement)) {
+        init.push(...this.enumDeclaration(statement, decls));
+      } else {
+        init.push(...this.statement(statement));
+      }
+    }
+    const existing = decls.find(
+      (d): d is Extract<HxDecl, { kind: 'class' }> =>
+        d.kind === 'class' && d.name === owner,
+    );
+    if (existing) {
+      existing.fields.push(...fields);
+    } else {
+      decls.push({
+        kind: 'class',
+        name: owner,
+        typeParams: [],
+        isAbstract: false,
+        fields,
+        meta: [],
+      });
+    }
+    return init;
   }
 
   /**
@@ -3314,6 +3452,15 @@ export class ModuleFrontend {
       );
     }
     if (
+      ts.isEnumDeclaration(declaration) ||
+      ts.isModuleDeclaration(declaration)
+    ) {
+      return this.unsupported(
+        node,
+        'an enum or namespace object used as a value is not supported',
+      );
+    }
+    if (
       !ts.isVariableDeclaration(declaration) &&
       !ts.isBindingElement(declaration) &&
       !ts.isParameter(declaration) &&
@@ -3347,6 +3494,9 @@ export class ModuleFrontend {
         'a module namespace object used as a value is not supported yet',
       );
     }
+    if (value.kind === 'static') {
+      return this.staticValue(node, value, pos);
+    }
     const { declaration, module, name } = value;
     const type =
       ts.isVariableDeclaration(declaration) || ts.isBindingElement(declaration)
@@ -3357,6 +3507,172 @@ export class ModuleFrontend {
     return module === this.info
       ? localExpr(name, type, pos)
       : { kind: 'moduleField', module: module.path, name, type, pos };
+  }
+
+  /** A member of an enum (cast to its value type) or a namespace static. */
+  private staticValue(
+    node: ts.Expression,
+    value: Extract<ModuleValue, { kind: 'static' }>,
+    pos: SourcePos,
+  ): HxExpr {
+    const { declaration, module, owner, name } = value;
+    const path = {
+      pack: module.path.pack,
+      module: module.path.module,
+      name: owner,
+    };
+    if (ts.isEnumMember(declaration)) {
+      const constant = this.checker.getConstantValue(declaration);
+      if (constant === undefined) {
+        return this.unsupported(
+          node,
+          'computed enum members are not supported',
+        );
+      }
+      const type = typeof constant === 'string' ? STRING : FLOAT;
+      return {
+        kind: 'cast',
+        expr: { kind: 'staticField', owner: path, name, type, pos },
+        checked: false,
+        type,
+        pos,
+      };
+    }
+    const type =
+      ts.isVariableDeclaration(declaration) || ts.isBindingElement(declaration)
+        ? this.declaredType(declaration)
+        : this.hxTypeOf(declaration);
+    return { kind: 'staticField', owner: path, name, type, pos };
+  }
+
+  /** The enum an expression names, with the Haxe path of its `enum abstract`. */
+  private enumObject(
+    node: ts.Expression,
+  ): { symbol: ts.Symbol; path: HxTypePath } | undefined {
+    const target = ts.isPropertyAccessExpression(node) ? node.name : node;
+    if (!ts.isIdentifier(target)) return undefined;
+    let symbol = this.checker.getSymbolAtLocation(target);
+    if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
+      symbol = this.checker.getAliasedSymbol(symbol);
+    }
+    if (!symbol || !(symbol.flags & ts.SymbolFlags.Enum)) return undefined;
+    const declaration = symbol.declarations?.find(ts.isEnumDeclaration);
+    const module =
+      declaration && this.model.moduleOf(declaration.getSourceFile());
+    const name = declaration && module?.types.get(declaration);
+    return module && name !== undefined
+      ? {
+          symbol,
+          path: { pack: module.path.pack, module: module.path.module, name },
+        }
+      : undefined;
+  }
+
+  /** `E[x]`: a member by literal name, or the reverse mapping of a numeric value. */
+  private enumElement(
+    node: ts.ElementAccessExpression,
+    pos: SourcePos,
+  ): HxExpr | undefined {
+    const object = this.enumObject(node.expression);
+    if (!object) return undefined;
+    const argument = node.argumentExpression;
+    if (
+      ts.isStringLiteral(argument) ||
+      ts.isNoSubstitutionTemplateLiteral(argument)
+    ) {
+      const member = this.checker
+        .getExportsOfModule(object.symbol)
+        .find((m) => m.name === argument.text);
+      const value = member && this.model.resolveValue(member);
+      return value?.kind === 'static'
+        ? this.staticValue(node, value, pos)
+        : this.unsupported(node);
+    }
+    if (!this.isNumberLike(argument)) {
+      return this.unsupported(
+        node,
+        'reading an enum member by a computed name is not supported',
+      );
+    }
+    const members = enumMembers(object.symbol, this.checker);
+    const statics = this.model.moduleOf(
+      members[0]?.member.getSourceFile() ?? this.sourceFile,
+    )?.statics;
+    const name = reverseMappingName(
+      members.flatMap((m) => statics?.get(m.member)?.name ?? []),
+    );
+    return staticCall(
+      object.path,
+      name,
+      [this.coerce(this.expression(argument), FLOAT)],
+      STRING,
+      pos,
+    );
+  }
+
+  /** `Object.keys`/`values`/`entries` of an enum object: its properties, known statically. */
+  private enumObjectCall(
+    node: ts.CallExpression,
+    pos: SourcePos,
+  ): HxExpr | undefined {
+    const callee = node.expression;
+    const [argument] = node.arguments;
+    if (
+      !ts.isPropertyAccessExpression(callee) ||
+      node.arguments.length !== 1 ||
+      ts.isSpreadElement(argument)
+    ) {
+      return undefined;
+    }
+    const key = this.libKey(callee.name);
+    const kind =
+      key === 'ObjectConstructor.keys'
+        ? 'keys'
+        : key === 'ObjectConstructor.values'
+          ? 'values'
+          : key === 'ObjectConstructor.entries'
+            ? 'entries'
+            : undefined;
+    const object = kind && this.enumObject(argument);
+    if (!kind || !object) return undefined;
+    const members = enumMembers(object.symbol, this.checker);
+    if (members.some((m) => m.value === undefined)) {
+      return this.unsupported(node, 'computed enum members are not supported');
+    }
+    const entries = enumObjectEntries(members);
+    const element = (value: string | number, type: HxType): HxExpr => {
+      const constant = constExpr(value, pos);
+      return type.kind === 'dynamic'
+        ? { kind: 'cast', expr: constant, checked: false, type, pos }
+        : constant;
+    };
+    const arrayOf = (elements: HxExpr[], type: HxType): HxExpr => ({
+      kind: 'arrayLit',
+      elements,
+      type: arrayType(type),
+      pos,
+    });
+    if (kind === 'keys') {
+      return arrayOf(
+        entries.map(([k]) => constExpr(k, pos)),
+        STRING,
+      );
+    }
+    const kinds = new Set(entries.map(([, v]) => typeof v));
+    const values =
+      kinds.size !== 1 ? DYNAMIC : kinds.has('string') ? STRING : FLOAT;
+    if (kind === 'values') {
+      return arrayOf(
+        entries.map(([, v]) => element(v, values)),
+        values,
+      );
+    }
+    return arrayOf(
+      entries.map(([k, v]) =>
+        arrayOf([element(k, DYNAMIC), element(v, DYNAMIC)], DYNAMIC),
+      ),
+      arrayType(DYNAMIC),
+    );
   }
 
   /** The project module an `import * as ns` (or re-exported namespace) expression names. */
@@ -3381,6 +3697,11 @@ export class ModuleFrontend {
     node: ts.PropertyAccessExpression,
     pos: SourcePos,
   ): HxExpr {
+    const memberSymbol = this.checker.getSymbolAtLocation(node.name);
+    const staticMember = memberSymbol && this.model.resolveValue(memberSymbol);
+    if (staticMember?.kind === 'static') {
+      return this.staticValue(node, staticMember, pos);
+    }
     if (this.isNamespace(node.expression)) {
       const symbol = this.checker.getSymbolAtLocation(node.name);
       const value = symbol && this.model.resolveValue(symbol);
@@ -3539,6 +3860,10 @@ export class ModuleFrontend {
     if (node.questionDotToken && !this.chainValues.has(node.expression)) {
       return this.unsupported(node);
     }
+    const enumElement = !assigned && this.enumElement(node, pos);
+    if (enumElement) {
+      return enumElement;
+    }
     const target = this.expression(node.expression);
     if (dictValue(target.type)) {
       return this.dictGet(
@@ -3620,7 +3945,9 @@ export class ModuleFrontend {
     }
     if (ts.isIdentifier(node)) {
       const target = this.identifier(node, this.pos(node));
-      return target.kind === 'local' ? target : undefined;
+      return target.kind === 'local' || target.kind === 'staticField'
+        ? target
+        : undefined;
     }
     if (
       ts.isPropertyAccessExpression(node) &&
@@ -4863,6 +5190,10 @@ export class ModuleFrontend {
   }
 
   private call(node: ts.CallExpression, pos: SourcePos): HxExpr {
+    const enumCall = this.enumObjectCall(node, pos);
+    if (enumCall) {
+      return enumCall;
+    }
     const callee = node.expression;
     const spreadIndex = node.arguments.findIndex(ts.isSpreadElement);
     const spreadLast =

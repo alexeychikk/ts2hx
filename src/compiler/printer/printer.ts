@@ -474,8 +474,16 @@ class Printer {
         const members = decl.members.map(
           (m) => `${this.indent()}var ${m.name} = ${this.expr(m.value)};`,
         );
+        const fields = (decl.fields ?? []).map((f) => this.classField(f));
         this.depth--;
-        return `enum abstract ${decl.name}(${printType(decl.underlying)}) {\n${members.join('\n')}\n}`;
+        const underlying = printType(decl.underlying);
+        const todo = decl.todo
+          ? `// TODO(ts2hx): ${commentText(decl.todo)}\n`
+          : '';
+        const body = [members.join('\n'), ...fields]
+          .filter((part) => part !== '')
+          .join('\n\n');
+        return `${todo}enum abstract ${decl.name}(${underlying}) from ${underlying} to ${underlying} {\n${body}\n}`;
       }
       case 'moduleVar': {
         const init = decl.init ? ` = ${this.expr(decl.init)}` : '';
