@@ -421,6 +421,16 @@ export function structuralOptionalMembers(
   return structuralUse(program).optional;
 }
 
+/**
+ * Optional structure members left off a class because a subclass declares a method
+ * or accessor with that name, which Haxe forbids next to an inherited var.
+ */
+export function structuralMemberConflicts(
+  program: ts.Program,
+): Map<ts.ClassLikeDeclaration, Set<string>> {
+  return structuralUse(program).conflicts;
+}
+
 /** Properties of structure types that some class used as that structure implements with an accessor. */
 export function structuralAccessorMembers(
   program: ts.Program,
@@ -430,6 +440,7 @@ export function structuralAccessorMembers(
 
 interface StructuralUse {
   optional: Map<ts.ClassLikeDeclaration, Map<string, ts.Symbol>>;
+  conflicts: Map<ts.ClassLikeDeclaration, Set<string>>;
   accessorBacked: Set<ts.Symbol>;
 }
 
@@ -441,6 +452,7 @@ function structuralUse(program: ts.Program): StructuralUse {
   const checker = program.getTypeChecker();
   const result = new Map<ts.ClassLikeDeclaration, Map<string, ts.Symbol>>();
   const accessorBacked = new Set<ts.Symbol>();
+  const classes: ts.ClassLikeDeclaration[] = [];
   const record = (node: ts.ClassLikeDeclaration, target: ts.Type): void => {
     const structure = checker.getNonNullableType(target);
     if (structure.isUnion()) {
@@ -469,6 +481,7 @@ function structuralUse(program: ts.Program): StructuralUse {
   };
   const visit = (node: ts.Node): void => {
     if (ts.isClassLike(node)) {
+      classes.push(node);
       for (const clause of node.heritageClauses ?? []) {
         if (clause.token === ts.SyntaxKind.ImplementsKeyword) {
           clause.types.forEach((t) =>
@@ -489,6 +502,24 @@ function structuralUse(program: ts.Program): StructuralUse {
     .getSourceFiles()
     .filter((sf) => !sf.isDeclarationFile)
     .forEach(visit);
+  const conflicts = new Map<ts.ClassLikeDeclaration, Set<string>>();
+  for (const node of classes) {
+    for (const ancestor of ancestors(checker, node)) {
+      const members = result.get(ancestor);
+      for (const name of [...(members?.keys() ?? [])]) {
+        if (
+          instanceMembers(node, name).some(
+            (m) => ts.isMethodDeclaration(m) || ts.isAccessor(m),
+          )
+        ) {
+          members!.delete(name);
+          const names = conflicts.get(ancestor) ?? new Set<string>();
+          names.add(name);
+          conflicts.set(ancestor, names);
+        }
+      }
+    }
+  }
   for (const [node, members] of result) {
     for (const ancestor of ancestors(checker, node)) {
       for (const name of result.get(ancestor)?.keys() ?? []) {
@@ -496,7 +527,7 @@ function structuralUse(program: ts.Program): StructuralUse {
       }
     }
   }
-  const use = { optional: result, accessorBacked };
+  const use = { optional: result, conflicts, accessorBacked };
   structuralCache.set(program, use);
   return use;
 }

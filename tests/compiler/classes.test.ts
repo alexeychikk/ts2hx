@@ -6,6 +6,7 @@ import {
   mayReadFieldsBeforeInit,
   privateMemberName,
   structuralAccessorMembers,
+  structuralMemberConflicts,
   structuralOptionalMembers,
   redeclaredWrittenFields,
   overridesImplementation,
@@ -279,6 +280,23 @@ describe('classes II helpers', () => {
     expect(names('Unused')).toEqual([]);
   });
 
+  it('leaves off an optional member a subclass declares as a method or accessor', () => {
+    const { program, classes } = classesOf(`
+      interface I { greet?(): string; label?: string; size?: number }
+      class A implements I {}
+      class B extends A { greet() { return 'b'; } get size() { return 1; } }
+      class C extends A { label = 'c'; }
+    `);
+    const a = classes.get('A')!;
+    expect([
+      ...(structuralOptionalMembers(program).get(a)?.keys() ?? []),
+    ]).toEqual(['label']);
+    expect([...(structuralMemberConflicts(program).get(a) ?? [])]).toEqual([
+      'greet',
+      'size',
+    ]);
+  });
+
   it('marks structure members a class implements with an accessor', () => {
     const { program } = classesOf(`
       interface H { readonly area: number; label?: string }
@@ -384,6 +402,68 @@ describe('classes II in the frontend', () => {
         '\t\tthis.__Counter_step = __step_1;\n',
     );
     expect(code).toContain('this.n += this.__Counter_step;');
+  });
+
+  it('does not capture the property of a parameter property read through a local', async () => {
+    const code = await moduleOf(`
+      class Base { constructor(public label: string) {} }
+      function f(b: Base) { class X { g() { return b.label; } } return new X(); }
+      console.log(f(new Base('l')).g());
+    `);
+    expect(code).toContain('return new Main_2.X(b);');
+    expect(code).toContain('return this.__X_b.label;');
+  });
+
+  it('forwards the captures of a hoisted base class to super', async () => {
+    const code = await moduleOf(`
+      function f(k: number, m: string) {
+        class A { v() { return k; } }
+        class B extends A {}
+        class C extends A { constructor() { super(); } w() { return m; } }
+        return [new B().v(), new C().w()];
+      }
+      console.log(f(1, 'm'));
+    `);
+    expect(code).toContain('new Main_2.B(k)');
+    expect(code).toContain('new Main_2.C(k, m)');
+    expect(code).toContain(
+      '\tpublic function new(__k_2:Float) {\n\t\tsuper(__k_2);\n\t}',
+    );
+    expect(code).toContain(
+      '\tpublic function new(__k_3:Float, __m_4:String) {\n' +
+        '\t\tsuper(__k_3);\n' +
+        '\t\tthis.__C_m = __m_4;\n',
+    );
+  });
+
+  it('reads captures from the capture parameters inside the constructor', async () => {
+    const code = await moduleOf(`
+      class Failure { constructor(public message: string) {} }
+      function f(prefix: string) {
+        class Tagged extends Failure {
+          constructor(detail: string = prefix) { super(prefix + detail); }
+        }
+        return new Tagged();
+      }
+      console.log(f('p').message);
+    `);
+    expect(code).toContain('detail = __prefix_1;');
+    expect(code).toContain('super(__prefix_1 + detail);');
+  });
+
+  it('reports an optional structure member clashing with a subclass method', async () => {
+    const { diagnostics } = await compileSources({
+      'main.ts': `
+        interface I { greet?(): string }
+        class A implements I {}
+        class B extends A { greet() { return 'b'; } }
+        const i: I = new B();
+        console.log(i.greet!());
+      `,
+    });
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'TODO(ts2hx): optional member greet is not added, as a subclass declares it as a method or accessor: reading it on this class fails on C#',
+    ]);
   });
 
   it('reports a class capturing a reassigned local as unsupported', async () => {

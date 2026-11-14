@@ -68,3 +68,59 @@ function withStatic(k: number): number {
   return new C().v() + C.make();
 }
 console.log(withStatic(4), withStatic(10));
+
+class Labelled {
+  constructor(public label: string) {}
+}
+
+function relabel(b: Labelled, suffix: string): string {
+  class Reader {
+    read(): string {
+      return b.label + suffix;
+    }
+  }
+  return new Reader().read();
+}
+console.log(relabel(new Labelled('l'), '#'));
+
+function inherit(k: number, m: string): string[] {
+  class A {
+    v(): number {
+      return k;
+    }
+  }
+  class B extends A {}
+  class C extends A {
+    constructor() {
+      super();
+    }
+    w(): string {
+      return m + this.v();
+    }
+  }
+  class D extends C {
+    tag = m + k;
+  }
+  const d = new D();
+  return [`${new B().v()}`, new C().w(), d.w(), d.tag];
+}
+console.log(inherit(5, 'x').join(' '), inherit(6, 'y').join(' '));
+
+class Failure {
+  constructor(public message: string) {}
+}
+
+function errorClass(prefix: string, fallback: string) {
+  class Tagged extends Failure {
+    readonly kind: string;
+    constructor(detail: string = fallback + prefix) {
+      const full = prefix + ': ' + detail;
+      super(full);
+      this.kind = prefix;
+    }
+  }
+  return [new Tagged('boom'), new Tagged()];
+}
+for (const e of errorClass('E', 'none')) {
+  console.log(e.message, e.kind, e instanceof Failure);
+}

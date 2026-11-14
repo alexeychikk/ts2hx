@@ -77,3 +77,16 @@ const shapes: HasArea[] = [new Sq(3), new Lab(), { area: 2, label: 'lit' }];
 for (const s of shapes) {
   console.log(s.area, s.label ?? 'none', s.greet === undefined);
 }
+
+interface Greets {
+  greet?(): string;
+  label?: string;
+}
+class Quiet implements Greets {}
+class Loud extends Quiet {
+  greet(): string {
+    return 'loud';
+  }
+}
+const loud: Greets = new Loud();
+console.log(loud.greet ? loud.greet() : 'none', loud.label ?? 'none');

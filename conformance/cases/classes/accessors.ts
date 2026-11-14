@@ -86,3 +86,27 @@ Registry.total = 4;
 console.log(Registry.total);
 Registry.total += 1;
 console.log(Registry.total);
+
+class Vault {
+  private code = 7;
+  private get doubled(): number {
+    return this.code * 2;
+  }
+  private set doubled(value: number) {
+    this.code = value / 2;
+  }
+  reveal(next: number): string {
+    const before = this.doubled;
+    this.doubled = next;
+    return `${before} ${this.doubled} ${this.code}`;
+  }
+}
+class SubVault extends Vault {
+  protected get kind(): string {
+    return 'sub';
+  }
+  label(): string {
+    return this.kind + ':' + this.reveal(4);
+  }
+}
+console.log(new Vault().reveal(10), new SubVault().label());

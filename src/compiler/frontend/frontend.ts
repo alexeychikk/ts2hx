@@ -67,6 +67,7 @@ import {
   boundClassExpression,
   isHoistedClass,
   structuralAccessorMembers,
+  structuralMemberConflicts,
   structuralOptionalMembers,
   inheritsStructuralMember,
   overridesImplementation,
@@ -277,6 +278,10 @@ interface ClassContext {
   isStatic: boolean;
   /** Locals a hoisted class captures, read from the instance field they are copied to. */
   captures?: ReadonlyMap<ts.Symbol, Capture>;
+  /** In a constructor: the captures read from its capture parameters, set before the fields are. */
+  captureLocals?: ReadonlyMap<ts.Symbol, HxExpr>;
+  /** In a constructor: the captures `super(...)` passes first to a hoisted base class. */
+  superCaptures?: HxExpr[];
 }
 
 /** A local a hoisted class captures: passed to its constructor, kept in `field`. */
@@ -285,6 +290,8 @@ interface Capture {
   declaration: ts.Declaration;
   field: string;
   type: HxType;
+  /** Captured by a hoisted base class, which declares `field` and receives it through `super`. */
+  inherited?: boolean;
 }
 
 /** Field initialisers of the constructor being converted, run after `after` (its `super()` call) or first. */
@@ -1402,7 +1409,8 @@ export class ModuleFrontend {
       captures: captured,
     };
     const statics: ClassContext = { path, isStatic: true, captures: captured };
-    const fields: HxClassField[] = captures.map((c): HxClassField => ({
+    const own = captures.filter((c) => !c.inherited);
+    const fields: HxClassField[] = own.map((c): HxClassField => ({
       kind: 'var',
       name: c.field,
       access: 'private',
@@ -1414,13 +1422,22 @@ export class ModuleFrontend {
       name: this.freshName(c.symbol.name),
       type: c.type,
     }));
-    const inits: HxStmt[] = captures.map((c, i) =>
-      this.thisAssignment(
-        c.field,
-        c.type,
+    const captureLocals = new Map(
+      captures.map((c, i) => [
+        c.symbol,
         localExpr(captureParams[i].name, c.type),
-      ),
+      ]),
     );
+    const inits: HxStmt[] = own.map((c) =>
+      this.thisAssignment(c.field, c.type, captureLocals.get(c.symbol)!),
+    );
+    const constructorContext: ClassContext = {
+      ...instance,
+      captureLocals,
+      superCaptures: captures
+        .filter((c) => c.inherited)
+        .map((c) => captureLocals.get(c.symbol)!),
+    };
     const init: HxStmt[] = [];
     const ctor = node.members.find(
       (m): m is ts.ConstructorDeclaration =>
@@ -1537,13 +1554,21 @@ export class ModuleFrontend {
         type: nullable(this.types.map(this.checker.getTypeOfSymbol(property))),
       });
     }
+    for (const conflict of structuralMemberConflicts(this.model.program).get(
+      node,
+    ) ?? []) {
+      this.unsupported(
+        node,
+        `optional member ${conflict} is not added, as a subclass declares it as a method or accessor: reading it on this class fails on C#`,
+      );
+    }
     const constructor = this.classConstructor(
       node,
       symbol,
       ctor,
       inits,
       base !== undefined,
-      instance,
+      constructorContext,
     );
     if (constructor?.kind === 'method') {
       constructor.fn = {
@@ -1831,7 +1856,8 @@ export class ModuleFrontend {
     if (!hasBase) {
       return field({ typeParams: [], params: [], ret: VOID, body: inits });
     }
-    if (inits.length === 0) {
+    const superCaptures = context.superCaptures ?? [];
+    if (inits.length === 0 && superCaptures.length === 0) {
       return undefined;
     }
     const [signature] = this.checker
@@ -1850,7 +1876,10 @@ export class ModuleFrontend {
       expr: {
         kind: 'call',
         callee: { kind: 'super', type: DYNAMIC },
-        args: params.map((p) => localExpr(p.name, p.type)),
+        args: [
+          ...superCaptures,
+          ...params.map((p) => localExpr(p.name, p.type)),
+        ],
         spreadLast: params[params.length - 1]?.rest,
         type: VOID,
       },
@@ -1917,8 +1946,13 @@ export class ModuleFrontend {
     }
     const symbol = this.classSymbol(node);
     const path = symbol && this.types.classPath(symbol);
-    const result: Capture[] = [];
-    const seen = new Set<ts.Symbol>();
+    const inherited = this.baseCaptures(node);
+    if (!inherited) {
+      this.captureCache.set(node, undefined);
+      return undefined;
+    }
+    const result: Capture[] = inherited.map((c) => ({ ...c, inherited: true }));
+    const seen = new Set<ts.Symbol>(inherited.map((c) => c.symbol));
     let reassigned = false;
     const visit = (n: ts.Node): void => {
       if (ts.isIdentifier(n)) {
@@ -1931,6 +1965,8 @@ export class ModuleFrontend {
           local &&
           declaration &&
           !seen.has(local) &&
+          local.flags & (ts.SymbolFlags.Variable | ts.SymbolFlags.Function) &&
+          !(local.flags & ts.SymbolFlags.Property) &&
           (ts.isVariableDeclaration(declaration) ||
             ts.isParameter(declaration) ||
             ts.isFunctionDeclaration(declaration)) &&
@@ -1961,7 +1997,21 @@ export class ModuleFrontend {
     return captures;
   }
 
-  /** A captured local inside a hoisted class: the field its constructor copied it to. */
+  /** The captures of the hoisted class `node` extends, which its constructor forwards to `super`. */
+  private baseCaptures(node: ts.ClassLikeDeclaration): Capture[] | undefined {
+    const heritage = extendsClause(node);
+    const base =
+      heritage &&
+      this.classSymbolOf(heritage.expression)?.declarations?.find(
+        isHoistedClass,
+      );
+    return base ? this.captures(base) : [];
+  }
+
+  /**
+   * A captured local inside a hoisted class: the field its constructor copied it to,
+   * or in the constructor the capture parameter, as the field is set only after `super()`.
+   */
   private capturedLocal(
     node: ts.Node,
     symbol: ts.Symbol,
@@ -1971,6 +2021,10 @@ export class ModuleFrontend {
     const capture = context?.captures?.get(symbol);
     if (!context || !capture) {
       return undefined;
+    }
+    const local = context.captureLocals?.get(symbol);
+    if (local) {
+      return { ...local, pos };
     }
     if (context.isStatic) {
       return this.unsupported(
@@ -3681,10 +3735,15 @@ export class ModuleFrontend {
     const ret = signature
       ? this.types.mapReturn(signature.getReturnType())
       : DYNAMIC;
+    const superCaptures =
+      callee.kind === ts.SyntaxKind.SuperKeyword
+        ? (this.classContexts[this.classContexts.length - 1]?.superCaptures ??
+          [])
+        : [];
     return {
       kind: 'call',
       callee: this.expression(callee),
-      args: this.arguments(node, args, spreadLast),
+      args: [...superCaptures, ...this.arguments(node, args, spreadLast)],
       spreadLast,
       type: ret,
       pos,
