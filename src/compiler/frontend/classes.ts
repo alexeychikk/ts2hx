@@ -291,3 +291,205 @@ export function redeclaredWrittenFields(program: ts.Program): Set<ts.Node> {
   writtenRedeclarationCache.set(program, result);
   return result;
 }
+
+/**
+ * Haxe name of a `#name` member: `__name`, plus `_<depth>` when an ancestor declares
+ * the same private name (JS keeps both, Haxe forbids redeclaring a field).
+ */
+export function privateMemberName(
+  checker: ts.TypeChecker,
+  member: ts.NamedDeclaration & { name: ts.PrivateIdentifier },
+): string {
+  const base = `__${member.name.text.slice(1)}`;
+  const owner = owningClass(member);
+  const chain = ancestors(checker, owner);
+  const shadows = chain.some((ancestor) =>
+    ancestor.members.some(
+      (m) =>
+        m.name !== undefined &&
+        ts.isPrivateIdentifier(m.name) &&
+        m.name.text === member.name.text,
+    ),
+  );
+  return shadows ? `${base}_${chain.length}` : base;
+}
+
+/** The `get` and `set` accessors of a class member name, static or not. */
+export interface AccessorPair {
+  get?: ts.GetAccessorDeclaration;
+  set?: ts.SetAccessorDeclaration;
+}
+
+/** The accessors of `node` named `name` with the given staticness. */
+export function accessorPair(
+  node: ts.ClassLikeDeclaration,
+  name: string,
+  staticness: boolean,
+): AccessorPair {
+  const pair: AccessorPair = {};
+  for (const member of node.members) {
+    if (
+      ts.isAccessor(member) &&
+      isStatic(member) === staticness &&
+      memberName(member) === name
+    ) {
+      if (ts.isGetAccessor(member)) pair.get = member;
+      else pair.set = member;
+    }
+  }
+  return pair;
+}
+
+/**
+ * The nearest ancestor's accessors overridden by an accessor named `name`: the
+ * accessor pair, or `conflict` when an ancestor declares a field or method of that name.
+ */
+export function inheritedAccessors(
+  checker: ts.TypeChecker,
+  node: ts.ClassLikeDeclaration,
+  name: string,
+): { root: ts.ClassLikeDeclaration; pair: AccessorPair } | 'conflict' | undefined {
+  let found: { root: ts.ClassLikeDeclaration; pair: AccessorPair } | undefined;
+  for (const ancestor of ancestors(checker, node)) {
+    const members = instanceMembers(ancestor, name);
+    if (members.length === 0) continue;
+    if (!members.every(ts.isAccessor)) {
+      return 'conflict';
+    }
+    found = { root: ancestor, pair: accessorPair(ancestor, name, false) };
+  }
+  return found;
+}
+
+/** Whether an ancestor implements the accessor `kind` of `name` (Haxe needs `override`). */
+export function overridesAccessor(
+  checker: ts.TypeChecker,
+  node: ts.ClassLikeDeclaration,
+  name: string,
+  kind: 'get' | 'set',
+): boolean {
+  return ancestors(checker, node).some((ancestor) => {
+    const accessor = accessorPair(ancestor, name, false)[kind];
+    return (
+      !!accessor?.body && !hasModifier(accessor, ts.ModifierFlags.Abstract)
+    );
+  });
+}
+
+/** Whether TS gives `node` the contextual type of what it is assigned to. */
+function isAssignedValue(node: ts.Expression): boolean {
+  const { parent } = node;
+  return (
+    (ts.isVariableDeclaration(parent) && parent.initializer === node) ||
+    ((ts.isCallExpression(parent) || ts.isNewExpression(parent)) &&
+      ((parent.arguments ?? []) as readonly ts.Expression[]).includes(node)) ||
+    ts.isReturnStatement(parent) ||
+    ts.isArrayLiteralExpression(parent) ||
+    (ts.isPropertyAssignment(parent) && parent.initializer === node) ||
+    ts.isShorthandPropertyAssignment(parent) ||
+    (ts.isPropertyDeclaration(parent) && parent.initializer === node) ||
+    (ts.isParameter(parent) && parent.initializer === node) ||
+    (ts.isBinaryExpression(parent) &&
+      parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      parent.right === node) ||
+    (ts.isArrowFunction(parent) && parent.body === node)
+  );
+}
+
+/** The class declaration of a class instance type. */
+function instanceClass(type: ts.Type): ts.ClassLikeDeclaration | undefined {
+  const symbol = type.symbol;
+  return symbol && symbol.flags & ts.SymbolFlags.Class
+    ? symbol.declarations?.find(ts.isClassLike)
+    : undefined;
+}
+
+const structuralCache = new WeakMap<
+  ts.Program,
+  Map<ts.ClassLikeDeclaration, Map<string, ts.Symbol>>
+>();
+
+/**
+ * Optional members of structures a class is used as (through `implements` or an
+ * assignment to a structure type) that the class lacks: Haxe adds them to the class
+ * as `Null<T>` fields, since C# throws reading a missing field of a class instance
+ * (ADR 0002). A member already added to an ancestor is not repeated.
+ */
+export function structuralOptionalMembers(
+  program: ts.Program,
+): Map<ts.ClassLikeDeclaration, Map<string, ts.Symbol>> {
+  const cached = structuralCache.get(program);
+  if (cached) {
+    return cached;
+  }
+  const checker = program.getTypeChecker();
+  const result = new Map<ts.ClassLikeDeclaration, Map<string, ts.Symbol>>();
+  const record = (node: ts.ClassLikeDeclaration, target: ts.Type): void => {
+    const structure = checker.getNonNullableType(target);
+    if (structure.isUnion()) {
+      structure.types.forEach((t) => record(node, t));
+      return;
+    }
+    if (
+      !(structure.flags & ts.TypeFlags.Object) ||
+      instanceClass(structure) ||
+      checker.isArrayLikeType(structure)
+    ) {
+      return;
+    }
+    const instance = checker.getTypeAtLocation(node);
+    for (const property of checker.getPropertiesOfType(structure)) {
+      if (
+        property.flags & ts.SymbolFlags.Optional &&
+        !checker.getPropertyOfType(instance, property.name)
+      ) {
+        const members = result.get(node) ?? new Map<string, ts.Symbol>();
+        members.set(property.name, property);
+        result.set(node, members);
+      }
+    }
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isClassLike(node)) {
+      for (const clause of node.heritageClauses ?? []) {
+        if (clause.token === ts.SyntaxKind.ImplementsKeyword) {
+          clause.types.forEach((t) =>
+            record(node, checker.getTypeAtLocation(t)),
+          );
+        }
+      }
+    } else if (ts.isExpression(node) && node.parent && isAssignedValue(node)) {
+      const owner = instanceClass(checker.getTypeAtLocation(node));
+      const contextual = owner && checker.getContextualType(node);
+      if (owner && contextual) {
+        record(owner, contextual);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  program
+    .getSourceFiles()
+    .filter((sf) => !sf.isDeclarationFile)
+    .forEach(visit);
+  for (const [node, members] of result) {
+    for (const ancestor of ancestors(checker, node)) {
+      for (const name of result.get(ancestor)?.keys() ?? []) {
+        members.delete(name);
+      }
+    }
+  }
+  structuralCache.set(program, result);
+  return result;
+}
+
+/** Whether an ancestor of `node` gets the optional member `name` added (see `structuralOptionalMembers`). */
+export function inheritsStructuralMember(
+  program: ts.Program,
+  node: ts.ClassLikeDeclaration,
+  name: string,
+): boolean {
+  const added = structuralOptionalMembers(program);
+  return ancestors(program.getTypeChecker(), node).some(
+    (ancestor) => added.get(ancestor)?.has(name) ?? false,
+  );
+}

@@ -51,7 +51,11 @@ import {
   VALUE_BINDINGS,
 } from '../stdlib/bindings';
 import {
+  accessorPair,
   assignsAtTopLevel,
+  inheritedAccessors,
+  overridesAccessor,
+  privateMemberName,
   extendsClause,
   type FieldDeclaration,
   hasModifier,
@@ -60,6 +64,8 @@ import {
   isStatic,
   mayReadFieldsBeforeInit,
   redeclaredWrittenFields,
+  structuralOptionalMembers,
+  inheritsStructuralMember,
   overridesImplementation,
   owningClass,
   rootField,
@@ -259,6 +265,7 @@ type FunctionNode =
   | ts.FunctionExpression
   | ts.ArrowFunction
   | ts.MethodDeclaration
+  | ts.AccessorDeclaration
   | ts.ConstructorDeclaration;
 
 /** The class whose member is being converted: `this` is its instance, or the class in a static member. */
@@ -279,7 +286,9 @@ function isConstantInit(expr: HxExpr): boolean {
 }
 
 function memberAccess(member: ts.Node): HxAccess {
-  return hasModifier(
+  const name = (member as ts.NamedDeclaration).name;
+  return (name && ts.isPrivateIdentifier(name)) ||
+    hasModifier(
     member,
     ts.ModifierFlags.Private | ts.ModifierFlags.Protected,
   )
@@ -287,9 +296,18 @@ function memberAccess(member: ts.Node): HxAccess {
     : 'public';
 }
 
-/** Name of a class member Haxe can declare: an identifier or a string literal. */
-function memberName(member: ts.NamedDeclaration): string | undefined {
+/** Name of a class member Haxe can declare: an identifier, a string literal or a `#name`. */
+function memberName(
+  member: ts.NamedDeclaration,
+  checker: ts.TypeChecker,
+): string | undefined {
   const name = member.name;
+  if (name && ts.isPrivateIdentifier(name)) {
+    return privateMemberName(
+      checker,
+      member as ts.NamedDeclaration & { name: ts.PrivateIdentifier },
+    );
+  }
   return name && (ts.isIdentifier(name) || ts.isStringLiteral(name))
     ? escapeIdentifier(name.text)
     : undefined;
@@ -308,6 +326,8 @@ export class ModuleFrontend {
   private readonly returnTypes: HxType[] = [];
   private readonly classContexts: ClassContext[] = [];
   private pendingInits?: PendingInits;
+  /** The value a setter returns, for `return;` at its `returnTypes` depth. */
+  private setterResult?: { depth: number; value: HxExpr & { kind: 'local' } };
   private tempCounter = 0;
 
   constructor(
@@ -1004,9 +1024,13 @@ export class ModuleFrontend {
       ];
     }
     const effect = node.expression && this.effect(node.expression);
+    const exit: HxStmt =
+      this.setterResult?.depth === this.returnTypes.length
+        ? { kind: 'return', value: this.setterResult.value }
+        : { kind: 'return' };
     return effect && !isPure(effect)
-      ? [{ kind: 'expr', expr: effect }, { kind: 'return' }]
-      : [{ kind: 'return' }];
+      ? [{ kind: 'expr', expr: effect }, exit]
+      : [exit];
   }
 
   private variableList(list: ts.VariableDeclarationList): HxStmt[] {
@@ -1276,7 +1300,7 @@ export class ModuleFrontend {
     );
     for (const parameter of ctor?.parameters.filter(isParameterProperty) ??
       []) {
-      const name = memberName(parameter);
+      const name = memberName(parameter, this.checker);
       if (!name || !ts.isIdentifier(parameter.name)) {
         inits.push(
           ...this.unsupportedStmt(
@@ -1304,13 +1328,22 @@ export class ModuleFrontend {
       ) {
         continue;
       }
-      const name = memberName(member);
+      const name = memberName(member, this.checker);
       if (ts.isClassStaticBlockDeclaration(member)) {
         init.push({
           kind: 'block',
           body: this.inClass(statics, () => this.block(member.body.statements)),
         });
-      } else if (!name || ts.isAccessor(member)) {
+      } else if (name && ts.isAccessor(member)) {
+        fields.push(
+          ...this.accessor(
+            node,
+            member,
+            name,
+            isStatic(member) ? statics : instance,
+          ),
+        );
+      } else if (!name) {
         this.unsupported(
           member,
           `${syntaxKindName(member.kind)} class members are not supported yet`,
@@ -1364,6 +1397,20 @@ export class ModuleFrontend {
         this.unsupported(member);
       }
     }
+    for (const [added, property] of structuralOptionalMembers(
+      this.model.program,
+    ).get(node) ?? []) {
+      fields.push({
+        kind: 'var',
+        name: escapeIdentifier(added),
+        access: 'public',
+        isStatic: false,
+        final: false,
+        type: nullable(
+          this.types.map(this.checker.getTypeOfSymbol(property)),
+        ),
+      });
+    }
     const constructor = this.classConstructor(
       node,
       symbol,
@@ -1391,6 +1438,110 @@ export class ModuleFrontend {
       },
       init,
     };
+  }
+
+  /**
+   * A `get`/`set` accessor: a `get_name`/`set_name` method, plus the Haxe property
+   * on the first accessor of the topmost class declaring the name. A setter returns
+   * the assigned value, as a JS assignment evaluates to it.
+   */
+  private accessor(
+    node: ts.ClassDeclaration,
+    member: ts.AccessorDeclaration,
+    name: string,
+    context: ClassContext,
+  ): HxClassField[] {
+    if (!ts.isIdentifier(member.name) && !ts.isStringLiteral(member.name)) {
+      this.unsupported(member, 'private accessors are not supported yet');
+      return [];
+    }
+    const sourceName = member.name.text;
+    const kind = ts.isGetAccessor(member) ? 'get' : 'set';
+    const pair = accessorPair(node, sourceName, context.isStatic);
+    const inherited = context.isStatic
+      ? undefined
+      : inheritedAccessors(this.checker, node, sourceName);
+    if (inherited === 'conflict') {
+      this.unsupported(
+        member,
+        'an accessor overriding a field or method is not supported',
+      );
+      return [];
+    }
+    if (inherited && !inherited.pair[kind]) {
+      this.unsupported(
+        member,
+        `a ${kind} accessor its base class lacks is not supported`,
+      );
+      return [];
+    }
+    const root = inherited ? (inherited.pair.get ?? inherited.pair.set)! : member;
+    const type = this.types.map(
+      this.checker.getTypeOfSymbol(
+        this.checker.getSymbolAtLocation(root.name)!,
+      ),
+    );
+    const fields: HxClassField[] = [];
+    if (!inherited && member === (pair.get ?? pair.set)) {
+      fields.push({
+        kind: 'property',
+        name,
+        access: memberAccess(member),
+        isStatic: context.isStatic,
+        get: pair.get ? 'get' : 'never',
+        set: pair.set ? 'set' : 'never',
+        isVar: false,
+        type,
+      });
+    }
+    const isAbstract = hasModifier(member, ts.ModifierFlags.Abstract);
+    if (!member.body && !isAbstract) {
+      return fields;
+    }
+    const fn =
+      kind === 'get'
+        ? this.inClass(context, () => this.function(member))
+        : this.setterFunction(member as ts.SetAccessorDeclaration, type, context);
+    fields.push({
+      kind: 'method',
+      name: `${kind}_${name}`,
+      access: 'public',
+      isStatic: context.isStatic,
+      isOverride:
+        !!inherited &&
+        overridesAccessor(this.checker, node, sourceName, kind),
+      isAbstract,
+      fn: isAbstract ? { ...fn, body: undefined } : fn,
+    });
+    return fields;
+  }
+
+  /** `set_name(__value)`: the TS setter body, returning the assigned value. */
+  private setterFunction(
+    member: ts.SetAccessorDeclaration,
+    type: HxType,
+    context: ClassContext,
+  ): HxFunction {
+    const value = localExpr(this.freshName('value'), type) as HxExpr & {
+      kind: 'local';
+    };
+    const saved = this.setterResult;
+    this.setterResult = { depth: this.returnTypes.length + 1, value };
+    try {
+      const fn = this.inClass(context, () => this.function(member));
+      const [param] = fn.params;
+      const prologue: HxStmt[] = param
+        ? [{ kind: 'var', name: param.name, final: false, type, init: value }]
+        : [];
+      return {
+        ...fn,
+        params: [{ name: value.name, type }],
+        ret: type,
+        body: [...prologue, ...(fn.body ?? []), { kind: 'return', value }],
+      };
+    } finally {
+      this.setterResult = saved;
+    }
   }
 
   /** `this.name = value`. */
@@ -1421,7 +1572,10 @@ export class ModuleFrontend {
     name: string,
     type: HxType,
   ): HxClassField[] {
-    if (rootField(this.checker, field) !== field) {
+    if (
+      rootField(this.checker, field) !== field ||
+      inheritsStructuralMember(this.model.program, owningClass(field), name)
+    ) {
       return [];
     }
     return [
@@ -1598,7 +1752,8 @@ export class ModuleFrontend {
       !declaration ||
       !(
         ts.isPropertyDeclaration(declaration) ||
-        ts.isMethodDeclaration(declaration)
+        ts.isMethodDeclaration(declaration) ||
+        ts.isAccessor(declaration)
       ) ||
       !isStatic(declaration) ||
       !ts.isClassDeclaration(declaration.parent) ||
@@ -1610,7 +1765,7 @@ export class ModuleFrontend {
       declaration.parent.name,
     );
     const owner = classSymbol && this.types.classPath(classSymbol);
-    const name = memberName(declaration);
+    const name = memberName(declaration, this.checker);
     if (!owner || !name) {
       return undefined;
     }
@@ -2238,7 +2393,7 @@ export class ModuleFrontend {
       }
       return VALUE_BINDINGS.get(key)?.(pos) ?? this.unsupported(node);
     }
-    if (node.questionDotToken || ts.isPrivateIdentifier(node.name)) {
+    if (node.questionDotToken) {
       return this.unsupported(node);
     }
     const member = this.staticMember(node, pos);
@@ -2246,17 +2401,30 @@ export class ModuleFrontend {
       return member;
     }
     const symbol = this.checker.getSymbolAtLocation(node.name);
-    if (symbol && symbol.flags & ts.SymbolFlags.Accessor) {
+    if (
+      symbol &&
+      symbol.flags & ts.SymbolFlags.Accessor &&
+      !(symbol.declarations ?? []).every(
+        (d) => ts.isAccessor(d) && ts.isClassLike(d.parent),
+      )
+    ) {
       return this.unsupported(node, 'accessors are not supported yet');
     }
     const target = this.expression(node.expression);
     if (dictValue(target.type)) {
       return this.dictGet(target, constExpr(node.name.text, pos), pos);
     }
+    const name = ts.isPrivateIdentifier(node.name)
+      ? symbol?.valueDeclaration &&
+        memberName(symbol.valueDeclaration, this.checker)
+      : escapeIdentifier(node.name.text);
+    if (name === undefined) {
+      return this.unsupported(node);
+    }
     return {
       kind: 'field',
       target,
-      name: escapeIdentifier(node.name.text),
+      name,
       type: this.fieldType(target, node),
       pos,
     };
