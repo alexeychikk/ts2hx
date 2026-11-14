@@ -12,6 +12,7 @@ import {
 } from '../ir/builders';
 import type { HxAnonField, HxDecl, HxType, HxTypePath } from '../ir/types';
 import { escapeIdentifier, HAXE_STD_TYPES, MAIN_CLASS } from '../model/names';
+import { libErrorClassPath } from '../stdlib/errors';
 import { ancestors, isHoistedClass } from './classes';
 
 const NULLISH = ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void;
@@ -232,6 +233,10 @@ export class TypeMapper {
       const [element] = this.checker.getTypeArguments(type as ts.TypeReference);
       return arrayType(element ? this.map(element) : DYNAMIC);
     }
+    const error = this.errorInstanceType(type);
+    if (error) {
+      return error;
+    }
     const instance = this.classInstanceType(type);
     if (instance) {
       return instance;
@@ -308,6 +313,16 @@ export class TypeMapper {
         return !!path && pathKey(path) === target;
       })
     );
+  }
+
+  /** `ts2hx.Error` (or a subclass) for an instance of a lib error class. */
+  private errorInstanceType(type: ts.Type): HxType | undefined {
+    const symbol = type.symbol;
+    const path =
+      symbol &&
+      symbol.flags & ts.SymbolFlags.Interface &&
+      libErrorClassPath(symbol);
+    return path ? { kind: 'path', path, params: [] } : undefined;
   }
 
   /** `pack.Module.C<T>` for an instance type of a project class. */

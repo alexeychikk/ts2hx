@@ -24,16 +24,6 @@
     "cs": "fail",
     "cpp": "fail"
   },
-  "exceptions/basic": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "exceptions/finally-return": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
   "generators/basic": {
     "js": "fail",
     "cs": "fail",

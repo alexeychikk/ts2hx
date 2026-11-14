@@ -25,6 +25,7 @@ import type {
   HxAccess,
   HxAssignOp,
   HxBinop,
+  HxCatch,
   HxClassField,
   HxDecl,
   HxExpr,
@@ -61,6 +62,11 @@ import {
   stdlibKey,
   VALUE_BINDINGS,
 } from '../stdlib/bindings';
+import {
+  ERROR_FIELD_NAMES,
+  ERROR_PROPERTIES,
+  libErrorClassPath,
+} from '../stdlib/errors';
 import { stringCodePoints, stringIndex } from '../stdlib/string-bindings';
 import {
   accessorPair,
@@ -69,6 +75,7 @@ import {
   overridesAccessor,
   privateMemberName,
   extendsClause,
+  extendsLibError,
   type FieldDeclaration,
   hasModifier,
   isFieldDeclaration,
@@ -267,6 +274,11 @@ function isValueUsed(node: ts.Expression): boolean {
       parent.operatorToken.kind === ts.SyntaxKind.CommaToken &&
       parent.left === node)
   );
+}
+
+/** Whether `key` is a project property (`undefined`) or a lib property Haxe can assign. */
+function isWritableLibProperty(key: string | undefined): boolean {
+  return key === undefined || ERROR_PROPERTIES.has(key);
 }
 
 /** A declaration binding one name: a variable or an element of a destructuring pattern. */
@@ -1155,6 +1167,12 @@ export class ModuleFrontend {
     if (ts.isSwitchStatement(node)) {
       return this.switchStatement(node);
     }
+    if (ts.isThrowStatement(node)) {
+      return [{ kind: 'throw', value: this.expression(node.expression) }];
+    }
+    if (ts.isTryStatement(node)) {
+      return this.tryStatement(node);
+    }
     if (
       (ts.isEnumDeclaration(node) || ts.isModuleDeclaration(node)) &&
       isAmbient(node)
@@ -1162,6 +1180,57 @@ export class ModuleFrontend {
       return [];
     }
     return this.unsupportedStmt(node);
+  }
+
+  /** `try`/`catch` maps to Haxe's; a `finally` is left to the `lowerFinally` pass. */
+  private tryStatement(node: ts.TryStatement): HxStmt[] {
+    const body = this.block(node.tryBlock.statements);
+    const handler = node.catchClause && this.catchClause(node.catchClause);
+    if (!node.finallyBlock) {
+      return [{ kind: 'try', body, catches: handler ? [handler] : [] }];
+    }
+    return [
+      {
+        kind: 'tryFinally',
+        body,
+        catch: handler,
+        finally: this.block(node.finallyBlock.statements),
+      },
+    ];
+  }
+
+  /**
+   * A `catch` of any value: Haxe catches it as `Dynamic`, and the binding gets the
+   * JS value of it (`ts2hx.Error.caught` maps native runtime errors).
+   */
+  private catchClause(clause: ts.CatchClause): HxCatch {
+    const name = this.freshName('caught');
+    const declaration = clause.variableDeclaration;
+    const caught = staticCall(
+      RUNTIME.error,
+      'caught',
+      [localExpr(name, DYNAMIC)],
+      DYNAMIC,
+      this.pos(clause),
+    );
+    const binding: HxStmt[] = !declaration
+      ? []
+      : ts.isIdentifier(declaration.name)
+        ? [
+            {
+              kind: 'var',
+              name: this.bindingName(declaration),
+              final: false,
+              type: this.declaredType(declaration),
+              init: caught,
+            },
+          ]
+        : this.bindPattern(declaration.name, caught, false);
+    return {
+      name,
+      type: DYNAMIC,
+      body: [...binding, ...this.block(clause.block.statements)],
+    };
   }
 
   /** A `switch` whose clauses are tested with `===` against its subject, read once. */
@@ -2444,7 +2513,9 @@ export class ModuleFrontend {
   ): HxClassField[] {
     if (
       rootField(this.checker, field) !== field ||
-      inheritsStructuralMember(this.model.program, owningClass(field), name)
+      inheritsStructuralMember(this.model.program, owningClass(field), name) ||
+      (ERROR_FIELD_NAMES.has(name) &&
+        extendsLibError(this.checker, owningClass(field)))
     ) {
       return [];
     }
@@ -2603,7 +2674,20 @@ export class ModuleFrontend {
   /** The Haxe class a class reference (identifier, `ns.C`, import alias) names. */
   private classOf(node: ts.Expression): HxTypePath | undefined {
     const symbol = this.classSymbolOf(node);
-    return symbol && this.types.classPath(symbol);
+    return symbol ? this.types.classPath(symbol) : this.errorClassOf(node);
+  }
+
+  /** The `ts2hx.Error` class a reference to a lib error constructor (`RangeError`) names. */
+  private errorClassOf(node: ts.Expression): HxTypePath | undefined {
+    if (!ts.isIdentifier(node)) {
+      return undefined;
+    }
+    const symbol = this.checker.getSymbolAtLocation(node);
+    const resolved =
+      symbol && symbol.flags & ts.SymbolFlags.Alias
+        ? this.checker.getAliasedSymbol(symbol)
+        : symbol;
+    return resolved && libErrorClassPath(resolved);
   }
 
   /** The class symbol a class reference names, a `const` bound to a class expression included. */
@@ -3951,7 +4035,7 @@ export class ModuleFrontend {
     }
     if (
       ts.isPropertyAccessExpression(node) &&
-      this.libKey(node.name) === undefined
+      isWritableLibProperty(this.libKey(node.name))
     ) {
       const target = this.propertyAccess(node, this.pos(node));
       return target.kind === 'field' || target.kind === 'staticField'
@@ -4276,6 +4360,21 @@ export class ModuleFrontend {
     const dict = this.dictAssign(node, pos);
     if (dict) {
       return dict;
+    }
+    if (
+      ts.isPropertyAccessExpression(left) &&
+      this.libKey(left.name) === 'Array.length'
+    ) {
+      return staticCall(
+        RUNTIME.jsArray,
+        'setLength',
+        [
+          this.expression(left.expression),
+          this.coerce(this.expression(node.right), FLOAT),
+        ],
+        FLOAT,
+        pos,
+      );
     }
     const target = this.lvalue(node.left);
     if (!target) {

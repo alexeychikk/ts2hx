@@ -82,9 +82,21 @@ reason it is not a gate.)
   initialisation, then `EventLoop.run()` until both queues are empty. This
   keeps the observable `then`/`await`/`setTimeout` ordering identical to
   Node's. It is single-threaded and does no real I/O.
-- **Exceptions.** `Error` and its subclasses become `ts2hx.Error`, which
-  extends `haxe.Exception`. `throw` works for any value. `catch (e)` binds
-  `Dynamic`. `finally` is lowered by a pass because Haxe 4 has no `finally`.
+- **Exceptions.** `Error` and its subclasses (`TypeError`, `RangeError`, …)
+  become `ts2hx.Error` and its subclasses. That is a **plain class, not a
+  `haxe.Exception`**: the members of `haxe.Exception` (`message`, `stack`,
+  `details`, `previous`) would collide with the JS fields and with fields of
+  user subclasses. `name` and `message` are plain fields, `stack` holds just
+  `toString()`, and `instanceof` is `Std.isOfType`. `throw` works for any
+  value on all targets (Haxe wraps non-exceptions in `ValueException`, and
+  `catch (e:Dynamic)` unwraps them). `catch (e)` binds
+  `ts2hx.Error.caught(e)`, which maps native runtime errors to JS errors. On
+  JS, a native `TypeError`/`RangeError`/… keeps its kind. On C#,
+  `NullReferenceException` and `InvalidCastException` become `TypeError`, and
+  any other exception becomes `Error`. On C++, a null dereference only
+  throws with `HXCPP_CHECK_POINTER`, which builds don't set, so it crashes
+  instead (degraded). `finally` is lowered by the `lowerFinally` pass, because
+  Haxe 4 has no `finally` (ADR 0005).
 - **Regex.** `ts2hx.RegExp` keeps JS state (`lastIndex`, `g` and `y` flags,
   groups) on top of `EReg`, which is native RegExp on JS, .NET Regex on C#
   and PCRE2 on C++. Lookbehind works on all three. **.NET numbers named

@@ -98,7 +98,7 @@ export function hasJumpTo(stmts: HxStmt[], owner: Owner): boolean {
 }
 
 /** Whether control never runs past the end of `stmts`. */
-function exits(stmts: HxStmt[]): boolean {
+export function exits(stmts: HxStmt[]): boolean {
   const last = stmts[stmts.length - 1];
   if (!last) return false;
   switch (last.kind) {
