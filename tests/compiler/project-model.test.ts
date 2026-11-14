@@ -194,6 +194,7 @@ describe('ProjectModel', () => {
         'const Point_ = class { x = 1 };',
         'function f() { class Local {} return class {}; }',
         'function g() { class Local {} return Local; }',
+        'function h() { class Date {} class Map {} return [Date, Map]; }',
       ].join('\n'),
     });
     const model = buildProjectModel(project.program);
@@ -201,8 +202,10 @@ describe('ProjectModel', () => {
     expect([...main.hoistedClasses.values()]).toEqual([
       'Point_',
       'Local_2',
-      'Class',
+      'Class_',
       'Local_3',
+      'Date_',
+      'Map_',
     ]);
   });
 

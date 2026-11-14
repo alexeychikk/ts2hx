@@ -1,6 +1,10 @@
 import ts from 'typescript';
 
-import { TypeMapper } from '@src/compiler/frontend/types';
+import {
+  className,
+  typedefName,
+  TypeMapper,
+} from '@src/compiler/frontend/types';
 import { printDecl, printType } from '@src/compiler/printer/printer';
 
 import { createProject } from './helpers';
@@ -40,6 +44,16 @@ function mappedTypes(
   }
   return result;
 }
+
+describe('type names', () => {
+  it('suffixes names of Haxe std types and of their own module', () => {
+    expect(className('point', 'Main')).toBe('Point');
+    expect(className('Class', 'Main')).toBe('Class_');
+    expect(typedefName('Xml', 'Main')).toBe('Xml_');
+    expect(className('Main', 'Main')).toBe('Main_');
+    expect(className('Date', 'Date_')).toBe('Date__');
+  });
+});
 
 describe('TypeMapper', () => {
   it('maps primitives, nullable unions, arrays, functions and object shapes', () => {

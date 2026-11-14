@@ -11,7 +11,7 @@ import {
   VOID,
 } from '../ir/builders';
 import type { HxAnonField, HxDecl, HxType, HxTypePath } from '../ir/types';
-import { escapeIdentifier } from '../model/names';
+import { escapeIdentifier, HAXE_STD_TYPES } from '../model/names';
 import { ancestors, isHoistedClass } from './classes';
 
 const NULLISH = ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void;
@@ -47,10 +47,16 @@ export type ModulePathResolver = (
 
 type TypedefDeclaration = ts.InterfaceDeclaration | ts.TypeAliasDeclaration;
 
-/** A Haxe type name for a TS interface or alias name: types must start upper-case. */
+/**
+ * A Haxe type name for a TS interface or alias name: upper-case first, and suffixed `_`
+ * when it would redefine a Haxe standard type or name its own module.
+ */
 export function typedefName(name: string, moduleName: string): string {
   const escaped = escapeIdentifier(name);
-  const capitalised = escaped[0].toUpperCase() + escaped.slice(1);
+  let capitalised = escaped[0].toUpperCase() + escaped.slice(1);
+  if (HAXE_STD_TYPES.has(capitalised)) {
+    capitalised = `${capitalised}_`;
+  }
   return capitalised === moduleName ? `${capitalised}_` : capitalised;
 }
 

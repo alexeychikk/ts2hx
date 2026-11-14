@@ -124,3 +124,34 @@ function errorClass(prefix: string, fallback: string) {
 for (const e of errorClass('E', 'none')) {
   console.log(e.message, e.kind, e instanceof Failure);
 }
+
+function factory(greeting: string) {
+  return class {
+    static kind = 'made';
+    hello(): string {
+      return greeting;
+    }
+  };
+}
+const Made = factory('hi');
+console.log(Made !== null, Made.kind);
+
+function stdNamed(): number {
+  class Date {
+    v = 3;
+  }
+  class Map {
+    w = 4;
+  }
+  return new Date().v + new Map().w;
+}
+console.log(stdNamed());
+
+class Lambda {
+  k = 1;
+}
+interface Xml {
+  x: number;
+}
+const xml: Xml = { x: 2 };
+console.log(new Lambda().k, xml.x);
