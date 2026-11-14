@@ -297,6 +297,34 @@ describe('classes II helpers', () => {
     ]);
   });
 
+  it('collects optional structure members of class expressions from their instance type', () => {
+    const { program, file } = createProject({
+      'main.ts': `
+        interface S { area(): number; name?: string; length?: number }
+        const E = class implements S { area() { return 1; } };
+        const U = class { area() { return 2; } get name() { return 'u'; } };
+        const s: S = new U();
+      `,
+    });
+    const expressions: ts.ClassExpression[] = [];
+    const visit = (node: ts.Node): void => {
+      if (ts.isClassExpression(node)) {
+        expressions.push(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(program.getSourceFile(file('main.ts'))!);
+    const added = structuralOptionalMembers(program);
+    const names = (node: ts.ClassExpression) => [
+      ...(added.get(node)?.keys() ?? []),
+    ];
+    expect(names(expressions[0])).toEqual(['name', 'length']);
+    expect(names(expressions[1])).toEqual(['length']);
+    expect(
+      [...structuralAccessorMembers(program)].map((symbol) => symbol.name),
+    ).toEqual(['name']);
+  });
+
   it('marks structure members a class implements with an accessor', () => {
     const { program } = classesOf(`
       interface H { readonly area: number; label?: string }

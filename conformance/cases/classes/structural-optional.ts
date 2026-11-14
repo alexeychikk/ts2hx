@@ -90,3 +90,28 @@ class Loud extends Quiet {
 }
 const loud: Greets = new Loud();
 console.log(loud.greet ? loud.greet() : 'none', loud.label ?? 'none');
+
+interface Shape {
+  area(): number;
+  name?: string;
+}
+class NamedShape implements Shape {
+  area(): number {
+    return 1;
+  }
+}
+const ExprShape = class implements Shape {
+  area(): number {
+    return 2;
+  }
+};
+const Untyped = class {
+  area(): number {
+    return 3;
+  }
+};
+const anonymous: Shape = new Untyped();
+const shapeList: Shape[] = [new NamedShape(), new ExprShape(), anonymous];
+for (const s of shapeList) {
+  console.log(s.area(), s.name);
+}

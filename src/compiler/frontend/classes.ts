@@ -407,6 +407,21 @@ function instanceClass(type: ts.Type): ts.ClassLikeDeclaration | undefined {
     : undefined;
 }
 
+/** The instance type of a class; the checker gives a class expression's constructor type at its node. */
+export function classInstanceType(
+  checker: ts.TypeChecker,
+  node: ts.ClassLikeDeclaration,
+): ts.Type {
+  const type = checker.getTypeAtLocation(node);
+  if (!ts.isClassExpression(node)) {
+    return type;
+  }
+  const symbol = (type.isIntersection() ? type.types : [type])
+    .map((part) => part.getSymbol())
+    .find((candidate) => candidate?.declarations?.includes(node));
+  return symbol ? checker.getDeclaredTypeOfSymbol(symbol) : type;
+}
+
 const structuralCache = new WeakMap<ts.Program, StructuralUse>();
 
 /**
@@ -466,7 +481,7 @@ function structuralUse(program: ts.Program): StructuralUse {
     ) {
       return;
     }
-    const instance = checker.getTypeAtLocation(node);
+    const instance = classInstanceType(checker, node);
     for (const property of checker.getPropertiesOfType(structure)) {
       const own = checker.getPropertyOfType(instance, property.name);
       if (own && own.flags & ts.SymbolFlags.Accessor) {
