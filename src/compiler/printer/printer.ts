@@ -326,8 +326,9 @@ class Printer {
       .join(', ');
   }
 
-  private signature(fn: HxFunction): string {
-    return `${printTypeParams(fn.typeParams)}(${this.params(fn.params)}):${printType(fn.ret)}`;
+  private signature(fn: HxFunction, constructor = false): string {
+    const ret = constructor ? '' : `:${printType(fn.ret)}`;
+    return `${printTypeParams(fn.typeParams)}(${this.params(fn.params)})${ret}`;
   }
 
   private body(fn: HxFunction): string {
@@ -443,7 +444,7 @@ class Printer {
       case 'method': {
         if (field.isOverride) modifiers.push('override');
         if (field.isAbstract) modifiers.push('abstract');
-        const head = `${ind}${modifiers.join(' ')} function ${field.name}${this.signature(field.fn)}`;
+        const head = `${ind}${modifiers.join(' ')} function ${field.name}${this.signature(field.fn, field.name === 'new')}`;
         return field.isAbstract || !field.fn.body
           ? `${head};`
           : `${head} ${this.body(field.fn)}`;

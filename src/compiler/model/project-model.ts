@@ -3,7 +3,7 @@ import ts from 'typescript';
 
 import type { HxTypePath } from '../ir/types';
 import { MODULE_INIT } from '../printer/printer';
-import { typedefName } from '../frontend/types';
+import { className, typedefName } from '../frontend/types';
 import {
   escapeIdentifier,
   isValidRootPackage,
@@ -173,7 +173,8 @@ function fieldDeclarations(
 
 /**
  * Haxe names of a module's values: escaped identifiers, renamed `name_2`, … when they
- * collide with each other, the module, its typedefs, its `__init` or a `reserved` name.
+ * collide with each other, the module, its typedefs and classes, its `__init` or a
+ * `reserved` name.
  */
 export function assignFieldNames(
   sf: ts.SourceFile,
@@ -188,6 +189,8 @@ export function assignFieldNames(
       ts.isTypeAliasDeclaration(statement)
     ) {
       taken.add(typedefName(statement.name.text, modulePath.module));
+    } else if (ts.isClassDeclaration(statement) && statement.name) {
+      taken.add(className(statement.name.text, modulePath.module));
     }
   }
   const names = new Map<ts.Node, string>();
