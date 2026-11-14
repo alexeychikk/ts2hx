@@ -44,6 +44,11 @@
     "cs": "fail",
     "cpp": "fail"
   },
+  "numbers/format-range-errors": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
   "objects/keys-order": {
     "js": "fail",
     "cs": "fail",

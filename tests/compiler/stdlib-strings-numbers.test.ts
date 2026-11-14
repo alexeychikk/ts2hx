@@ -95,6 +95,22 @@ describe('stdlib: strings', () => {
     ]);
     expect(hx).toContain('a.copy()');
   });
+
+  it('appends spreads of another element type one element at a time', async () => {
+    const hx = await moduleOf([
+      "const s: string = 'ab';",
+      "const strs: string[] = ['x'];",
+      'const a: (string | number)[] = [...s, 1];',
+      'const b: (string | number)[] = [1, ...strs];',
+    ]);
+    expect(hx).not.toContain('concat');
+    expect(hx).toMatch(
+      /final (\w+):Array<Dynamic> = \[\];\s+for \((\w+) in ts2hx\.JsString\.codePoints\(s\)\) \{\s+\1\.push\(\(cast \2 : Dynamic\)\);\s+\}\s+\1\.push\(\(cast 1\.0 : Dynamic\)\);\s+\1;/,
+    );
+    expect(hx).toMatch(
+      /final (\w+):Array<Dynamic> = \[\(cast 1\.0 : Dynamic\)\];\s+for \((\w+) in strs\) \{\s+\1\.push\(\(cast \2 : Dynamic\)\);/,
+    );
+  });
 });
 
 describe('stdlib: numbers and Math', () => {

@@ -165,6 +165,15 @@ function isArray(
   );
 }
 
+function arrayElement(type: HxType): HxType {
+  return isArray(type) ? type.params[0] : DYNAMIC;
+}
+
+/** A run of plain elements, or one spread array of an array literal. */
+type ArraySegment =
+  | { spread: false; value: HxExpr[] }
+  | { spread: true; value: HxExpr; fresh: boolean };
+
 const SYNTAX_KIND_NAMES: ReadonlyMap<ts.SyntaxKind, string> = (() => {
   const names = new Map<ts.SyntaxKind, string>();
   for (const [name, value] of Object.entries(ts.SyntaxKind)) {
@@ -3597,7 +3606,8 @@ export class ModuleFrontend {
 
   /**
    * `[a, ...xs, ...s]`: runs of plain elements and spread arrays or strings,
-   * joined with `concat` into a fresh array.
+   * joined with `concat` into a fresh array, or appended one element at a
+   * time when a spread's element type differs from the literal's.
    */
   private spreadArrayLiteral(
     node: ts.ArrayLiteralExpression,
@@ -3605,19 +3615,11 @@ export class ModuleFrontend {
     element: HxType,
     pos: SourcePos,
   ): HxExpr {
-    const segments: HxExpr[] = [];
-    const fresh = new Set<HxExpr>();
+    const segments: ArraySegment[] = [];
     let plain: HxExpr[] = [];
     const flush = () => {
       if (plain.length > 0) {
-        const literal: HxExpr = {
-          kind: 'arrayLit',
-          elements: plain,
-          type,
-          pos,
-        };
-        segments.push(literal);
-        fresh.add(literal);
+        segments.push({ spread: false, value: plain });
         plain = [];
       }
     };
@@ -3629,12 +3631,14 @@ export class ModuleFrontend {
       flush();
       const spread = this.expression(e.expression);
       if (this.isStringLike(e.expression)) {
-        const codePoints = stringCodePoints(spread);
-        segments.push(codePoints);
-        fresh.add(codePoints);
+        segments.push({
+          spread: true,
+          value: stringCodePoints(spread),
+          fresh: true,
+        });
       } else if (this.checker.isArrayLikeType(this.typeOf(e.expression))) {
         if (!isArray(spread.type)) return this.unsupported(node);
-        segments.push(this.coerce(spread, type));
+        segments.push({ spread: true, value: spread, fresh: false });
       } else {
         return this.unsupported(
           node,
@@ -3643,37 +3647,90 @@ export class ModuleFrontend {
       }
     }
     flush();
-    const [first, ...rest] = segments;
-    const head: HxExpr =
-      rest.length === 0 && !fresh.has(first)
-        ? {
-            kind: 'call',
-            callee: {
-              kind: 'field',
-              target: first,
-              name: 'copy',
-              type: DYNAMIC,
-            },
-            args: [],
-            type,
-            pos,
-          }
-        : first;
+    const uniform = segments.every(
+      (s) => !s.spread || sameType(arrayElement(s.value.type), element),
+    );
+    return uniform
+      ? this.concatSegments(segments, type, pos)
+      : this.appendSegments(segments, type, element, pos);
+  }
+
+  private concatSegments(
+    segments: ArraySegment[],
+    type: HxType,
+    pos: SourcePos,
+  ): HxExpr {
+    const arrays = segments.map<HxExpr>((s) =>
+      s.spread ? s.value : { kind: 'arrayLit', elements: s.value, type, pos },
+    );
+    const [first, ...rest] = arrays;
+    const firstIsFresh = !segments[0].spread || segments[0].fresh;
+    const method = (target: HxExpr, name: string, args: HxExpr[]): HxExpr => ({
+      kind: 'call',
+      callee: { kind: 'field', target, name, type: DYNAMIC },
+      args,
+      type,
+      pos,
+    });
+    const head =
+      rest.length === 0 && !firstIsFresh ? method(first, 'copy', []) : first;
     return rest.reduce<HxExpr>(
-      (joined, segment) => ({
-        kind: 'call',
-        callee: {
-          kind: 'field',
-          target: joined,
-          name: 'concat',
-          type: DYNAMIC,
-        },
-        args: [segment],
-        type,
-        pos,
-      }),
+      (joined, segment) => method(joined, 'concat', [segment]),
       head,
     );
+  }
+
+  /** `{ final r = [...]; for (x in xs) r.push(x); r; }`: each element converted to the literal's element type. */
+  private appendSegments(
+    segments: ArraySegment[],
+    type: HxType,
+    element: HxType,
+    pos: SourcePos,
+  ): HxExpr {
+    const name = this.freshName('spread');
+    const result = localExpr(name, type, pos);
+    const push = (value: HxExpr): HxStmt => ({
+      kind: 'expr',
+      expr: {
+        kind: 'call',
+        callee: { kind: 'field', target: result, name: 'push', type: DYNAMIC },
+        args: [value],
+        type: INT,
+        pos,
+      },
+    });
+    const [first, ...rest] = segments;
+    const initial = first.spread ? [] : first.value;
+    const stmts: HxStmt[] = [
+      {
+        kind: 'var',
+        name,
+        final: true,
+        type,
+        init: { kind: 'arrayLit', elements: initial, type, pos },
+      },
+    ];
+    for (const segment of first.spread ? segments : rest) {
+      if (!segment.spread) {
+        stmts.push(...segment.value.map(push));
+        continue;
+      }
+      const item = this.freshName('item');
+      stmts.push({
+        kind: 'forIn',
+        name: item,
+        iterable: segment.value,
+        body: [
+          push(
+            this.branch(
+              localExpr(item, arrayElement(segment.value.type), pos),
+              element,
+            ),
+          ),
+        ],
+      });
+    }
+    return { kind: 'blockExpr', stmts, result, type, pos };
   }
 
   private objectLiteral(

@@ -134,3 +134,16 @@ console.log(
   `${n.toPrecision(3)}`,
   String(n.toFixed(2)).length,
 );
+console.log(
+  (255).toString(16.5),
+  (255).toString(2.9),
+  (255).toString(36.9),
+  (1.25).toPrecision(2.9),
+  (12.5).toExponential(1.9),
+);
+console.log(
+  NaN.toPrecision(0),
+  Infinity.toExponential(200),
+  (-Infinity).toPrecision(500),
+  NaN.toExponential(-1),
+);

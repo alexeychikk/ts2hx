@@ -112,8 +112,8 @@ class Num {
 
 	/** JS `Number.prototype.toString(radix)`; V8's digit generation for fractions. */
 	public static function toStringRadix(value:Float, ?radix:Float):String {
-		var r = radix == null ? 10.0 : radix;
-		if (!(r >= 2 && r <= 36 && r == Math.ffloor(r)))
+		var r = radix == null ? 10.0 : toIntegerOrInfinity(radix);
+		if (!(r >= 2 && r <= 36))
 			throw new haxe.Exception("RangeError: toString() radix must be between 2 and 36");
 		if (r == 10)
 			return toString(value);
@@ -162,14 +162,16 @@ class Num {
 		if (precision == null)
 			return toString(value);
 		#if js
-		var p = digitsArgument(precision, 1, 1, 100, "toPrecision() argument");
+		if (!Math.isFinite(value))
+			return toString(value);
+		var p = digitsArgument(precision, 0, 1, 100, "toPrecision() argument");
 		return js.Syntax.code("{0}.toPrecision({1})", value, p);
 		#else
 		if (Math.isNaN(value))
 			return "NaN";
 		if (!Math.isFinite(value))
 			return value > 0 ? "Infinity" : "-Infinity";
-		var p = digitsArgument(precision, 1, 1, 100, "toPrecision() argument");
+		var p = digitsArgument(precision, 0, 1, 100, "toPrecision() argument");
 		if (value == 0)
 			return p == 1 ? "0" : "0." + zeros(p - 1);
 		var sign = value < 0 ? "-" : "";
@@ -189,6 +191,8 @@ class Num {
 	/** JS `toExponential`; without `fractionDigits`, as many digits as needed to round-trip. */
 	public static function toExponential(value:Float, ?fractionDigits:Float):String {
 		#if js
+		if (!Math.isFinite(value))
+			return toString(value);
 		return fractionDigits == null ? js.Syntax.code("{0}.toExponential()", value) : js.Syntax.code("{0}.toExponential({1})", value,
 			digitsArgument(fractionDigits, 0, 0, 100, "toExponential() argument"));
 		#else
@@ -281,11 +285,17 @@ class Num {
 	}
 
 	static function digitsArgument(value:Null<Float>, fallback:Int, min:Int, max:Int, what:String):Int {
-		var v:Float = value == null || Math.isNaN(value) ? fallback : value;
-		v = v < 0 ? Math.fceil(v) : Math.ffloor(v);
+		var v:Float = value == null || Math.isNaN(value) ? fallback : toIntegerOrInfinity(value);
 		if (v < min || v > max)
 			throw new haxe.Exception("RangeError: " + what + " must be between " + min + " and " + max);
 		return Std.int(v);
+	}
+
+	/** JS `ToIntegerOrInfinity`: truncates toward zero, NaN reads as 0. */
+	static function toIntegerOrInfinity(value:Float):Float {
+		if (Math.isNaN(value))
+			return 0;
+		return value < 0 ? Math.fceil(value) : Math.ffloor(value);
 	}
 
 	static function digitValue(code:Int):Int {

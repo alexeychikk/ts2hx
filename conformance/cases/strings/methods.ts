@@ -89,3 +89,16 @@ for (const c of word) {
   count += c.charCodeAt(0);
 }
 console.log(count, [...word].join('|'), [...'ab', 'c', ...['d']]);
+const letters = ['x', 'y'];
+const amounts = [1, 2.5];
+const typesOf = (values: (string | number)[]) =>
+  values.map((v) => typeof v).join(',');
+const codePointsThenNumber: (string | number)[] = [...'hé', 1];
+const numberThenStrings: (string | number)[] = [1, ...letters];
+const numbersThenStrings: (string | number)[] = [...amounts, ...letters];
+console.log(codePointsThenNumber, numberThenStrings, numbersThenStrings);
+console.log(
+  typesOf(codePointsThenNumber),
+  typesOf(numberThenStrings),
+  typesOf(numbersThenStrings),
+);
