@@ -11,7 +11,8 @@ import {
   VOID,
 } from '../ir/builders';
 import type { HxAnonField, HxDecl, HxType, HxTypePath } from '../ir/types';
-import { escapeIdentifier, HAXE_STD_TYPES } from '../model/names';
+import { escapeIdentifier, HAXE_STD_TYPES, MAIN_CLASS } from '../model/names';
+import { libErrorClassPath } from '../stdlib/errors';
 import { ancestors, isHoistedClass } from './classes';
 
 const NULLISH = ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void;
@@ -48,21 +49,35 @@ export type ModulePathResolver = (
 type TypedefDeclaration = ts.InterfaceDeclaration | ts.TypeAliasDeclaration;
 
 /**
- * A Haxe type name for a TS interface or alias name: upper-case first, and suffixed `_`
- * when it would redefine a Haxe standard type or name its own module.
+ * A Haxe type name for a TS interface, alias, class, enum or namespace name: upper-case
+ * first, and suffixed `_` when it would redefine a Haxe standard type, name its own
+ * module or the generated `Main` (Haxe type names are unique per package), or shadow a
+ * `reserved` name (the modules of the empty package).
  */
-export function typedefName(name: string, moduleName: string): string {
+export function typedefName(
+  name: string,
+  moduleName: string,
+  reserved: ReadonlySet<string> = new Set(),
+): string {
   const escaped = escapeIdentifier(name);
   let capitalised = escaped[0].toUpperCase() + escaped.slice(1);
   if (HAXE_STD_TYPES.has(capitalised)) {
     capitalised = `${capitalised}_`;
   }
-  return capitalised === moduleName ? `${capitalised}_` : capitalised;
+  return capitalised === moduleName ||
+    capitalised === MAIN_CLASS ||
+    reserved.has(capitalised)
+    ? `${capitalised}_`
+    : capitalised;
 }
 
 /** The Haxe name of a project class: like a typedef, it must start upper-case. */
-export function className(name: string, moduleName: string): string {
-  return typedefName(name, moduleName);
+export function className(
+  name: string,
+  moduleName: string,
+  reserved: ReadonlySet<string> = new Set(),
+): string {
+  return typedefName(name, moduleName, reserved);
 }
 
 /** Maps checker types to Haxe types: the single place doing so (ADR 0001). */
@@ -79,6 +94,7 @@ export class TypeMapper {
     private readonly hoistedClassPath: (
       node: ts.ClassLikeDeclaration,
     ) => HxTypePath | undefined = () => undefined,
+    private readonly reservedTypeNames: ReadonlySet<string> = new Set(),
   ) {}
 
   /** Haxe type of a value of TS type `type`. */
@@ -166,7 +182,7 @@ export class TypeMapper {
     return {
       pack: module.pack,
       module: module.module,
-      name: typedefName(symbol.name, module.module),
+      name: typedefName(symbol.name, module.module, this.reservedTypeNames),
     };
   }
 
@@ -217,6 +233,10 @@ export class TypeMapper {
       const [element] = this.checker.getTypeArguments(type as ts.TypeReference);
       return arrayType(element ? this.map(element) : DYNAMIC);
     }
+    const error = this.errorInstanceType(type);
+    if (error) {
+      return error;
+    }
     const instance = this.classInstanceType(type);
     if (instance) {
       return instance;
@@ -239,7 +259,7 @@ export class TypeMapper {
 
   /**
    * Haxe path of the class a project class becomes: a named class declared at the
-   * top level of a project module, merged at most with interfaces.
+   * top level of a project module, merged at most with interfaces and namespaces.
    */
   classPath(symbol: ts.Symbol): HxTypePath | undefined {
     const declarations = symbol.declarations ?? [];
@@ -255,7 +275,10 @@ export class TypeMapper {
       !declaration?.name ||
       !ts.isSourceFile(declaration.parent) ||
       declarations.some(
-        (d) => d !== declaration && !ts.isInterfaceDeclaration(d),
+        (d) =>
+          d !== declaration &&
+          !ts.isInterfaceDeclaration(d) &&
+          !ts.isModuleDeclaration(d),
       )
     ) {
       return undefined;
@@ -267,7 +290,11 @@ export class TypeMapper {
     const path = {
       pack: module.pack,
       module: module.module,
-      name: className(declaration.name.text, module.module),
+      name: className(
+        declaration.name.text,
+        module.module,
+        this.reservedTypeNames,
+      ),
     };
     this.classDeclarations.set(pathKey(path), declaration);
     return path;
@@ -286,6 +313,16 @@ export class TypeMapper {
         return !!path && pathKey(path) === target;
       })
     );
+  }
+
+  /** `ts2hx.Error` (or a subclass) for an instance of a lib error class. */
+  private errorInstanceType(type: ts.Type): HxType | undefined {
+    const symbol = type.symbol;
+    const path =
+      symbol &&
+      symbol.flags & ts.SymbolFlags.Interface &&
+      libErrorClassPath(symbol);
+    return path ? { kind: 'path', path, params: [] } : undefined;
   }
 
   /** `pack.Module.C<T>` for an instance type of a project class. */

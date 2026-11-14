@@ -25,6 +25,7 @@ import type {
   HxAccess,
   HxAssignOp,
   HxBinop,
+  HxCatch,
   HxClassField,
   HxDecl,
   HxExpr,
@@ -44,6 +45,17 @@ import type {
 } from '../model/project-model';
 import { escapeIdentifier } from '../model/names';
 import {
+  bindingElements,
+  isAmbient,
+  namespaceStatements,
+} from '../model/project-model';
+import {
+  enumAbstract,
+  enumMembers,
+  enumObjectEntries,
+  reverseMappingName,
+} from './enums';
+import {
   type BoundReceiver,
   CALL_BINDINGS,
   PROPERTY_BINDINGS,
@@ -51,6 +63,11 @@ import {
   VALUE_BINDINGS,
 } from '../stdlib/bindings';
 import { arrayConstructor, setArrayLength } from '../stdlib/array-bindings';
+import {
+  ERROR_FIELD_NAMES,
+  ERROR_PROPERTIES,
+  libErrorClassPath,
+} from '../stdlib/errors';
 import { stringCodePoints, stringIndex } from '../stdlib/string-bindings';
 import {
   accessorPair,
@@ -59,6 +76,7 @@ import {
   overridesAccessor,
   privateMemberName,
   extendsClause,
+  extendsLibError,
   type FieldDeclaration,
   hasModifier,
   isFieldDeclaration,
@@ -286,6 +304,45 @@ function isValueUsed(node: ts.Expression): boolean {
   );
 }
 
+/** Whether `key` is a project property (`undefined`) or a lib property Haxe can assign. */
+function isWritableLibProperty(key: string | undefined): boolean {
+  return key === undefined || ERROR_PROPERTIES.has(key);
+}
+
+/** A declaration binding one name: a variable or an element of a destructuring pattern. */
+type Binding = ts.VariableDeclaration | ts.BindingElement;
+
+/** The declaration a binding element belongs to: the variable, parameter or catch binding holding its pattern. */
+function rootDeclaration(node: Binding): ts.Node {
+  let current: ts.Node = node;
+  while (
+    ts.isBindingElement(current) ||
+    ts.isObjectBindingPattern(current) ||
+    ts.isArrayBindingPattern(current)
+  ) {
+    current = current.parent;
+  }
+  return current;
+}
+
+function isVarBinding(node: Binding): boolean {
+  const root = rootDeclaration(node);
+  return (
+    ts.isVariableDeclaration(root) &&
+    ts.isVariableDeclarationList(root.parent) &&
+    isVarDeclarationList(root.parent)
+  );
+}
+
+function intConst(value: number, pos?: SourcePos): HxExpr {
+  return { kind: 'const', value, int: true, type: INT, pos };
+}
+
+function unwrapParens(node: ts.Expression): ts.Expression {
+  while (ts.isParenthesizedExpression(node)) node = node.expression;
+  return node;
+}
+
 function isVarDeclarationList(list: ts.VariableDeclarationList): boolean {
   return (list.flags & ts.NodeFlags.BlockScoped) === 0;
 }
@@ -455,6 +512,10 @@ export class ModuleFrontend {
   private readonly hoistedDecls: HxDecl[] = [];
   /** The local an object literal is bound to while its methods read `this`. */
   private readonly objectSelves = new Map<ts.ObjectLiteralExpression, HxExpr>();
+  /** Links of the optional chain being converted, read as plain accesses. */
+  private readonly chainMembers = new Set<ts.Node>();
+  /** The guarded value of each `?.` being converted, already checked for null. */
+  private readonly chainValues = new Map<ts.Node, HxExpr>();
   private readonly captureCache = new Map<
     ts.ClassLikeDeclaration,
     Capture[] | undefined
@@ -480,6 +541,7 @@ export class ModuleFrontend {
           ? { pack: module.path.pack, module: module.path.module, name }
           : undefined;
       },
+      model.reservedLocalNames,
     );
   }
 
@@ -489,7 +551,12 @@ export class ModuleFrontend {
       this.sourceFile.statements,
       true,
     )) {
-      if (boundClassExpression(declaration)) continue;
+      if (
+        ts.isVariableDeclaration(declaration) &&
+        boundClassExpression(declaration)
+      ) {
+        continue;
+      }
       const symbol = this.checker.getSymbolAtLocation(declaration.name)!;
       this.hoisted.add(symbol);
       decls.push({
@@ -514,6 +581,10 @@ export class ModuleFrontend {
         init.push(...converted.init);
       } else if (ts.isExportAssignment(statement)) {
         init.push(...this.exportAssignment(statement, decls));
+      } else if (ts.isEnumDeclaration(statement)) {
+        init.push(...this.enumDeclaration(statement, decls));
+      } else if (ts.isModuleDeclaration(statement)) {
+        init.push(...this.namespaceDeclaration(statement, decls));
       } else {
         init.push(...this.statement(statement));
       }
@@ -566,11 +637,30 @@ export class ModuleFrontend {
   }
 
   /** Haxe name of a variable: its module field name at the top level (ProjectModel). */
-  private bindingName(declaration: ts.VariableDeclaration): string {
+  private bindingName(declaration: Binding): string {
     return (
       this.info.fields.get(declaration) ??
+      this.info.statics.get(declaration)?.name ??
       this.localName((declaration.name as ts.Identifier).text)
     );
+  }
+
+  /** What assigning a hoisted binding writes: a namespace static, or the module field or local. */
+  private bindingTarget(declaration: Binding, type: HxType): HxExpr {
+    const member = this.info.statics.get(declaration);
+    return member
+      ? {
+          kind: 'staticField',
+          owner: this.ownType(member.owner),
+          name: member.name,
+          type,
+        }
+      : localExpr(this.bindingName(declaration), type);
+  }
+
+  /** The path of a type this module declares. */
+  private ownType(name: string): HxTypePath {
+    return { pack: this.info.path.pack, module: this.info.path.module, name };
   }
 
   private freshName(hint: string): string {
@@ -615,14 +705,12 @@ export class ModuleFrontend {
   }
 
   /** Haxe type of a declared binding; a hoisted `var` may be read before it is assigned. */
-  private declaredType(declaration: ts.VariableDeclaration): HxType {
+  private declaredType(declaration: Binding): HxType {
     const symbol = this.checker.getSymbolAtLocation(declaration.name);
     const type = symbol
       ? this.types.map(this.checker.getTypeOfSymbol(symbol))
       : DYNAMIC;
-    return isVarDeclarationList(
-      declaration.parent as ts.VariableDeclarationList,
-    ) ||
+    return isVarBinding(declaration) ||
       (symbol && this.hoistedLexicals.has(symbol))
       ? nullable(type)
       : type;
@@ -737,8 +825,8 @@ export class ModuleFrontend {
   private varDeclarations(
     statements: readonly ts.Statement[],
     moduleLevel: boolean,
-  ): ts.VariableDeclaration[] {
-    const result: ts.VariableDeclaration[] = [];
+  ): Binding[] {
+    const result: Binding[] = [];
     const visit = (node: ts.Node, topLevel: boolean): void => {
       if (isFunctionLike(node)) {
         return;
@@ -746,7 +834,9 @@ export class ModuleFrontend {
       if (ts.isVariableDeclarationList(node)) {
         if (isVarDeclarationList(node) || (moduleLevel && topLevel)) {
           result.push(
-            ...node.declarations.filter((d) => ts.isIdentifier(d.name)),
+            ...node.declarations.flatMap((d): Binding[] =>
+              ts.isIdentifier(d.name) ? [d] : bindingElements(d.name),
+            ),
           );
         }
       }
@@ -1105,7 +1195,70 @@ export class ModuleFrontend {
     if (ts.isSwitchStatement(node)) {
       return this.switchStatement(node);
     }
+    if (ts.isThrowStatement(node)) {
+      return [{ kind: 'throw', value: this.expression(node.expression) }];
+    }
+    if (ts.isTryStatement(node)) {
+      return this.tryStatement(node);
+    }
+    if (
+      (ts.isEnumDeclaration(node) || ts.isModuleDeclaration(node)) &&
+      isAmbient(node)
+    ) {
+      return [];
+    }
     return this.unsupportedStmt(node);
+  }
+
+  /** `try`/`catch` maps to Haxe's; a `finally` is left to the `lowerFinally` pass. */
+  private tryStatement(node: ts.TryStatement): HxStmt[] {
+    const body = this.block(node.tryBlock.statements);
+    const handler = node.catchClause && this.catchClause(node.catchClause);
+    if (!node.finallyBlock) {
+      return [{ kind: 'try', body, catches: handler ? [handler] : [] }];
+    }
+    return [
+      {
+        kind: 'tryFinally',
+        body,
+        catch: handler,
+        finally: this.block(node.finallyBlock.statements),
+      },
+    ];
+  }
+
+  /**
+   * A `catch` of any value: Haxe catches it as `Dynamic`, and the binding gets the
+   * JS value of it (`ts2hx.Error.caught` maps native runtime errors).
+   */
+  private catchClause(clause: ts.CatchClause): HxCatch {
+    const name = this.freshName('caught');
+    const declaration = clause.variableDeclaration;
+    const caught = staticCall(
+      RUNTIME.error,
+      'caught',
+      [localExpr(name, DYNAMIC)],
+      DYNAMIC,
+      this.pos(clause),
+    );
+    const binding: HxStmt[] = !declaration
+      ? []
+      : ts.isIdentifier(declaration.name)
+        ? [
+            {
+              kind: 'var',
+              name: this.bindingName(declaration),
+              final: false,
+              type: this.declaredType(declaration),
+              init: caught,
+            },
+          ]
+        : this.bindPattern(declaration.name, caught, false);
+    return {
+      name,
+      type: DYNAMIC,
+      body: [...binding, ...this.block(clause.block.statements)],
+    };
   }
 
   /** A `switch` whose clauses are tested with `===` against its subject, read once. */
@@ -1181,10 +1334,13 @@ export class ModuleFrontend {
     const isConst = (list.flags & ts.NodeFlags.Const) !== 0;
     return list.declarations.flatMap((declaration): HxStmt[] => {
       if (!ts.isIdentifier(declaration.name)) {
-        return this.unsupportedStmt(
-          declaration,
-          'destructuring declarations are not supported yet',
-        );
+        return declaration.initializer
+          ? this.bindPattern(
+              declaration.name,
+              this.expression(declaration.initializer),
+              isConst,
+            )
+          : this.unsupportedStmt(declaration);
       }
       const classExpression = boundClassExpression(declaration);
       if (classExpression) {
@@ -1204,7 +1360,7 @@ export class ModuleFrontend {
                 expr: {
                   kind: 'assign',
                   op: '=',
-                  target: localExpr(name, type),
+                  target: this.bindingTarget(declaration, type),
                   value: init,
                   type,
                 },
@@ -1241,6 +1397,468 @@ export class ModuleFrontend {
         },
       ];
     });
+  }
+
+  // -------------------------------------------------------- destructuring
+
+  /**
+   * `value` read once: a temporary unless it is a local, a constant or `this`.
+   * Unlike `once`, a literal is stored too, since a pattern may assign what it reads.
+   */
+  private stored(
+    value: HxExpr,
+    hint: string,
+    type: HxType = value.type,
+  ): { ref: HxExpr; stmts: HxStmt[] } {
+    if (
+      (value.kind === 'local' ||
+        value.kind === 'const' ||
+        value.kind === 'this') &&
+      sameType(type, value.type)
+    ) {
+      return { ref: value, stmts: [] };
+    }
+    const name = this.freshName(hint);
+    return {
+      ref: localExpr(name, type, value.pos),
+      stmts: [{ kind: 'var', name, final: true, type, init: value }],
+    };
+  }
+
+  /** The TS type of property `key` of `type`, nullable parts aside. */
+  private propertyTsType(type: ts.Type, key: string): ts.Type | undefined {
+    const property = this.checker.getPropertyOfType(
+      this.checker.getNonNullableType(type),
+      key,
+    );
+    return property && this.checker.getTypeOfSymbol(property);
+  }
+
+  /** The TS type of element `index` of an array or tuple type. */
+  private elementTsType(type: ts.Type, index: number): ts.Type | undefined {
+    const source = this.checker.getNonNullableType(type);
+    if (this.checker.isTupleType(source)) {
+      return this.checker.getTypeArguments(source as ts.TypeReference)[index];
+    }
+    return this.checker.getIndexTypeOfType(source, ts.IndexKind.Number);
+  }
+
+  /** `source.key` as a pattern reads it: a dictionary lookup or a field typed from the checker. */
+  private readProperty(
+    source: HxExpr,
+    sourceType: ts.Type,
+    key: string,
+    pos: SourcePos,
+  ): HxExpr {
+    if (dictValue(source.type)) {
+      return this.dictGet(source, constExpr(key, pos), pos);
+    }
+    const propertyType = this.propertyTsType(sourceType, key);
+    const target =
+      source.type.kind === 'null' ? source.type.inner : source.type;
+    return {
+      kind: 'field',
+      target: source,
+      name: escapeIdentifier(key),
+      type:
+        target.kind === 'dynamic' || !propertyType
+          ? DYNAMIC
+          : this.types.map(propertyType),
+      pos,
+    };
+  }
+
+  /**
+   * `source[index]` as a pattern reads it. With a default, an index past the end
+   * reads `null`, which a static target's typed array would not give.
+   */
+  private readIndex(
+    source: HxExpr,
+    sourceType: ts.Type,
+    index: number,
+    hasDefault: boolean,
+    pos: SourcePos,
+  ): HxExpr | undefined {
+    const target =
+      source.type.kind === 'null' ? source.type.inner : source.type;
+    if (!isArray(target) && target.kind !== 'dynamic') {
+      return undefined;
+    }
+    const element = isArray(target) ? target.params[0] : DYNAMIC;
+    const elementType = this.elementTsType(sourceType, index);
+    const wanted = elementType ? this.types.map(elementType) : element;
+    const read: HxExpr = {
+      kind: 'index',
+      target: source,
+      index: intConst(index, pos),
+      type: element,
+      pos,
+    };
+    const value =
+      element.kind === 'dynamic' && wanted.kind !== 'dynamic'
+        ? this.coerce(read, wanted)
+        : read;
+    if (!hasDefault) {
+      return value;
+    }
+    const type = nullable(value.type);
+    return {
+      kind: 'ternary',
+      cond: {
+        kind: 'binop',
+        op: '<',
+        left: intConst(index, pos),
+        right: { kind: 'field', target: source, name: 'length', type: INT },
+        type: BOOL,
+        pos,
+      },
+      then: this.coerce(value, type),
+      else: constExpr(null, pos),
+      type,
+      pos,
+    };
+  }
+
+  /** `source.slice(index)`: the rest of an array pattern, typed as `restType`. */
+  private readRest(
+    source: HxExpr,
+    index: number,
+    restType: ts.Type,
+    pos: SourcePos,
+  ): HxExpr | undefined {
+    const target =
+      source.type.kind === 'null' ? source.type.inner : source.type;
+    if (!isArray(target) && target.kind !== 'dynamic') {
+      return undefined;
+    }
+    const rest: HxExpr = {
+      kind: 'call',
+      callee: { kind: 'field', target: source, name: 'slice', type: DYNAMIC },
+      args: [intConst(index, pos)],
+      type: target,
+      pos,
+    };
+    const type = this.types.map(restType);
+    return sameType(type, target)
+      ? rest
+      : { kind: 'cast', expr: rest, checked: false, type, pos };
+  }
+
+  /** The rest of an object pattern: a fresh structure with the fields of `restType`, read from `source`. */
+  private readObjectRest(
+    source: HxExpr,
+    sourceType: ts.Type,
+    restType: ts.Type,
+    pos: SourcePos,
+  ): HxExpr | undefined {
+    if (dictValue(source.type)) {
+      return undefined;
+    }
+    return {
+      kind: 'objectLit',
+      fields: this.checker
+        .getPropertiesOfType(this.checker.getNonNullableType(restType))
+        .map((property) => ({
+          name: escapeIdentifier(property.name),
+          value: this.readProperty(source, sourceType, property.name, pos),
+        })),
+      type: this.types.map(restType),
+      pos,
+    };
+  }
+
+  /** `value`, or the default `initializer` when it is `null`/`undefined` (ADR 0002 merges them). */
+  private withDefault(
+    value: HxExpr,
+    initializer: ts.Expression | undefined,
+    type: HxType,
+  ): HxExpr {
+    if (!initializer) {
+      return value;
+    }
+    const { ref, stmts } = this.stored(value, 'default', nullable(value.type));
+    return this.withStmts(stmts, {
+      kind: 'ternary',
+      cond: {
+        kind: 'binop',
+        op: '==',
+        left: ref,
+        right: constExpr(null),
+        type: BOOL,
+      },
+      then: this.branch(this.expression(initializer), type),
+      else: this.branch(ref, type),
+      type,
+      pos: value.pos,
+    });
+  }
+
+  /** A property name of a pattern as a JS key, or `undefined` when it is computed. */
+  private patternKey(name: ts.PropertyName): string | undefined {
+    if (
+      ts.isIdentifier(name) ||
+      ts.isStringLiteral(name) ||
+      ts.isNoSubstitutionTemplateLiteral(name)
+    ) {
+      return name.text;
+    }
+    return ts.isNumericLiteral(name) ? String(Number(name.text)) : undefined;
+  }
+
+  /** Declares (or assigns, when hoisted) the names of a binding pattern from the parts of `value`. */
+  private bindPattern(
+    pattern: ts.BindingPattern,
+    value: HxExpr,
+    isConst: boolean,
+  ): HxStmt[] {
+    const sourceType = this.typeOf(pattern);
+    const { ref, stmts } = this.stored(value, 'pattern');
+    pattern.elements.forEach((element, index) => {
+      if (ts.isOmittedExpression(element)) {
+        return;
+      }
+      const pos = this.pos(element);
+      let read: HxExpr | undefined;
+      if (ts.isArrayBindingPattern(pattern)) {
+        read = element.dotDotDotToken
+          ? this.readRest(ref, index, this.typeOf(element.name), pos)
+          : this.readIndex(ref, sourceType, index, !!element.initializer, pos);
+      } else if (element.dotDotDotToken) {
+        read = this.readObjectRest(
+          ref,
+          sourceType,
+          this.typeOf(element.name),
+          pos,
+        );
+      } else {
+        const key = this.patternKey(
+          element.propertyName ?? (element.name as ts.Identifier),
+        );
+        read =
+          key === undefined
+            ? undefined
+            : this.readProperty(ref, sourceType, key, pos);
+      }
+      if (!read) {
+        stmts.push(...this.unsupportedStmt(element));
+        return;
+      }
+      if (ts.isIdentifier(element.name)) {
+        const type = this.declaredType(element);
+        stmts.push(
+          ...this.bindName(
+            element,
+            this.withDefault(read, element.initializer, type),
+            isConst,
+          ),
+        );
+        return;
+      }
+      const type = this.types.map(this.typeOf(element.name));
+      stmts.push(
+        ...this.bindPattern(
+          element.name,
+          this.withDefault(read, element.initializer, type),
+          isConst,
+        ),
+      );
+    });
+    return stmts;
+  }
+
+  /** `var name = value`, or `name = value` for a binding declared up front (`var`, module level). */
+  private bindName(
+    element: Binding,
+    value: HxExpr,
+    isConst: boolean,
+  ): HxStmt[] {
+    const symbol = this.checker.getSymbolAtLocation(element.name);
+    const name = this.bindingName(element);
+    const type = this.declaredType(element);
+    const init = this.coerce(value, type);
+    if (symbol && this.hoisted.has(symbol)) {
+      return [
+        {
+          kind: 'expr',
+          expr: {
+            kind: 'assign',
+            op: '=',
+            target: this.bindingTarget(element, type),
+            value: init,
+            type,
+          },
+        },
+      ];
+    }
+    return [{ kind: 'var', name, final: isConst, type, init }];
+  }
+
+  /** `[a, b] = v` / `({ a, b } = v)`: assigns each target in turn; the expression's value is `v`. */
+  private destructuringAssign(
+    pattern: ts.ArrayLiteralExpression | ts.ObjectLiteralExpression,
+    value: HxExpr,
+    sourceType: ts.Type,
+    pos: SourcePos,
+  ): HxExpr {
+    const { ref, stmts } = this.assignPattern(pattern, value, sourceType);
+    return { kind: 'blockExpr', stmts, result: ref, type: ref.type, pos };
+  }
+
+  private assignPattern(
+    pattern: ts.ArrayLiteralExpression | ts.ObjectLiteralExpression,
+    value: HxExpr,
+    sourceType: ts.Type,
+  ): { ref: HxExpr; stmts: HxStmt[] } {
+    const { ref, stmts } = this.stored(value, 'pattern');
+    const assignTo = (
+      target: ts.Expression,
+      read: HxExpr | undefined,
+      readType: ts.Type | undefined,
+      initializer?: ts.Expression,
+    ): void => {
+      target = unwrapParens(target);
+      if (!read) {
+        stmts.push(...this.unsupportedStmt(target));
+        return;
+      }
+      if (
+        ts.isArrayLiteralExpression(target) ||
+        ts.isObjectLiteralExpression(target)
+      ) {
+        const nested = this.typeOf(target);
+        const value = this.withDefault(
+          read,
+          initializer,
+          this.types.map(readType ?? nested),
+        );
+        stmts.push(
+          ...this.assignPattern(
+            target,
+            value,
+            this.checker.getNonNullableType(readType ?? nested),
+          ).stmts,
+        );
+        return;
+      }
+      stmts.push({
+        kind: 'expr',
+        expr: this.assignValue(target, (type) =>
+          this.withDefault(read, initializer, type),
+        ),
+      });
+    };
+    if (ts.isArrayLiteralExpression(pattern)) {
+      pattern.elements.forEach((element, index) => {
+        const pos = this.pos(element);
+        if (ts.isOmittedExpression(element)) {
+          return;
+        }
+        if (ts.isSpreadElement(element)) {
+          assignTo(
+            element.expression,
+            this.readRest(ref, index, this.typeOf(element.expression), pos),
+            sourceType,
+          );
+          return;
+        }
+        const withDefault =
+          ts.isBinaryExpression(element) &&
+          element.operatorToken.kind === ts.SyntaxKind.EqualsToken;
+        assignTo(
+          withDefault ? element.left : element,
+          this.readIndex(ref, sourceType, index, withDefault, pos),
+          this.elementTsType(sourceType, index),
+          withDefault ? element.right : undefined,
+        );
+      });
+      return { ref, stmts };
+    }
+    for (const property of pattern.properties) {
+      const pos = this.pos(property);
+      if (ts.isSpreadAssignment(property)) {
+        assignTo(
+          property.expression,
+          this.readObjectRest(
+            ref,
+            sourceType,
+            this.typeOf(property.expression),
+            pos,
+          ),
+          undefined,
+        );
+        continue;
+      }
+      const key = property.name && this.patternKey(property.name);
+      const read =
+        key === undefined
+          ? undefined
+          : this.readProperty(ref, sourceType, key, pos);
+      const readType =
+        key === undefined ? undefined : this.propertyTsType(sourceType, key);
+      if (ts.isShorthandPropertyAssignment(property)) {
+        assignTo(
+          property.name,
+          read,
+          readType,
+          property.objectAssignmentInitializer,
+        );
+      } else if (ts.isPropertyAssignment(property)) {
+        const initializer = property.initializer;
+        const withDefault =
+          ts.isBinaryExpression(initializer) &&
+          initializer.operatorToken.kind === ts.SyntaxKind.EqualsToken;
+        assignTo(
+          withDefault ? initializer.left : initializer,
+          read,
+          readType,
+          withDefault ? initializer.right : undefined,
+        );
+      } else {
+        stmts.push(...this.unsupportedStmt(property));
+      }
+    }
+    return { ref, stmts };
+  }
+
+  /** `target = value` for a destructuring target: a binding, a field, an element or a dictionary entry. */
+  private assignValue(
+    target: ts.Expression,
+    value: (type: HxType) => HxExpr,
+  ): HxExpr {
+    const pos = this.pos(target);
+    let node = target;
+    while (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) {
+      node = node.expression;
+    }
+    if (
+      (ts.isPropertyAccessExpression(node) ||
+        ts.isElementAccessExpression(node)) &&
+      !(ts.isPropertyAccessExpression(node) && this.libKey(node.name)) &&
+      this.isDict(node.expression)
+    ) {
+      const dict = this.expression(node.expression);
+      const key = ts.isPropertyAccessExpression(node)
+        ? constExpr(node.name.text, pos)
+        : this.propertyKey(node.argumentExpression);
+      return this.dictSet(
+        dict,
+        key,
+        value(dictValue(dict.type) ?? DYNAMIC),
+        pos,
+      );
+    }
+    const lvalue = this.lvalue(target);
+    if (!lvalue) {
+      return this.unsupported(target);
+    }
+    return {
+      kind: 'assign',
+      op: '=',
+      target: lvalue,
+      value: this.coerce(value(lvalue.type), lvalue.type),
+      type: lvalue.type,
+      pos,
+    };
   }
 
   /** Whether `node` reads `symbol`, optionally only from inside a nested function. */
@@ -1316,11 +1934,16 @@ export class ModuleFrontend {
       (!this.checker.isArrayType(iterated) &&
         !this.checker.isTupleType(iterated) &&
         !overString) ||
-      !ts.isVariableDeclarationList(initializer) ||
-      initializer.declarations.length !== 1 ||
-      !ts.isIdentifier(initializer.declarations[0].name)
+      (ts.isVariableDeclarationList(initializer) &&
+        initializer.declarations.length !== 1)
     ) {
       return this.unsupportedStmt(node);
+    }
+    if (
+      !ts.isVariableDeclarationList(initializer) ||
+      !ts.isIdentifier(initializer.declarations[0].name)
+    ) {
+      return this.forOfPattern(node, initializer, overString);
     }
     const declaration = initializer.declarations[0];
     const symbol = this.checker.getSymbolAtLocation(declaration.name)!;
@@ -1353,6 +1976,50 @@ export class ModuleFrontend {
           init: localExpr(element, type),
         };
     return [{ kind: 'forIn', name: element, iterable, body: [bind, ...body] }];
+  }
+
+  /** `for (const [k, v] of xs)` / `for ([a, b] of xs)`: each element bound at the top of the body. */
+  private forOfPattern(
+    node: ts.ForOfStatement,
+    initializer: ts.ForInitializer,
+    overString: boolean,
+  ): HxStmt[] {
+    const source = this.expression(node.expression);
+    const iterable = overString ? stringCodePoints(source) : source;
+    const element = localExpr(
+      this.freshName('item'),
+      overString ? STRING : arrayElement(source.type),
+    );
+    let bind: HxStmt[];
+    if (ts.isVariableDeclarationList(initializer)) {
+      bind = this.bindPattern(
+        initializer.declarations[0].name as ts.BindingPattern,
+        element,
+        (initializer.flags & ts.NodeFlags.Const) !== 0,
+      );
+    } else {
+      const target = unwrapParens(initializer);
+      const elementType = overString
+        ? this.checker.getStringType()
+        : this.checker.getIndexTypeOfType(
+            this.checker.getNonNullableType(this.typeOf(node.expression)),
+            ts.IndexKind.Number,
+          );
+      bind =
+        (ts.isArrayLiteralExpression(target) ||
+          ts.isObjectLiteralExpression(target)) &&
+        elementType
+          ? this.assignPattern(target, element, elementType).stmts
+          : [{ kind: 'expr', expr: this.assignValue(target, () => element) }];
+    }
+    return [
+      {
+        kind: 'forIn',
+        name: (element as { name: string }).name,
+        iterable,
+        body: [...bind, ...this.body(node.statement)],
+      },
+    ];
   }
 
   /** `for (const k in dict)`: the dictionary's keys in JS order. */
@@ -1408,6 +2075,104 @@ export class ModuleFrontend {
     } finally {
       this.classContexts.pop();
     }
+  }
+
+  /**
+   * An enum's `enum abstract` (ADR 0005), declared with its first declaration. A
+   * computed member is reported where it stands and left out.
+   */
+  private enumDeclaration(node: ts.EnumDeclaration, decls: HxDecl[]): HxStmt[] {
+    const name = this.info.types.get(node);
+    if (name === undefined) {
+      return isAmbient(node)
+        ? []
+        : this.unsupportedStmt(node, 'this enum merge is not supported');
+    }
+    const symbol = this.checker.getSymbolAtLocation(node.name)!;
+    if (symbol.declarations?.find(ts.isEnumDeclaration) !== node) {
+      return [];
+    }
+    const members = enumMembers(symbol, this.checker);
+    decls.push(enumAbstract(name, members, this.info.statics));
+    return members
+      .filter((m) => m.value === undefined)
+      .flatMap((m) =>
+        this.unsupportedStmt(
+          m.member,
+          'computed enum members are not supported',
+        ),
+      );
+  }
+
+  /**
+   * A namespace (ADR 0005): its values and functions become statics of a class (the
+   * class it merges with, or one of its own); its statements run where it stands.
+   */
+  private namespaceDeclaration(
+    node: ts.ModuleDeclaration,
+    decls: HxDecl[],
+  ): HxStmt[] {
+    const owner = this.info.types.get(node);
+    if (owner === undefined) {
+      return isAmbient(node)
+        ? []
+        : this.unsupportedStmt(node, 'this namespace merge is not supported');
+    }
+    const fields: HxClassField[] = [];
+    const init: HxStmt[] = [];
+    for (const statement of namespaceStatements(node)) {
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of this.varDeclarations([statement], true)) {
+          const member = this.info.statics.get(declaration);
+          if (!member) continue;
+          this.hoisted.add(this.checker.getSymbolAtLocation(declaration.name)!);
+          fields.push({
+            kind: 'var',
+            name: member.name,
+            access: 'public',
+            isStatic: true,
+            final: false,
+            type: this.declaredType(declaration),
+          });
+        }
+        init.push(...this.statement(statement));
+      } else if (ts.isFunctionDeclaration(statement)) {
+        const member = this.info.statics.get(statement);
+        if (!member) continue;
+        fields.push({
+          kind: 'method',
+          name: member.name,
+          access: 'public',
+          isStatic: true,
+          isOverride: false,
+          isAbstract: false,
+          fn: this.function(statement),
+        });
+      } else if (ts.isModuleDeclaration(statement)) {
+        init.push(...this.namespaceDeclaration(statement, decls));
+      } else if (ts.isEnumDeclaration(statement)) {
+        init.push(...this.enumDeclaration(statement, decls));
+      } else {
+        init.push(...this.statement(statement));
+      }
+    }
+    const existing = decls.find(
+      (d): d is Extract<HxDecl, { kind: 'class' }> =>
+        d.kind === 'class' && d.name === owner,
+    );
+    if (existing) {
+      existing.fields.push(...fields);
+    } else {
+      decls.push({
+        kind: 'class',
+        name: owner,
+        typeParams: [],
+        isAbstract: false,
+        fields,
+        meta: [],
+      });
+    }
+    return init;
   }
 
   /**
@@ -1778,7 +2543,9 @@ export class ModuleFrontend {
   ): HxClassField[] {
     if (
       rootField(this.checker, field) !== field ||
-      inheritsStructuralMember(this.model.program, owningClass(field), name)
+      inheritsStructuralMember(this.model.program, owningClass(field), name) ||
+      (ERROR_FIELD_NAMES.has(name) &&
+        extendsLibError(this.checker, owningClass(field)))
     ) {
       return [];
     }
@@ -1937,7 +2704,20 @@ export class ModuleFrontend {
   /** The Haxe class a class reference (identifier, `ns.C`, import alias) names. */
   private classOf(node: ts.Expression): HxTypePath | undefined {
     const symbol = this.classSymbolOf(node);
-    return symbol && this.types.classPath(symbol);
+    return symbol ? this.types.classPath(symbol) : this.errorClassOf(node);
+  }
+
+  /** The `ts2hx.Error` class a reference to a lib error constructor (`RangeError`) names. */
+  private errorClassOf(node: ts.Expression): HxTypePath | undefined {
+    if (!ts.isIdentifier(node)) {
+      return undefined;
+    }
+    const symbol = this.checker.getSymbolAtLocation(node);
+    const resolved =
+      symbol && symbol.flags & ts.SymbolFlags.Alias
+        ? this.checker.getAliasedSymbol(symbol)
+        : symbol;
+    return resolved && libErrorClassPath(resolved);
   }
 
   /** The class symbol a class reference names, a `const` bound to a class expression included. */
@@ -2250,13 +3030,7 @@ export class ModuleFrontend {
     const prologue: HxStmt[] = [];
     const params: HxParam[] = node.parameters.map((parameter) => {
       if (!ts.isIdentifier(parameter.name)) {
-        prologue.push(
-          ...this.unsupportedStmt(
-            parameter,
-            'destructuring parameters are not supported yet',
-          ),
-        );
-        return { name: this.freshName('param'), type: DYNAMIC, optional: true };
+        return this.patternParameter(parameter, parameter.name, prologue);
       }
       const name = this.localName(parameter.name.text);
       const declared = this.typeOf(parameter);
@@ -2290,31 +3064,7 @@ export class ModuleFrontend {
         ? nullable(this.types.map(declared))
         : this.types.map(declared);
       if (parameter.initializer) {
-        prologue.push({
-          kind: 'if',
-          cond: {
-            kind: 'binop',
-            op: '==',
-            left: localExpr(name, type),
-            right: constExpr(null),
-            type: BOOL,
-          },
-          then: [
-            {
-              kind: 'expr',
-              expr: {
-                kind: 'assign',
-                op: '=',
-                target: localExpr(name, type),
-                value: this.coerce(
-                  this.expression(parameter.initializer),
-                  type,
-                ),
-                type,
-              },
-            },
-          ],
-        });
+        prologue.push(this.parameterDefault(name, type, parameter.initializer));
       }
       return { name, type, optional };
     });
@@ -2334,6 +3084,61 @@ export class ModuleFrontend {
     } finally {
       this.returnTypes.pop();
     }
+  }
+
+  /** `if (p == null) p = <default>;` */
+  private parameterDefault(
+    name: string,
+    type: HxType,
+    initializer: ts.Expression,
+  ): HxStmt {
+    return {
+      kind: 'if',
+      cond: {
+        kind: 'binop',
+        op: '==',
+        left: localExpr(name, type),
+        right: constExpr(null),
+        type: BOOL,
+      },
+      then: [
+        {
+          kind: 'expr',
+          expr: {
+            kind: 'assign',
+            op: '=',
+            target: localExpr(name, type),
+            value: this.coerce(this.expression(initializer), type),
+            type,
+          },
+        },
+      ],
+    };
+  }
+
+  /** A destructured parameter: a fresh parameter whose parts the prologue binds. */
+  private patternParameter(
+    parameter: ts.ParameterDeclaration,
+    pattern: ts.BindingPattern,
+    prologue: HxStmt[],
+  ): HxParam {
+    const name = this.freshName('param');
+    const declared = this.types.map(this.typeOf(parameter));
+    if (parameter.dotDotDotToken) {
+      prologue.push(...this.unsupportedStmt(parameter));
+      return { name, type: DYNAMIC, optional: true };
+    }
+    const optional =
+      parameter.questionToken !== undefined ||
+      parameter.initializer !== undefined;
+    const type = optional ? nullable(declared) : declared;
+    if (parameter.initializer) {
+      prologue.push(this.parameterDefault(name, type, parameter.initializer));
+    }
+    prologue.push(
+      ...this.bindPattern(pattern, localExpr(name, declared), false),
+    );
+    return { name, type, optional };
   }
 
   private functionBody(node: FunctionNode, ret: HxType): HxStmt[] {
@@ -2600,6 +3405,13 @@ export class ModuleFrontend {
     if (ts.isParenthesizedExpression(node)) {
       return this.expression(node.expression);
     }
+    const chained = this.chainValues.get(node);
+    if (chained) {
+      return chained;
+    }
+    if (ts.isOptionalChain(node) && !this.chainMembers.has(node)) {
+      return this.optionalChain(node, pos);
+    }
     if (ts.isNumericLiteral(node)) {
       return constExpr(Number(node.text), pos);
     }
@@ -2792,7 +3604,17 @@ export class ModuleFrontend {
       );
     }
     if (
+      ts.isEnumDeclaration(declaration) ||
+      ts.isModuleDeclaration(declaration)
+    ) {
+      return this.unsupported(
+        node,
+        'an enum or namespace object used as a value is not supported',
+      );
+    }
+    if (
       !ts.isVariableDeclaration(declaration) &&
+      !ts.isBindingElement(declaration) &&
       !ts.isParameter(declaration) &&
       !ts.isFunctionDeclaration(declaration)
     ) {
@@ -2800,7 +3622,7 @@ export class ModuleFrontend {
     }
     return localExpr(
       this.localName(symbol.name),
-      ts.isVariableDeclaration(declaration)
+      ts.isVariableDeclaration(declaration) || ts.isBindingElement(declaration)
         ? this.declaredType(declaration)
         : ts.isParameter(declaration)
           ? this.parameterType(declaration)
@@ -2824,15 +3646,185 @@ export class ModuleFrontend {
         'a module namespace object used as a value is not supported yet',
       );
     }
+    if (value.kind === 'static') {
+      return this.staticValue(node, value, pos);
+    }
     const { declaration, module, name } = value;
-    const type = ts.isVariableDeclaration(declaration)
-      ? this.declaredType(declaration)
-      : ts.isExportAssignment(declaration)
-        ? this.hxTypeOf(declaration.expression)
-        : this.hxTypeOf(declaration);
+    const type =
+      ts.isVariableDeclaration(declaration) || ts.isBindingElement(declaration)
+        ? this.declaredType(declaration)
+        : ts.isExportAssignment(declaration)
+          ? this.hxTypeOf(declaration.expression)
+          : this.hxTypeOf(declaration);
     return module === this.info
       ? localExpr(name, type, pos)
       : { kind: 'moduleField', module: module.path, name, type, pos };
+  }
+
+  /** A member of an enum (cast to its value type) or a namespace static. */
+  private staticValue(
+    node: ts.Expression,
+    value: Extract<ModuleValue, { kind: 'static' }>,
+    pos: SourcePos,
+  ): HxExpr {
+    const { declaration, module, owner, name } = value;
+    const path = {
+      pack: module.path.pack,
+      module: module.path.module,
+      name: owner,
+    };
+    if (ts.isEnumMember(declaration)) {
+      const constant = this.checker.getConstantValue(declaration);
+      if (constant === undefined) {
+        return this.unsupported(
+          node,
+          'computed enum members are not supported',
+        );
+      }
+      const type = typeof constant === 'string' ? STRING : FLOAT;
+      return {
+        kind: 'cast',
+        expr: { kind: 'staticField', owner: path, name, type, pos },
+        checked: false,
+        type,
+        pos,
+      };
+    }
+    const type =
+      ts.isVariableDeclaration(declaration) || ts.isBindingElement(declaration)
+        ? this.declaredType(declaration)
+        : this.hxTypeOf(declaration);
+    return { kind: 'staticField', owner: path, name, type, pos };
+  }
+
+  /** The enum an expression names, with the Haxe path of its `enum abstract`. */
+  private enumObject(
+    node: ts.Expression,
+  ): { symbol: ts.Symbol; path: HxTypePath } | undefined {
+    const target = ts.isPropertyAccessExpression(node) ? node.name : node;
+    if (!ts.isIdentifier(target)) return undefined;
+    let symbol = this.checker.getSymbolAtLocation(target);
+    if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
+      symbol = this.checker.getAliasedSymbol(symbol);
+    }
+    if (!symbol || !(symbol.flags & ts.SymbolFlags.Enum)) return undefined;
+    const declaration = symbol.declarations?.find(ts.isEnumDeclaration);
+    const module =
+      declaration && this.model.moduleOf(declaration.getSourceFile());
+    const name = declaration && module?.types.get(declaration);
+    return module && name !== undefined
+      ? {
+          symbol,
+          path: { pack: module.path.pack, module: module.path.module, name },
+        }
+      : undefined;
+  }
+
+  /** `E[x]`: a member by literal name, or the reverse mapping of a numeric value. */
+  private enumElement(
+    node: ts.ElementAccessExpression,
+    pos: SourcePos,
+  ): HxExpr | undefined {
+    const object = this.enumObject(node.expression);
+    if (!object) return undefined;
+    const argument = node.argumentExpression;
+    if (
+      ts.isStringLiteral(argument) ||
+      ts.isNoSubstitutionTemplateLiteral(argument)
+    ) {
+      const member = this.checker
+        .getExportsOfModule(object.symbol)
+        .find((m) => m.name === argument.text);
+      const value = member && this.model.resolveValue(member);
+      return value?.kind === 'static'
+        ? this.staticValue(node, value, pos)
+        : this.unsupported(node);
+    }
+    if (!this.isNumberLike(argument)) {
+      return this.unsupported(
+        node,
+        'reading an enum member by a computed name is not supported',
+      );
+    }
+    const members = enumMembers(object.symbol, this.checker);
+    const statics = this.model.moduleOf(
+      members[0]?.member.getSourceFile() ?? this.sourceFile,
+    )?.statics;
+    const name = reverseMappingName(
+      members.flatMap((m) => statics?.get(m.member)?.name ?? []),
+    );
+    return staticCall(
+      object.path,
+      name,
+      [this.coerce(this.expression(argument), FLOAT)],
+      STRING,
+      pos,
+    );
+  }
+
+  /** `Object.keys`/`values`/`entries` of an enum object: its properties, known statically. */
+  private enumObjectCall(
+    node: ts.CallExpression,
+    pos: SourcePos,
+  ): HxExpr | undefined {
+    const callee = node.expression;
+    const [argument] = node.arguments;
+    if (
+      !ts.isPropertyAccessExpression(callee) ||
+      node.arguments.length !== 1 ||
+      ts.isSpreadElement(argument)
+    ) {
+      return undefined;
+    }
+    const key = this.libKey(callee.name);
+    const kind =
+      key === 'ObjectConstructor.keys'
+        ? 'keys'
+        : key === 'ObjectConstructor.values'
+          ? 'values'
+          : key === 'ObjectConstructor.entries'
+            ? 'entries'
+            : undefined;
+    const object = kind && this.enumObject(argument);
+    if (!kind || !object) return undefined;
+    const members = enumMembers(object.symbol, this.checker);
+    if (members.some((m) => m.value === undefined)) {
+      return this.unsupported(node, 'computed enum members are not supported');
+    }
+    const entries = enumObjectEntries(members);
+    const element = (value: string | number, type: HxType): HxExpr => {
+      const constant = constExpr(value, pos);
+      return type.kind === 'dynamic'
+        ? { kind: 'cast', expr: constant, checked: false, type, pos }
+        : constant;
+    };
+    const arrayOf = (elements: HxExpr[], type: HxType): HxExpr => ({
+      kind: 'arrayLit',
+      elements,
+      type: arrayType(type),
+      pos,
+    });
+    if (kind === 'keys') {
+      return arrayOf(
+        entries.map(([k]) => constExpr(k, pos)),
+        STRING,
+      );
+    }
+    const kinds = new Set(entries.map(([, v]) => typeof v));
+    const values =
+      kinds.size !== 1 ? DYNAMIC : kinds.has('string') ? STRING : FLOAT;
+    if (kind === 'values') {
+      return arrayOf(
+        entries.map(([, v]) => element(v, values)),
+        values,
+      );
+    }
+    return arrayOf(
+      entries.map(([k, v]) =>
+        arrayOf([element(k, DYNAMIC), element(v, DYNAMIC)], DYNAMIC),
+      ),
+      arrayType(DYNAMIC),
+    );
   }
 
   /** The project module an `import * as ns` (or re-exported namespace) expression names. */
@@ -2857,6 +3849,11 @@ export class ModuleFrontend {
     node: ts.PropertyAccessExpression,
     pos: SourcePos,
   ): HxExpr {
+    const memberSymbol = this.checker.getSymbolAtLocation(node.name);
+    const staticMember = memberSymbol && this.model.resolveValue(memberSymbol);
+    if (staticMember?.kind === 'static') {
+      return this.staticValue(node, staticMember, pos);
+    }
     if (this.isNamespace(node.expression)) {
       const symbol = this.checker.getSymbolAtLocation(node.name);
       const value = symbol && this.model.resolveValue(symbol);
@@ -2872,7 +3869,7 @@ export class ModuleFrontend {
       }
       return VALUE_BINDINGS.get(key)?.(pos) ?? this.unsupported(node);
     }
-    if (node.questionDotToken) {
+    if (node.questionDotToken && !this.chainValues.has(node.expression)) {
       return this.unsupported(node);
     }
     const member = this.staticMember(node, pos);
@@ -3012,8 +4009,12 @@ export class ModuleFrontend {
     pos: SourcePos,
     assigned = false,
   ): HxExpr {
-    if (node.questionDotToken) {
+    if (node.questionDotToken && !this.chainValues.has(node.expression)) {
       return this.unsupported(node);
+    }
+    const enumElement = !assigned && this.enumElement(node, pos);
+    if (enumElement) {
+      return enumElement;
     }
     const target = this.expression(node.expression);
     if (dictValue(target.type)) {
@@ -3096,11 +4097,13 @@ export class ModuleFrontend {
     }
     if (ts.isIdentifier(node)) {
       const target = this.identifier(node, this.pos(node));
-      return target.kind === 'local' ? target : undefined;
+      return target.kind === 'local' || target.kind === 'staticField'
+        ? target
+        : undefined;
     }
     if (
       ts.isPropertyAccessExpression(node) &&
-      this.libKey(node.name) === undefined
+      isWritableLibProperty(this.libKey(node.name))
     ) {
       const target = this.propertyAccess(node, this.pos(node));
       return target.kind === 'field' || target.kind === 'staticField'
@@ -3288,6 +4291,10 @@ export class ModuleFrontend {
         return this.logical(node, kind, pos);
       case ts.SyntaxKind.QuestionQuestionToken:
         return this.nullish(node, pos);
+      case ts.SyntaxKind.QuestionQuestionEqualsToken:
+      case ts.SyntaxKind.BarBarEqualsToken:
+      case ts.SyntaxKind.AmpersandAmpersandEqualsToken:
+        return this.logicalAssign(node, kind, pos);
       case ts.SyntaxKind.EqualsEqualsEqualsToken:
       case ts.SyntaxKind.ExclamationEqualsEqualsToken:
         return this.strictEquality(
@@ -3424,6 +4431,18 @@ export class ModuleFrontend {
   }
 
   private assign(node: ts.BinaryExpression, pos: SourcePos): HxExpr {
+    const left = unwrapParens(node.left);
+    if (
+      ts.isArrayLiteralExpression(left) ||
+      ts.isObjectLiteralExpression(left)
+    ) {
+      return this.destructuringAssign(
+        left,
+        this.expression(node.right),
+        this.typeOf(node.right),
+        pos,
+      );
+    }
     const dict = this.dictAssign(node, pos);
     if (dict) {
       return dict;
@@ -3622,6 +4641,190 @@ export class ModuleFrontend {
       type,
       pos,
     });
+  }
+
+  /** `a ??= b`, `a ||= b`, `a &&= b`: the target is read once and written only when the operator says so. */
+  private logicalAssign(
+    node: ts.BinaryExpression,
+    kind: ts.SyntaxKind,
+    pos: SourcePos,
+  ): HxExpr {
+    const access = this.logicalTarget(node.left, pos);
+    if (!access) {
+      return this.unsupported(node);
+    }
+    const { read, write, stmts } = access;
+    const written = write(this.expression(node.right));
+    const type = read.type;
+    let cond: HxExpr;
+    if (kind === ts.SyntaxKind.QuestionQuestionEqualsToken) {
+      if (!isNullable(type) && type.kind !== 'dynamic') {
+        return this.withStmts(stmts, read);
+      }
+      cond = {
+        kind: 'binop',
+        op: '!=',
+        left: read,
+        right: constExpr(null),
+        type: BOOL,
+        pos,
+      };
+    } else {
+      cond = this.truthy(read, this.typeOf(node.left));
+    }
+    const keepsWhenTruthy =
+      kind !== ts.SyntaxKind.AmpersandAmpersandEqualsToken;
+    const kept = this.branch(read, type);
+    const assigned = this.branch(written, type);
+    return this.withStmts(stmts, {
+      kind: 'ternary',
+      cond,
+      then: keepsWhenTruthy ? kept : assigned,
+      else: keepsWhenTruthy ? assigned : kept,
+      type,
+      pos,
+    });
+  }
+
+  /** The target of a logical assignment, its object and key evaluated once. */
+  private logicalTarget(
+    node: ts.Expression,
+    pos: SourcePos,
+  ):
+    | { read: HxExpr; write: (value: HxExpr) => HxExpr; stmts: HxStmt[] }
+    | undefined {
+    const left = unwrapParens(node);
+    const access =
+      ts.isPropertyAccessExpression(left) || ts.isElementAccessExpression(left)
+        ? left
+        : undefined;
+    if (
+      access &&
+      !(
+        ts.isPropertyAccessExpression(access) &&
+        this.libKey(access.name) !== undefined
+      ) &&
+      this.isDict(access.expression)
+    ) {
+      const dict = this.once(this.expression(access.expression));
+      const key = this.once(
+        ts.isPropertyAccessExpression(access)
+          ? constExpr(access.name.text, pos)
+          : this.propertyKey(access.argumentExpression),
+      );
+      return {
+        read: this.dictGet(dict.ref, key.ref, pos),
+        write: (value) => this.dictSet(dict.ref, key.ref, value, pos),
+        stmts: [...dict.stmts, ...key.stmts],
+      };
+    }
+    const target = this.lvalue(node);
+    if (!target) {
+      return undefined;
+    }
+    const assign =
+      (to: HxExpr) =>
+      (value: HxExpr): HxExpr => ({
+        kind: 'assign',
+        op: '=',
+        target: to,
+        value: this.coerce(value, to.type),
+        type: to.type,
+        pos,
+      });
+    if (target.kind === 'field') {
+      const object = this.once(target.target);
+      const ref: HxExpr = { ...target, target: object.ref };
+      return { read: ref, write: assign(ref), stmts: object.stmts };
+    }
+    if (target.kind === 'index') {
+      const object = this.once(target.target);
+      const index = this.once(target.index);
+      const ref: HxExpr = { ...target, target: object.ref, index: index.ref };
+      return {
+        read: ref,
+        write: assign(ref),
+        stmts: [...object.stmts, ...index.stmts],
+      };
+    }
+    return { read: target, write: assign(target), stmts: [] };
+  }
+
+  /**
+   * `a?.b.c`, `a?.[i]`, `f?.()`: the value before the nearest `?.` is read once and the
+   * rest of the chain runs only when it is not null (a short-circuited chain is `null`).
+   */
+  private optionalChain(node: ts.OptionalChain, pos: SourcePos): HxExpr {
+    const members: ts.Node[] = [node];
+    let link: ts.Expression = node;
+    while (
+      !(link as { questionDotToken?: ts.QuestionDotToken }).questionDotToken
+    ) {
+      link = (link as ts.OptionalChain).expression;
+      if (!ts.isOptionalChain(link)) {
+        return this.unsupported(node);
+      }
+      members.push(link);
+    }
+    const guarded = (link as ts.OptionalChain).expression;
+    const value = this.expression(guarded);
+    const checked = isNullable(value.type) || value.type.kind === 'dynamic';
+    const { ref, stmts } = checked
+      ? this.stored(value, 'chain')
+      : { ref: value, stmts: [] as HxStmt[] };
+    const nonNull: HxExpr =
+      ref.type.kind === 'null' ? { ...ref, type: ref.type.inner } : ref;
+    members.forEach((m) => this.chainMembers.add(m));
+    this.chainValues.set(guarded, nonNull);
+    let inner: HxExpr;
+    try {
+      inner = this.effect(node);
+    } finally {
+      members.forEach((m) => this.chainMembers.delete(m));
+      this.chainValues.delete(guarded);
+    }
+    if (!checked) {
+      return this.withStmts(stmts, inner);
+    }
+    const isNull: HxExpr = {
+      kind: 'binop',
+      op: '==',
+      left: ref,
+      right: constExpr(null),
+      type: BOOL,
+      pos,
+    };
+    if (sameType(inner.type, VOID)) {
+      return {
+        kind: 'blockExpr',
+        stmts: [
+          ...stmts,
+          {
+            kind: 'if',
+            cond: this.not(isNull, pos),
+            then: [{ kind: 'expr', expr: inner }],
+          },
+        ],
+        result: constExpr(null, pos),
+        type: DYNAMIC,
+        pos,
+      };
+    }
+    const mapped = this.hxTypeOf(node);
+    const type = mapped.kind === 'dynamic' ? mapped : nullable(mapped);
+    const result: HxExpr = {
+      kind: 'ternary',
+      cond: isNull,
+      then: constExpr(null, pos),
+      else: this.branch(inner, type),
+      type,
+      pos,
+    };
+    if (type.kind !== 'null') {
+      return this.withStmts(stmts, result);
+    }
+    const typed = this.stored(result, 'chained');
+    return this.withStmts([...stmts, ...typed.stmts], typed.ref);
   }
 
   private nullish(node: ts.BinaryExpression, pos: SourcePos): HxExpr {
@@ -3909,7 +5112,13 @@ export class ModuleFrontend {
       contextual &&
       this.types.dictValueType(this.checker.getNonNullableType(contextual));
     if (dictValueType) {
-      return this.dictLiteral(node, this.types.map(dictValueType), pos);
+      const value = this.types.map(dictValueType);
+      return node.properties.some(ts.isSpreadAssignment)
+        ? this.spreadDictLiteral(node, value, pos)
+        : this.dictLiteral(node, value, pos);
+    }
+    if (node.properties.some(ts.isSpreadAssignment)) {
+      return this.spreadObjectLiteral(node, pos);
     }
     const type = this.hxTypeOf(node);
     const self = node.properties.some(
@@ -3978,6 +5187,198 @@ export class ModuleFrontend {
     };
   }
 
+  /** The properties a spread of a value of `type` copies: own data properties, not class methods or accessors. */
+  private spreadProperties(type: ts.Type): ts.Symbol[] {
+    return this.checker
+      .getPropertiesOfType(this.checker.getNonNullableType(type))
+      .filter(
+        (property) =>
+          !property.name.startsWith('#') &&
+          !(property.declarations ?? []).some(
+            (d) =>
+              ts.isClassLike(d.parent) &&
+              (ts.isMethodDeclaration(d) || ts.isAccessor(d)),
+          ),
+      );
+  }
+
+  /** A spread source, read once; `undefined` for a nullable source, which needs a run-time check. */
+  private spreadSource(
+    property: ts.SpreadAssignment,
+    stmts: HxStmt[],
+  ): { ref: HxExpr; type: ts.Type } | undefined {
+    const type = this.typeOf(property.expression);
+    if (constituents(type).some((t) => t.flags & NULLISH_FLAGS)) {
+      return undefined;
+    }
+    const stored = this.stored(this.expression(property.expression), 'spread');
+    stmts.push(...stored.stmts);
+    return { ref: stored.ref, type };
+  }
+
+  /** A property of an object literal other than a spread: its name and its converted value. */
+  private literalProperty(
+    property: ts.ObjectLiteralElementLike,
+  ): { name: string; value: HxExpr } | undefined {
+    const name = property.name && this.patternKey(property.name);
+    if (name === undefined) {
+      return undefined;
+    }
+    if (ts.isPropertyAssignment(property)) {
+      return { name, value: this.expression(property.initializer) };
+    }
+    if (
+      ts.isShorthandPropertyAssignment(property) &&
+      !property.objectAssignmentInitializer
+    ) {
+      return { name, value: this.expression(property.name) };
+    }
+    if (ts.isMethodDeclaration(property) && !property.asteriskToken) {
+      return { name, value: this.functionExpr(property, this.pos(property)) };
+    }
+    return undefined;
+  }
+
+  /**
+   * `{ a, ...o, b }` with the static key order (ADR 0005): a spread copies the data
+   * properties of its source's type, and a later key replaces an earlier one in place.
+   * Values are evaluated in source order through temporaries. An absent optional
+   * property keeps the earlier value (`undefined` and `null` are merged, ADR 0002).
+   */
+  private spreadObjectLiteral(
+    node: ts.ObjectLiteralExpression,
+    pos: SourcePos,
+  ): HxExpr {
+    const stmts: HxStmt[] = [];
+    const fields = new Map<string, HxExpr>();
+    for (const property of node.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        const source = this.spreadSource(property, stmts);
+        if (!source || dictValue(source.ref.type)) {
+          return this.unsupported(node);
+        }
+        for (const spread of this.spreadProperties(source.type)) {
+          const name = escapeIdentifier(spread.name);
+          const read = this.readProperty(
+            source.ref,
+            source.type,
+            spread.name,
+            pos,
+          );
+          const earlier = fields.get(name);
+          fields.set(
+            name,
+            earlier && spread.flags & ts.SymbolFlags.Optional
+              ? {
+                  kind: 'ternary',
+                  cond: {
+                    kind: 'binop',
+                    op: '==',
+                    left: read,
+                    right: constExpr(null),
+                    type: BOOL,
+                  },
+                  then: this.coerce(earlier, read.type),
+                  else: read,
+                  type: read.type,
+                  pos,
+                }
+              : read,
+          );
+        }
+        continue;
+      }
+      const converted = this.literalProperty(property);
+      if (!converted) {
+        return this.unsupported(node);
+      }
+      const { ref, stmts: temps } = this.once(converted.value);
+      stmts.push(...temps);
+      fields.set(escapeIdentifier(converted.name), ref);
+    }
+    return this.withStmts(stmts, {
+      kind: 'objectLit',
+      fields: [...fields].map(([name, value]) => ({ name, value })),
+      type: this.hxTypeOf(node),
+      pos,
+    });
+  }
+
+  /** A dictionary literal with spreads: a fresh `Dict` filled in source order. */
+  private spreadDictLiteral(
+    node: ts.ObjectLiteralExpression,
+    value: HxType,
+    pos: SourcePos,
+  ): HxExpr {
+    const type = dictType(value);
+    const dictName = this.freshName('dict');
+    const dict = localExpr(dictName, type, pos);
+    const stmts: HxStmt[] = [
+      {
+        kind: 'var',
+        name: dictName,
+        final: true,
+        type,
+        init: {
+          kind: 'new',
+          path: RUNTIME.dict,
+          typeArgs: [value],
+          args: [],
+          type,
+          pos,
+        },
+      },
+    ];
+    const set = (key: HxExpr, entry: HxExpr): HxStmt => ({
+      kind: 'expr',
+      expr: this.dictSet(dict, key, entry, pos),
+    });
+    for (const property of node.properties) {
+      if (!ts.isSpreadAssignment(property)) {
+        const converted = this.literalProperty(property);
+        if (!converted) {
+          return this.unsupported(node);
+        }
+        stmts.push(set(constExpr(converted.name, pos), converted.value));
+        continue;
+      }
+      const source = this.spreadSource(property, stmts);
+      if (!source) {
+        return this.unsupported(node);
+      }
+      if (dictValue(source.ref.type)) {
+        const keyName = this.freshName('key');
+        const key = localExpr(keyName, STRING, pos);
+        stmts.push({
+          kind: 'forIn',
+          name: keyName,
+          iterable: {
+            kind: 'call',
+            callee: {
+              kind: 'field',
+              target: source.ref,
+              name: 'keys',
+              type: DYNAMIC,
+            },
+            args: [],
+            type: arrayType(STRING),
+          },
+          body: [set(key, this.dictGet(source.ref, key, pos))],
+        });
+        continue;
+      }
+      for (const spread of this.spreadProperties(source.type)) {
+        stmts.push(
+          set(
+            constExpr(spread.name, pos),
+            this.readProperty(source.ref, source.type, spread.name, pos),
+          ),
+        );
+      }
+    }
+    return { kind: 'blockExpr', stmts, result: dict, type, pos };
+  }
+
   /** An object literal typed as a dictionary: `Dict.of(keys, values)` in source order. */
   private dictLiteral(
     node: ts.ObjectLiteralExpression,
@@ -4040,6 +5441,10 @@ export class ModuleFrontend {
   }
 
   private call(node: ts.CallExpression, pos: SourcePos): HxExpr {
+    const enumCall = this.enumObjectCall(node, pos);
+    if (enumCall) {
+      return enumCall;
+    }
     const callee = node.expression;
     const spreadIndex = node.arguments.findIndex(ts.isSpreadElement);
     const spreadLast =
@@ -4075,10 +5480,12 @@ export class ModuleFrontend {
       });
       return bound ?? this.unsupported(node);
     }
-    if (ts.isPropertyAccessExpression(callee) && callee.questionDotToken) {
-      return this.unsupported(node);
-    }
-    if (node.questionDotToken) {
+    const unguarded = node.questionDotToken
+      ? !this.chainValues.has(callee)
+      : ts.isPropertyAccessExpression(callee) &&
+        !!callee.questionDotToken &&
+        !this.chainValues.has(callee.expression);
+    if (unguarded) {
       return this.unsupported(node);
     }
     if (spreadLast && !this.spreadsIntoRest(node, spreadIndex)) {

@@ -23,6 +23,7 @@ import {
   ITERATOR_CALL_BINDINGS,
   ITERATOR_PROPERTY_BINDINGS,
 } from './array-bindings';
+import { ERROR_CALL_BINDINGS, ERROR_PROPERTY_BINDINGS } from './errors';
 import { NUMBER_CALL_BINDINGS, NUMBER_VALUE_BINDINGS } from './number-bindings';
 import { STRING_CALL_BINDINGS } from './string-bindings';
 
@@ -118,6 +119,7 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
   ...STRING_CALL_BINDINGS,
   ...ARRAY_CALL_BINDINGS,
   ...ITERATOR_CALL_BINDINGS,
+  ...ERROR_CALL_BINDINGS,
   ['ObjectConstructor.keys', dictEnumeration('keys', () => arrayType(STRING))],
   ['ObjectConstructor.values', dictEnumeration('values', arrayType)],
   [
@@ -173,6 +175,7 @@ export const PROPERTY_BINDINGS: ReadonlyMap<string, PropertyBinding> = new Map([
   ['ReadonlyArray.length', lengthField],
   ['String.length', lengthField],
   ...ITERATOR_PROPERTY_BINDINGS,
+  ...ERROR_PROPERTY_BINDINGS,
 ]);
 
 /** Lib values read as plain identifiers or properties (`NaN`, `Infinity`). */

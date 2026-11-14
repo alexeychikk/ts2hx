@@ -248,10 +248,15 @@ export type HxDecl =
     }
   | { kind: 'typedef'; name: string; typeParams: HxTypeParam[]; type: HxType }
   | {
+      /** `enum abstract name(T) from T to T`: values convert freely to and from `T`. */
       kind: 'enumAbstract';
       name: string;
       underlying: HxType;
       members: Array<{ name: string; value: HxExpr }>;
+      /** Static helpers after the members (the reverse mapping `name()`). */
+      fields?: HxClassField[];
+      /** A degraded mapping, printed as a `TODO(ts2hx)` comment above the declaration. */
+      todo?: string;
     }
   | {
       kind: 'moduleVar';

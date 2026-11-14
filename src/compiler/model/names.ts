@@ -89,6 +89,9 @@ export const HAXE_STD_TYPES: ReadonlySet<string> = new Set([
   'Xml',
 ]);
 
+/** Name of the generated entry class in the root package. */
+export const MAIN_CLASS = 'Main';
+
 /** Root packages owned by Haxe or the runtime; a project directory of that name is renamed. */
 export const RESERVED_ROOT_PACKAGES: ReadonlySet<string> = new Set([
   'cpp',

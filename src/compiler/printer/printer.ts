@@ -308,7 +308,9 @@ class Printer {
   /** Prints `expr`, parenthesised unless it binds at least as tight as `maxLevel`. */
   private sub(expr: HxExpr, maxLevel: number): string {
     const text = this.expr(expr);
-    return precedenceOf(expr) > maxLevel ? `(${text})` : text;
+    const blockOperand =
+      expr.kind === 'blockExpr' && maxLevel < PRECEDENCE_TERNARY;
+    return blockOperand || precedenceOf(expr) > maxLevel ? `(${text})` : text;
   }
 
   /** Target of a field access, call or index: must be a primary expression. */
@@ -472,8 +474,16 @@ class Printer {
         const members = decl.members.map(
           (m) => `${this.indent()}var ${m.name} = ${this.expr(m.value)};`,
         );
+        const fields = (decl.fields ?? []).map((f) => this.classField(f));
         this.depth--;
-        return `enum abstract ${decl.name}(${printType(decl.underlying)}) {\n${members.join('\n')}\n}`;
+        const underlying = printType(decl.underlying);
+        const todo = decl.todo
+          ? `// TODO(ts2hx): ${commentText(decl.todo)}\n`
+          : '';
+        const body = [members.join('\n'), ...fields]
+          .filter((part) => part !== '')
+          .join('\n\n');
+        return `${todo}enum abstract ${decl.name}(${underlying}) from ${underlying} to ${underlying} {\n${body}\n}`;
       }
       case 'moduleVar': {
         const init = decl.init ? ` = ${this.expr(decl.init)}` : '';

@@ -12,14 +12,14 @@ import {
 import {
   escapeIdentifier,
   isValidRootPackage,
+  MAIN_CLASS,
   moduleName,
   packageSegment,
   RESERVED_ROOT_PACKAGES,
   ROOT_PACKAGE_RULE,
 } from './names';
 
-/** Name of the generated entry class in the root package. */
-export const MAIN_CLASS = 'Main';
+export { MAIN_CLASS };
 
 export interface ModuleInfo {
   sourceFile: ts.SourceFile;
@@ -32,12 +32,32 @@ export interface ModuleInfo {
   fields: Map<ts.Node, string>;
   /** Haxe names of the class expressions and local classes the module declares at its top level. */
   hoistedClasses: Map<ts.ClassLikeDeclaration, string>;
+  /**
+   * Haxe names of the module's enums and namespaces, by declaration: nested ones are
+   * `Outer_Inner`, and a namespace merged with a class takes the class's name.
+   */
+  types: Map<ts.Node, string>;
+  /** Static fields of those enums and namespaces, by member declaration. */
+  statics: Map<ts.Node, StaticMember>;
+}
+
+/** A static field of a generated class (`owner`, declared in the module) or enum abstract. */
+export interface StaticMember {
+  owner: string;
+  name: string;
 }
 
 /** What a value reference resolves to through import and export aliases. */
 export type ModuleValue =
   | { kind: 'field'; module: ModuleInfo; name: string; declaration: ts.Node }
-  | { kind: 'namespace'; module: ModuleInfo };
+  | { kind: 'namespace'; module: ModuleInfo }
+  | {
+      kind: 'static';
+      module: ModuleInfo;
+      owner: string;
+      name: string;
+      declaration: ts.Node;
+    };
 
 export interface ProjectModel {
   program: ts.Program;
@@ -152,6 +172,19 @@ function exportsImmutableBinding(
   );
 }
 
+/** The elements of a destructuring pattern that bind a name, nested ones included, in source order. */
+export function bindingElements(
+  pattern: ts.BindingPattern,
+): ts.BindingElement[] {
+  return pattern.elements.flatMap((element) =>
+    ts.isOmittedExpression(element)
+      ? []
+      : ts.isIdentifier(element.name)
+        ? [element]
+        : bindingElements(element.name),
+  );
+}
+
 /** Module-level value declarations of a file with their TS names, in source order. */
 function fieldDeclarations(
   sf: ts.SourceFile,
@@ -161,10 +194,11 @@ function fieldDeclarations(
   for (const statement of sf.statements) {
     if (ts.isVariableStatement(statement)) {
       for (const declaration of statement.declarationList.declarations) {
-        if (
-          ts.isIdentifier(declaration.name) &&
-          !boundClassExpression(declaration)
-        ) {
+        if (!ts.isIdentifier(declaration.name)) {
+          for (const element of bindingElements(declaration.name)) {
+            result.push([element, (element.name as ts.Identifier).text]);
+          }
+        } else if (!boundClassExpression(declaration)) {
           result.push([declaration, declaration.name.text]);
         }
       }
@@ -192,17 +226,12 @@ export function assignFieldNames(
   checker: ts.TypeChecker,
   reserved: ReadonlySet<string> = new Set(),
 ): Map<ts.Node, string> {
-  const taken = new Set([...reserved, MODULE_INIT, modulePath.module]);
-  for (const statement of sf.statements) {
-    if (
-      ts.isInterfaceDeclaration(statement) ||
-      ts.isTypeAliasDeclaration(statement)
-    ) {
-      taken.add(typedefName(statement.name.text, modulePath.module));
-    } else if (ts.isClassDeclaration(statement) && statement.name) {
-      taken.add(className(statement.name.text, modulePath.module));
-    }
-  }
+  const taken = new Set([
+    ...reserved,
+    MODULE_INIT,
+    modulePath.module,
+    ...declaredTypeNames(sf, modulePath, reserved),
+  ]);
   const names = new Map<ts.Node, string>();
   for (const [declaration, tsName] of fieldDeclarations(sf, checker)) {
     const base = escapeIdentifier(tsName);
@@ -225,22 +254,21 @@ export function assignHoistedClassNames(
   sf: ts.SourceFile,
   modulePath: HxTypePath,
   fields: ReadonlyMap<ts.Node, string>,
+  reserved: ReadonlySet<string> = new Set(),
 ): Map<ts.ClassLikeDeclaration, string> {
-  const taken = new Set([modulePath.module, ...fields.values()]);
-  for (const statement of sf.statements) {
-    if (
-      ts.isInterfaceDeclaration(statement) ||
-      ts.isTypeAliasDeclaration(statement)
-    ) {
-      taken.add(typedefName(statement.name.text, modulePath.module));
-    } else if (ts.isClassDeclaration(statement) && statement.name) {
-      taken.add(className(statement.name.text, modulePath.module));
-    }
-  }
+  const taken = new Set([
+    modulePath.module,
+    ...fields.values(),
+    ...declaredTypeNames(sf, modulePath, reserved),
+  ]);
   const names = new Map<ts.ClassLikeDeclaration, string>();
   const visit = (node: ts.Node): void => {
     if (isHoistedClass(node)) {
-      const base = className(hoistedClassName(node), modulePath.module);
+      const base = className(
+        hoistedClassName(node),
+        modulePath.module,
+        reserved,
+      );
       let name = base;
       for (let n = 2; taken.has(name); n++) {
         name = `${base}_${n}`;
@@ -252,6 +280,185 @@ export function assignHoistedClassNames(
   };
   visit(sf);
   return names;
+}
+
+/** Haxe names of the types a module declares at its top level, enums and namespaces included. */
+function declaredTypeNames(
+  sf: ts.SourceFile,
+  modulePath: HxTypePath,
+  reserved: ReadonlySet<string>,
+): string[] {
+  const names: string[] = [];
+  for (const statement of sf.statements) {
+    if (
+      ts.isInterfaceDeclaration(statement) ||
+      ts.isTypeAliasDeclaration(statement) ||
+      (ts.isClassDeclaration(statement) && statement.name) ||
+      ts.isEnumDeclaration(statement) ||
+      (ts.isModuleDeclaration(statement) && ts.isIdentifier(statement.name))
+    ) {
+      names.push(
+        typedefName(statement.name!.text, modulePath.module, reserved),
+      );
+    }
+  }
+  return names;
+}
+
+/** Whether a declaration is ambient: `declare`d itself or inside a `declare`d namespace. */
+export function isAmbient(node: ts.Node): boolean {
+  for (let n: ts.Node | undefined = node; n; n = n.parent) {
+    if (ts.isSourceFile(n)) return n.isDeclarationFile;
+    if (
+      ts.canHaveModifiers(n) &&
+      ts.getModifiers(n)?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** The statements of a namespace body; `namespace A.B {}` nests B directly in A. */
+export function namespaceStatements(
+  declaration: ts.ModuleDeclaration,
+): readonly ts.Statement[] {
+  const body = declaration.body;
+  if (!body) return [];
+  return ts.isModuleBlock(body)
+    ? body.statements
+    : ts.isModuleDeclaration(body)
+      ? [body]
+      : [];
+}
+
+/**
+ * Whether a namespace declaration becomes (part of) a Haxe class: a non-ambient,
+ * instantiated namespace merged at most with namespaces and one class.
+ */
+function isConvertedNamespace(
+  declaration: ts.ModuleDeclaration,
+  symbol: ts.Symbol | undefined,
+): symbol is ts.Symbol {
+  return (
+    !!symbol &&
+    ts.isIdentifier(declaration.name) &&
+    !isAmbient(declaration) &&
+    (symbol.flags & ts.SymbolFlags.ValueModule) !== 0 &&
+    (symbol.declarations ?? []).every(
+      (d) =>
+        (ts.isModuleDeclaration(d) && !isAmbient(d)) ||
+        (ts.isClassDeclaration(d) && ts.isSourceFile(d.parent)),
+    )
+  );
+}
+
+/** The name of an enum member as a JS property key. */
+export function enumMemberKey(member: ts.EnumMember): string | undefined {
+  const name = member.name;
+  return ts.isIdentifier(name) ||
+    ts.isStringLiteral(name) ||
+    ts.isNoSubstitutionTemplateLiteral(name) ||
+    ts.isNumericLiteral(name)
+    ? name.text
+    : undefined;
+}
+
+/**
+ * Haxe names of a module's enums and namespaces (ADR 0005) and of their static
+ * members. Nested namespaces and enums are named `Outer_Inner`; a namespace merged
+ * with a class adds its members to the class. Statics never take a `reserved` name.
+ */
+export function assignTypeNames(
+  sf: ts.SourceFile,
+  modulePath: HxTypePath,
+  checker: ts.TypeChecker,
+  reserved: ReadonlySet<string> = new Set(),
+): { types: Map<ts.Node, string>; statics: Map<ts.Node, StaticMember> } {
+  const types = new Map<ts.Node, string>();
+  const statics = new Map<ts.Node, StaticMember>();
+  const bySymbol = new Map<ts.Symbol, string>();
+  const takenStatics = new Map<string, Set<string>>();
+  const addStatic = (owner: string, node: ts.Node, tsName: string): void => {
+    let taken = takenStatics.get(owner);
+    if (!taken) {
+      taken = new Set();
+      takenStatics.set(owner, taken);
+    }
+    let base = escapeIdentifier(tsName);
+    if (reserved.has(base)) base = `${base}_`;
+    let name = base;
+    for (let n = 2; taken.has(name); n++) {
+      name = `${base}_${n}`;
+    }
+    taken.add(name);
+    statics.set(node, { owner, name });
+  };
+  const typeName = (symbol: ts.Symbol, tsName: string, outer?: string) => {
+    let name = bySymbol.get(symbol);
+    if (name === undefined) {
+      name = typedefName(
+        outer === undefined ? tsName : `${outer}_${tsName}`,
+        modulePath.module,
+        reserved,
+      );
+      bySymbol.set(symbol, name);
+    }
+    return name;
+  };
+  const visitStatements = (
+    statements: readonly ts.Statement[],
+    outer?: string,
+  ): void => {
+    for (const statement of statements) {
+      if (ts.isEnumDeclaration(statement) && !isAmbient(statement)) {
+        const symbol = checker.getSymbolAtLocation(statement.name);
+        if (
+          !symbol ||
+          !(symbol.declarations ?? []).every(ts.isEnumDeclaration)
+        ) {
+          continue;
+        }
+        const name = typeName(symbol, statement.name.text, outer);
+        types.set(statement, name);
+        for (const member of statement.members) {
+          const key = enumMemberKey(member);
+          if (key !== undefined) addStatic(name, member, key);
+        }
+      } else if (ts.isModuleDeclaration(statement)) {
+        const symbol = checker.getSymbolAtLocation(statement.name);
+        if (!isConvertedNamespace(statement, symbol)) continue;
+        const merged = symbol.declarations?.find(ts.isClassDeclaration);
+        const name = merged?.name
+          ? className(merged.name.text, modulePath.module, reserved)
+          : typeName(symbol, (statement.name as ts.Identifier).text, outer);
+        types.set(statement, name);
+        for (const member of namespaceStatements(statement)) {
+          if (ts.isVariableStatement(member)) {
+            for (const declaration of member.declarationList.declarations) {
+              const elements = ts.isIdentifier(declaration.name)
+                ? boundClassExpression(declaration)
+                  ? []
+                  : [declaration]
+                : bindingElements(declaration.name);
+              for (const element of elements) {
+                addStatic(name, element, (element.name as ts.Identifier).text);
+              }
+            }
+          } else if (
+            ts.isFunctionDeclaration(member) &&
+            member.body &&
+            member.name
+          ) {
+            addStatic(name, member, member.name.text);
+          }
+        }
+        visitStatements(namespaceStatements(statement), name);
+      }
+    }
+  };
+  visitStatements(sf.statements);
+  return { types, statics };
 }
 
 const VALUE_FLAGS = ts.SymbolFlags.Value & ~ts.SymbolFlags.ConstEnum;
@@ -429,7 +636,13 @@ export function buildProjectModel(
       sourceFile,
       path: modulePath,
       fields,
-      hoistedClasses: assignHoistedClassNames(sourceFile, modulePath, fields),
+      hoistedClasses: assignHoistedClassNames(
+        sourceFile,
+        modulePath,
+        fields,
+        reservedLocalNames,
+      ),
+      ...assignTypeNames(sourceFile, modulePath, checker, reservedLocalNames),
     };
   });
   const bySourceFile = new Map(modules.map((m) => [m.sourceFile, m]));
@@ -485,6 +698,10 @@ function resolveValue(
         return module && { kind: 'namespace', module };
       }
       const module = bySourceFile.get(declaration.getSourceFile());
+      const member = module?.statics.get(declaration);
+      if (module && member) {
+        return { kind: 'static', module, ...member, declaration };
+      }
       const name = module?.fields.get(declaration);
       if (module && name !== undefined) {
         return { kind: 'field', module, name, declaration };
