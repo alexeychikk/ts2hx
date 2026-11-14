@@ -1,6 +1,7 @@
 import path from 'path';
 import { Command, Option } from 'commander';
 import { Converter, type ConverterFlags } from './Converter';
+import { convertProject, formatDiagnostic } from './compiler/project';
 import { logger, LogLevel } from './Logger';
 import { type TranspilerFlags } from './transformers';
 
@@ -101,6 +102,23 @@ void (async () => {
           '--transformTemplateExpression [bool]',
           'converts (`foo ${expression} bar`) to ("foo " + expression + " bar")',
         ).default(true),
+      )
+      .addOption(
+        new Option('--engine <engine>', 'conversion engine')
+          .choices(['legacy', 'next'])
+          .default('legacy'),
+      )
+      .addOption(
+        new Option(
+          '--entry <path>',
+          'entry module of the program (engine next): generates Main.hx and build-{js,cs,cpp}.hxml',
+        ),
+      )
+      .addOption(
+        new Option(
+          '--rootPackage <package>',
+          'Haxe package prefix of every generated module (engine next)',
+        ),
       );
 
     command.showHelpAfterError();
@@ -110,6 +128,9 @@ void (async () => {
       ConverterFlags &
         TranspilerFlags & {
           logLevel: keyof typeof LogLevel;
+          engine: 'legacy' | 'next';
+          entry?: string;
+          rootPackage?: string;
         }
     >();
 
@@ -118,6 +139,30 @@ void (async () => {
     const [tsConfigPathParam, outputDirPathParam] = command.args;
     const tsconfigPath = path.resolve(process.cwd(), tsConfigPathParam);
     const outputDirPath = path.resolve(process.cwd(), outputDirPathParam);
+
+    if (options.engine === 'next') {
+      const diagnostics = await convertProject({
+        tsconfigPath,
+        outDir: outputDirPath,
+        entry: options.entry,
+        rootPackage: options.rootPackage,
+        clean: options.clean,
+      });
+      for (const diagnostic of diagnostics) {
+        const log =
+          diagnostic.severity === 'error' ? logger.error : logger.warn;
+        log(formatDiagnostic(diagnostic));
+      }
+      if (!options.entry) {
+        logger.warn(
+          'No --entry given: Main.hx and build files were not generated',
+        );
+      }
+      if (diagnostics.some((d) => d.severity === 'error')) {
+        process.exit(1);
+      }
+      return;
+    }
 
     const converter = new Converter({
       tsconfigPath,

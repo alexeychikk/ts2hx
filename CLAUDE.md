@@ -22,6 +22,7 @@ architecture, runtime semantics or tooling:
   - `passes/` holds the IR lowerings.
   - `stdlib/` holds lib bindings by checker symbol.
   - `printer/` prints the IR.
+  - `emit/` writes the project files around the modules: `Main.hx`, the `build-*.hxml` files, the csproj and the runtime copy.
   - The public API is `compileProject` in `src/compiler/index.ts`.
 - `runtime/ts2hx/`: the Haxe runtime with JS semantics, copied into the output. It is cross-target: no `js.lib`, and target-specific code goes behind `#if js`/`#if cs`/`#if cpp`.
 - `conformance/`: the end-to-end corpus and its runner (ADR 0004). See `conformance/CLAUDE.md` for adding cases.
@@ -40,6 +41,7 @@ npm run prettify             # prettier
 npm test                     # jest unit tests
 npm run conformance -- --targets js,cs,cpp --filter 'classes/*' --keep
 npm start -- ./path/to/tsconfig.json ./out
+npm start -- ./path/to/tsconfig.json ./out --engine next --entry src/main.ts [--rootPackage app]
 ```
 
 Building a converted project by hand (each target's details are in ADR 0002):
