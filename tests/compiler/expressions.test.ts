@@ -110,4 +110,44 @@ describe('frontend: expressions, statements and functions', () => {
       'ts2hx.Console.log("number", "string", "function", "object", ts2hx.Ts2hx.typeOf(u));',
     );
   });
+
+  it('keeps local function declarations in source order', async () => {
+    const hx = await moduleOf(
+      'function outer(): number {\n  const base = 10;\n  function add(n: number): number {\n    return base + n;\n  }\n  return add(1);\n}',
+    );
+    expect(hx).toMatch(
+      /final base:Float = 10\.0;\s*function add\(n:Float\):Float \{\s*return base \+ n;\s*\}\s*return add\(1\.0\);/,
+    );
+  });
+
+  it('declares functions used before their declaration as vars at the top of the block', async () => {
+    const hx = await moduleOf(
+      'function outer(n: number): boolean {\n  const r = isEven(n);\n  function isEven(k: number): boolean {\n    return k === 0 ? true : isOdd(k - 1);\n  }\n  function isOdd(k: number): boolean {\n    return k === 0 ? false : isEven(k - 1);\n  }\n  return r;\n}',
+    );
+    expect(hx).toMatch(
+      /var isEven:\(k:Float\) -> Bool = null;\s*var isOdd:\(k:Float\) -> Bool = null;\s*isEven = \(function\(k:Float\):Bool \{[^}]*\}\);\s*isOdd = \(function\(k:Float\):Bool \{[^}]*\}\);\s*final r:Bool = isEven\(n\);\s*return r;/,
+    );
+  });
+
+  it('assigns a function capturing a later const after that const', async () => {
+    const hx = await moduleOf(
+      "function outer(): string {\n  function greet(): string {\n    return name;\n  }\n  const name = 'x';\n  return greet();\n}",
+    );
+    expect(hx).toMatch(
+      /var greet:\(\) -> String = null;\s*final name:String = "x";\s*greet = \(function\(\):String \{\s*return name;\s*\}\);\s*return greet\(\);/,
+    );
+  });
+
+  it('reports generic functions used before their declaration as unsupported', async () => {
+    const { code, diagnostics } = await compileSources({
+      'main.ts':
+        'function outer(): number {\n  return id(1);\n  function id<T>(v: T): T {\n    return v;\n  }\n}',
+    });
+    expect(code['Main_2.hx']).toMatch(
+      /var id:Dynamic = null;\s*id = \(\/\* TODO\(ts2hx\)/,
+    );
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'TODO(ts2hx): generic function declarations used before their declaration are not supported yet',
+    ]);
+  });
 });
