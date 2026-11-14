@@ -1,4 +1,9 @@
-import { buildProjectModel } from '@src/compiler/model/project-model';
+import ts from 'typescript';
+
+import {
+  buildProjectModel,
+  type ModuleValue,
+} from '@src/compiler/model/project-model';
 
 import { createProject } from './helpers';
 
@@ -63,6 +68,130 @@ describe('ProjectModel', () => {
       'unused.ts': 'export {};',
     });
     expect(initOrder).toEqual(['B', 'A', 'C', 'Main_2']);
+  });
+
+  it('drops imports TS elides: types only, `typeof` queries, type re-exports', () => {
+    const { initOrder } = pathsOf({
+      'main.ts': [
+        "import './side';",
+        "import { I } from './iface';",
+        "import { v } from './query';",
+        "import { type U, w } from './mixed';",
+        "export * from './types-only';",
+        "export { type T } from './reexported-type';",
+        "export { x } from './reexported-value';",
+        "import * as ns from './ns';",
+        "import { unused } from './unused';",
+        'const i: I = { a: 1 };',
+        'let q: typeof v = 1;',
+        'let u: U = w;',
+        'ns.n;',
+      ].join('\n'),
+      'side.ts': 'export {};',
+      'iface.ts': 'export interface I { a: number }',
+      'query.ts': 'export const v = 1;',
+      'mixed.ts': 'export type U = number;\nexport const w = 1;',
+      'types-only.ts': 'export type A = string;',
+      'reexported-type.ts': 'export type T = string;',
+      'reexported-value.ts': 'export const x = 1;',
+      'ns.ts': 'export const n = 1;',
+      'unused.ts': 'export const unused = 1;',
+    });
+    expect(initOrder).toEqual([
+      'Side',
+      'Mixed',
+      'Reexported_value',
+      'Ns',
+      'Main_2',
+    ]);
+  });
+
+  it('keeps an import whose binding is only re-exported as a value', () => {
+    const { initOrder } = pathsOf({
+      'main.ts':
+        "import { a } from './a';\nimport { T } from './t';\nexport { a, T };",
+      'a.ts': 'export const a = 1;',
+      't.ts': 'export type T = number;',
+    });
+    expect(initOrder).toEqual(['A', 'Main_2']);
+  });
+
+  it('names module values: keywords escaped, collisions renamed', () => {
+    const project = createProject({
+      'main.ts': [
+        'type shape = { a: number };',
+        'export const cast = 1, $v = 2, _v = 3;',
+        'export function Shape() {}',
+        'export function Main_2() {}',
+        'export function __init() {}',
+        'export const lib = 4;',
+        'export default function () {}',
+      ].join('\n'),
+      'lib/x.ts': 'export {};',
+    });
+    const model = buildProjectModel(project.program);
+    const main = model.modules.find((m) => m.path.module === 'Main_2')!;
+    expect([...main.fields.values()]).toEqual([
+      'cast_',
+      '_v',
+      '_v_2',
+      'Shape_2',
+      'Main_2_2',
+      '__init_2',
+      'lib_2',
+      'default_',
+    ]);
+    expect([...model.reservedLocalNames].sort()).toEqual([
+      'haxe',
+      'lib',
+      'ts2hx',
+    ]);
+  });
+
+  it('resolves imports, re-exports and namespaces to the declaring module', () => {
+    const project = createProject({
+      'main.ts': [
+        "import { f as g, ns, d, e, h } from './index';",
+        "import * as all from './index';",
+        'g; ns; d; e; h; all;',
+      ].join('\n'),
+      'index.ts': [
+        "export { f } from './impl';",
+        "export * from './star';",
+        "export * as ns from './impl';",
+        "export { default as d } from './impl';",
+        "export { default as e } from './expr';",
+      ].join('\n'),
+      'impl.ts': 'export function f() {}\nexport default function () {}',
+      'star.ts': 'const local = 1;\nexport { local as h };',
+      'expr.ts': 'export default 1 + 1;',
+    });
+    const model = buildProjectModel(project.program);
+    const main = model.modules.find((m) => m.path.module === 'Main_2')!;
+    const describeValue = (value: ModuleValue | undefined) =>
+      value?.kind === 'field'
+        ? `${value.module.path.module}.${value.name}`
+        : value && `namespace ${value.module.path.module}`;
+    const identifiers: ts.Identifier[] = [];
+    const collect = (node: ts.Node): void => {
+      if (ts.isIdentifier(node)) identifiers.push(node);
+      ts.forEachChild(node, collect);
+    };
+    main.sourceFile.statements.slice(2).forEach(collect);
+    expect(
+      identifiers.map((id) =>
+        describeValue(
+          model.resolveValue(model.checker.getSymbolAtLocation(id)!),
+        ),
+      ),
+    ).toEqual([
+      'Impl.f',
+      'namespace Impl',
+      'Impl.default_',
+      'Expr.default_',
+      'Star.local',
+      'namespace Index',
+    ]);
   });
 
   it('rejects an entry outside the program', () => {

@@ -195,4 +195,77 @@ console.log(t[0], xs[i], xs[0], Array.isArray(xs), (xs as unknown) instanceof Ar
         'ts2hx.Console.inspectNumber(xs[0]), Std.isOfType(xs, Array), Std.isOfType((cast xs : Any), Array));',
     );
   });
+
+  describe('modules', () => {
+    it('references imported values as pack.Module.field, local ones by name', async () => {
+      const { code, diagnostics } = await compileSources(
+        {
+          'main.ts': [
+            "import inc, { cast as c, N } from './lib/util';",
+            "import * as util from './lib/util';",
+            'function f(cases: number) { return cases; }',
+            'console.log(inc(c(N)), util.N, f(util.cast(1)));',
+          ].join('\n'),
+          'lib/util.ts': [
+            'export const N = 1 + 1;',
+            'export function cast(x: number) { return x + N; }',
+            'export default function (x: number) { return x + 1; }',
+          ].join('\n'),
+        },
+        { rootPackage: 'cases.m' },
+      );
+      expect(diagnostics).toEqual([]);
+      expect(code['cases/m/Main_2.hx']).toContain(
+        'ts2hx.Console.log(ts2hx.Console.inspectNumber(cases.m.lib.Util.default_(cases.m.lib.Util.cast_(cases.m.lib.Util.N))), ' +
+          'ts2hx.Console.inspectNumber(cases.m.lib.Util.N), ts2hx.Console.inspectNumber(f(cases.m.lib.Util.cast_(1.0))));',
+      );
+      expect(code['cases/m/Main_2.hx']).toContain(
+        'function f(cases_:Float):Float {\n\treturn cases_;\n}',
+      );
+      expect(code['cases/m/lib/Util.hx']).toContain(
+        'function cast_(x:Float):Float {\n\treturn x + N;\n}',
+      );
+    });
+
+    it('assigns `export default <expression>` in the module init', async () => {
+      const { code } = await compileSources({
+        'main.ts': "import d from './d';\nconsole.log(d);",
+        'd.ts': "export default 'a' + 'b';",
+      });
+      expect(code['D.hx']).toBe(
+        'var default_:String;\n\nfunction __init():Void {\n\tdefault_ = "a" + "b";\n}\n',
+      );
+      expect(code['Main_2.hx']).toContain('ts2hx.Console.log(D.default_);');
+    });
+
+    it('emits nothing for re-export-only modules and leaves them out of Main', async () => {
+      const { code, diagnostics } = await compileSources({
+        'main.ts': "import { v } from './index';\nconsole.log(v);",
+        'index.ts': "export * from './impl';",
+        'impl.ts': 'export const v = 1;',
+      });
+      expect(diagnostics).toEqual([]);
+      expect(Object.keys(code).sort()).toEqual([
+        'Impl.hx',
+        'Main.hx',
+        'Main_2.hx',
+      ]);
+      expect(code['Main.hx']).toContain(
+        '\t\t\tImpl.__init();\n\t\t\tMain_2.__init();\n',
+      );
+    });
+
+    it('rejects a namespace object used as a value', async () => {
+      const { diagnostics } = await compileSources({
+        'main.ts': "import * as ns from './ns';\nconsole.log(ns);",
+        'ns.ts': 'export const v = 1;',
+      });
+      expect(diagnostics).toEqual([
+        expect.objectContaining({
+          message:
+            'TODO(ts2hx): a module namespace object used as a value is not supported yet',
+        }),
+      ]);
+    });
+  });
 });

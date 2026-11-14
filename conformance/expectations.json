@@ -59,11 +59,6 @@
     "cs": "fail",
     "cpp": "fail"
   },
-  "modules/imports": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
   "numbers/math": {
     "js": "fail",
     "cs": "fail",

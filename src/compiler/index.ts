@@ -9,7 +9,11 @@ import {
   type EmittedFile,
 } from './emit/project-emit';
 import { ModuleFrontend } from './frontend/frontend';
-import { buildProjectModel, MAIN_CLASS } from './model/project-model';
+import {
+  buildProjectModel,
+  MAIN_CLASS,
+  type ModuleInfo,
+} from './model/project-model';
 import { createPassContext, runPasses } from './passes';
 import { printModule } from './printer/printer';
 
@@ -77,22 +81,28 @@ function compile(options: CompileOptions): CompileResult {
     });
   };
   const passContext = createPassContext(reportUnsupported);
-  const modules: EmittedModule[] = model.modules.map((info) => {
+  const emitted = new Set<ModuleInfo>();
+  const modules: EmittedModule[] = [];
+  for (const info of model.modules) {
     const ir = new ModuleFrontend(model, info, ({ message, pos }) =>
       reportUnsupported(message, pos),
     ).convert();
     const lowered = runPasses(ir, passContext);
-    return {
+    if (lowered.decls.length === 0 && lowered.init.length === 0) {
+      continue;
+    }
+    emitted.add(info);
+    modules.push({
       path: modulePath(lowered.pack, lowered.name),
       code: printModule(lowered),
-    };
-  });
+    });
+  }
   if (model.entry) {
     modules.push({
       path: modulePath(model.rootPackage, MAIN_CLASS),
       code: mainSource(
         model.rootPackage,
-        model.initOrder.map((m) => m.path),
+        model.initOrder.filter((m) => emitted.has(m)).map((m) => m.path),
       ),
     });
   }
