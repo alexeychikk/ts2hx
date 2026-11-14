@@ -7,7 +7,6 @@ export async function asyncPool<T, Ret>(
   const ret = [];
   const executing = new Set();
   for (const item of iterable) {
-    // eslint-disable-next-line @typescript-eslint/promise-function-async
     const p = Promise.resolve().then(() => iteratorFn(item));
     ret.push(p);
     executing.add(p);

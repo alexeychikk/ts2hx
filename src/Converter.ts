@@ -1,7 +1,6 @@
 import ts from 'typescript';
 import fs from 'fs-extra';
 import path from 'path';
-import os from 'os';
 import { promisify } from 'util';
 import { exec } from 'child_process';
 
@@ -21,9 +20,22 @@ import {
 
 const execAsync = promisify(exec);
 
+/** haxelib loads libneko from the directory of the `neko` binary on PATH. */
+function withNekoLibraryPath(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const nekoDirPath = (env.PATH ?? '')
+    .split(path.delimiter)
+    .find((dirPath) => fs.existsSync(path.join(dirPath, 'neko')));
+  if (!nekoDirPath) return env;
+  return {
+    ...env,
+    LD_LIBRARY_PATH: [nekoDirPath, env.LD_LIBRARY_PATH]
+      .filter(Boolean)
+      .join(path.delimiter),
+  };
+}
+
 export type ConverterOptions =
-  | ConverterOptionsTsConfig
-  | ConverterOptionsProgram;
+  ConverterOptionsTsConfig | ConverterOptionsProgram;
 
 export interface ConverterOptionsTsConfig {
   tsconfigPath: string;
@@ -42,7 +54,6 @@ export interface ConverterOptionsProgram {
 export interface ConverterFlags {
   clean?: boolean;
   copyFormatJson?: boolean;
-  copyHaxeLibraries?: boolean;
   copyLibFiles?: boolean;
   copyImportHx?: boolean;
   createBuildHxml?: boolean;
@@ -100,12 +111,6 @@ export class Converter {
       await this.copyFromCwdToOutput('./lib/import.hx', './src/import.hx');
     }
 
-    if (this.flags.copyHaxeLibraries && this.outputDirPath) {
-      logger.log('Copying haxe libraries');
-      await this.copyFromCwdToOutput('./haxe_libraries', './haxe_libraries');
-      await this.copyFromCwdToOutput('./.haxerc', './.haxerc');
-    }
-
     if (this.flags.copyFormatJson && this.outputDirPath) {
       logger.log('Copying hxformat.json');
       await this.copyFromCwdToOutput('./hxformat.json', './hxformat.json');
@@ -131,17 +136,9 @@ export class Converter {
   async formatOutput(): Promise<void> {
     try {
       if (!this.outputDirPath) return;
-      const binDirPath = path.resolve(process.cwd(), './node_modules/.bin');
-      const lixPath = path.join(
-        binDirPath,
-        'lix' + (os.platform() === 'win32' ? '.cmd' : ''),
-      );
-      await execAsync(`"${lixPath}" run formatter -s "${this.outputDirPath}"`, {
-        // lix invokes haxelib, which must be resolved from node_modules/.bin
-        env: {
-          ...process.env,
-          PATH: `${binDirPath}${path.delimiter}${process.env.PATH ?? ''}`,
-        },
+      await execAsync(`haxelib run formatter -s "${this.outputDirPath}"`, {
+        cwd: process.cwd(),
+        env: withNekoLibraryPath(process.env),
       });
     } catch (error) {
       const stderr = (error as { stderr?: string }).stderr;
@@ -172,7 +169,9 @@ export class Converter {
   }
 
   protected createProgram(options: ConverterOptionsTsConfig): ts.Program {
-    const configFile = ts.readConfigFile(options.tsconfigPath, ts.sys.readFile);
+    const configFile = ts.readConfigFile(options.tsconfigPath, (fileName) =>
+      ts.sys.readFile(fileName),
+    );
 
     if (configFile.error != null) {
       throw new ConverterError(
@@ -209,8 +208,8 @@ export class Converter {
   protected runTsTransformers = async (): Promise<void> => {
     await asyncPool(
       this.program.getSourceFiles(),
-      async (sourceFile) => {
-        if (sourceFile.isDeclarationFile) return;
+      (sourceFile) => {
+        if (sourceFile.isDeclarationFile) return Promise.resolve();
 
         const transpiler = new Transpiler({
           sourceFile,
@@ -221,6 +220,7 @@ export class Converter {
         });
         this.sourceFileTranspilers.set(sourceFile.fileName, transpiler);
         transpiler.transform();
+        return Promise.resolve();
       },
       { concurrency: 100 },
     );

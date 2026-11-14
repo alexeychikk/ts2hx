@@ -31,34 +31,27 @@ void (async () => {
       )
       .addOption(
         new BooleanOption(
-          '-cfj, --copyFormatJson [bool]',
+          '--cfj, --copyFormatJson [bool]',
           `copy hxformat.json file into output directory` +
             ` (contains Prettier-like settings for Haxe formatter https://github.com/HaxeCheckstyle/haxe-formatter)`,
         ).default(true),
       )
       .addOption(
         new BooleanOption(
-          '-chl, --copyHaxeLibraries [bool]',
-          `copy haxe_libraries and .haxerc files into output directory` +
-            ` (see lix package manager https://github.com/lix-pm/lix.client)`,
-        ).default(true),
-      )
-      .addOption(
-        new BooleanOption(
-          '-clf, --copyLibFiles [bool]',
+          '--clf, --copyLibFiles [bool]',
           `copy ts2hx lib files into output directory` +
             ` (contains helper functions and static extensions which improve compatibility with TS)`,
         ).default(true),
       )
       .addOption(
         new BooleanOption(
-          '-cih, --copyImportHx [bool]',
+          '--cih, --copyImportHx [bool]',
           `copy import.hx file into root folders of output`,
         ).default(true),
       )
       .addOption(
         new BooleanOption(
-          '-cbh, --createBuildHxml [bool]',
+          '--cbh, --createBuildHxml [bool]',
           `create build.hxml file`,
         ),
       )
@@ -70,25 +63,25 @@ void (async () => {
       )
       .addOption(
         new BooleanOption(
-          '-ife, --ignoreFormatError [bool]',
+          '--ife, --ignoreFormatError [bool]',
           `prevents exit code 1 when Haxe formatter fails`,
         ),
       )
       .addOption(
         new BooleanOption(
-          '-ie, --ignoreErrors [bool]',
+          '--ie, --ignoreErrors [bool]',
           `prevents exit code 1 when internal ts2hx error happens`,
         ),
       )
       .addOption(
         new BooleanOption(
-          '-ic, --includeComments [bool]',
+          '--ic, --includeComments [bool]',
           'include comments generated during transformation',
         ),
       )
       .addOption(
         new BooleanOption(
-          '-it, --includeTodos [bool]',
+          '--it, --includeTodos [bool]',
           'include todos generated during transformation',
         ),
       )
@@ -132,7 +125,6 @@ void (async () => {
       flags: {
         clean: options.clean,
         copyFormatJson: options.copyFormatJson,
-        copyHaxeLibraries: options.copyHaxeLibraries,
         copyLibFiles: options.copyLibFiles,
         copyImportHx: options.copyImportHx,
         createBuildHxml: options.createBuildHxml,

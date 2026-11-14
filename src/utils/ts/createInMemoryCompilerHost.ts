@@ -7,10 +7,8 @@ export function createInMemoryCompilerHost(params: {
   sourceFiles: Iterable<RawSourceFile>;
 }): ts.CompilerHost {
   const host = ts.createCompilerHost(params.options, true);
-  const sourceFilesArray: IntermediateSourceFile[] = (
-    Array.isArray(params.sourceFiles)
-      ? params.sourceFiles
-      : Array.from(params.sourceFiles)
+  const sourceFilesArray: IntermediateSourceFile[] = Array.from(
+    params.sourceFiles,
   ).map((raw) =>
     raw instanceof IntermediateSourceFile
       ? raw

@@ -1,0 +1,5 @@
+[tools]
+node = "26.13.1"
+haxe = "4.3.7"
+neko = "2-4-1"
+dotnet = "10"

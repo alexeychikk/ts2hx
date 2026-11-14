@@ -21,3 +21,6 @@ yarn-error.log*
 !.vscode/tasks.json
 **/.claude/settings.local.json
 .claude/
+
+# haxe
+/.haxelib

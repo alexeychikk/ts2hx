@@ -35,12 +35,14 @@ export interface CompileResult {
 }
 
 /** Public entry point of the new engine (ADR 0001). */
-export async function compileProject(
+export function compileProject(
   options: CompileOptions,
 ): Promise<CompileResult> {
-  throw new Error(
-    `compileProject is not implemented yet (requested for ${
-      options.entry ?? 'a project without entry'
-    })`,
+  return Promise.reject(
+    new Error(
+      `compileProject is not implemented yet (requested for ${
+        options.entry ?? 'a project without entry'
+      })`,
+    ),
   );
 }

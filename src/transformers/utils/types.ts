@@ -217,8 +217,8 @@ export function getHaxeTypeString(
     objectFlags & ts.ObjectFlags.Reference
       ? this.typeChecker.getTypeArguments(baseType as ts.TypeReference)
       : baseType.aliasSymbol
-      ? baseType.aliasTypeArguments ?? []
-      : [];
+        ? (baseType.aliasTypeArguments ?? [])
+        : [];
 
   if (!typeArguments.length) return symbolName;
 

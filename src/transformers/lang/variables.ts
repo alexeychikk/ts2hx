@@ -185,7 +185,7 @@ export const transformObjectBindingPattern: EmitFn = function (
   return node.elements
     .map((element) => {
       const propertyName = element.propertyName ?? element.name;
-      let initializer = '';
+      let initializer: string;
 
       // { ...rest }
       if (element.dotDotDotToken) {
@@ -222,7 +222,7 @@ export const transformObjectBindingPattern: EmitFn = function (
           propertyName.text,
         )}`;
       } else {
-        let propertyNameText = '';
+        let propertyNameText: string;
 
         if (
           ts.isNumericLiteral(propertyName) ||

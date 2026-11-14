@@ -142,12 +142,10 @@ export const transformInstanceOfExpression: EmitFn = function (
   context,
 ) {
   // error instanceof Error
-  if (
-    !(
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === SyntaxKind.InstanceOfKeyword
-    )
-  )
+  if (!(
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === SyntaxKind.InstanceOfKeyword
+  ))
     return;
 
   const left = this.emitNode(node.left, context).trim();

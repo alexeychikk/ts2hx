@@ -4,7 +4,10 @@ import { SyntaxKind } from 'typescript';
 export class ConverterError extends Error {}
 
 export class TranspilerError extends Error {
-  constructor(message: string, public node?: ts.Node) {
+  constructor(
+    message: string,
+    public node?: ts.Node,
+  ) {
     super(`${message}${node ? `\n${TranspilerError.getNodeInfo(node)}` : ''}`);
   }
 

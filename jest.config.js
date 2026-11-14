@@ -25,7 +25,7 @@ module.exports = {
     '/.vscode/',
     '/dist/',
     '/examples/',
-    '/haxe_libraries/',
+    '/.haxelib/',
     '/lib/',
     '/node_modules/',
   ],
@@ -33,7 +33,7 @@ module.exports = {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
-        isolatedModules: true,
+        tsconfig: 'tsconfig.spec.json',
       },
     ],
   },
