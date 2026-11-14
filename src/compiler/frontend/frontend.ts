@@ -62,6 +62,7 @@ import {
   stdlibKey,
   VALUE_BINDINGS,
 } from '../stdlib/bindings';
+import { arrayConstructor, setArrayLength } from '../stdlib/array-bindings';
 import {
   ERROR_FIELD_NAMES,
   ERROR_PROPERTIES,
@@ -185,6 +186,33 @@ function isArray(
 
 function arrayElement(type: HxType): HxType {
   return isArray(type) ? type.params[0] : DYNAMIC;
+}
+
+/**
+ * A nested array literal takes the element type its outer literal expects, so
+ * `[[1, 2], [3, [4]]]` builds `Array<Dynamic>` rows on every target.
+ */
+function retypeArrayLiteral(value: HxExpr, expected: HxType): HxExpr {
+  if (
+    value.kind !== 'arrayLit' ||
+    !isArray(expected) ||
+    sameType(value.type, expected)
+  ) {
+    return value;
+  }
+  const element = expected.params[0];
+  if (element.kind !== 'dynamic') {
+    return value;
+  }
+  return {
+    ...value,
+    type: expected,
+    elements: value.elements.map((e) =>
+      e.type.kind === 'dynamic'
+        ? e
+        : { kind: 'cast', expr: e, checked: false, type: DYNAMIC },
+    ),
+  };
 }
 
 /** A run of plain elements, or one spread array of an array literal. */
@@ -1903,7 +1931,9 @@ export class ModuleFrontend {
     const overString = this.isStringLike(node.expression);
     if (
       node.awaitModifier ||
-      (!this.checker.isArrayType(iterated) && !overString) ||
+      (!this.checker.isArrayType(iterated) &&
+        !this.checker.isTupleType(iterated) &&
+        !overString) ||
       (ts.isVariableDeclarationList(initializer) &&
         initializer.declarations.length !== 1)
     ) {
@@ -2925,8 +2955,11 @@ export class ModuleFrontend {
   }
 
   private newExpression(node: ts.NewExpression, pos: SourcePos): HxExpr {
-    const path = this.classOf(node.expression);
     const args = node.arguments ?? [];
+    if (this.libKey(node.expression) === 'Array') {
+      return this.newArray(node, args, pos);
+    }
+    const path = this.classOf(node.expression);
     if (!path || args.some(ts.isSpreadElement)) {
       return this.unsupported(node);
     }
@@ -2949,6 +2982,41 @@ export class ModuleFrontend {
       type: this.hxTypeOf(node),
       pos,
     };
+  }
+
+  /** `new Array(n)` / `new Array(a, b)`. */
+  private newArray(
+    node: ts.NewExpression,
+    args: readonly ts.Expression[],
+    pos: SourcePos,
+  ): HxExpr {
+    const spreadIndex = args.findIndex(ts.isSpreadElement);
+    const type = this.hxTypeOf(node);
+    const element = arrayElement(type);
+    const isLength = args.length === 1 && this.isNumberLike(args[0]);
+    const converted = args.map((a) =>
+      ts.isSpreadElement(a)
+        ? this.expression(a.expression)
+        : isLength
+          ? this.expression(a)
+          : this.coerce(this.expression(a), element),
+    );
+    const bound =
+      spreadIndex < 0 || spreadIndex === args.length - 1
+        ? arrayConstructor(
+            {
+              args: converted,
+              argTypes: args.map((a) => this.typeOf(a)),
+              pos,
+              toJsString: this.toJsString,
+              spreadLast: spreadIndex >= 0,
+              freshName: (hint) => this.freshName(hint),
+              type,
+            },
+            type,
+          )
+        : undefined;
+    return bound ?? this.unsupported(node);
   }
 
   // ------------------------------------------------------------ functions
@@ -4176,6 +4244,24 @@ export class ModuleFrontend {
     postfix: boolean,
     pos: SourcePos,
   ): HxExpr {
+    const length = this.arrayLengthTarget(operand);
+    if (length) {
+      const op = operator === ts.SyntaxKind.PlusPlusToken ? '+' : '-';
+      const updated = this.arrayLengthUpdate(
+        length,
+        (current) => ({
+          kind: 'binop',
+          op,
+          left: current,
+          right: constExpr(1, pos),
+          type: FLOAT,
+          pos,
+        }),
+        postfix,
+        pos,
+      );
+      return updated ?? this.unsupported(node);
+    }
     const target = this.lvalue(operand);
     if (!target || !this.isNumberLike(operand)) {
       return this.unsupported(node);
@@ -4361,20 +4447,9 @@ export class ModuleFrontend {
     if (dict) {
       return dict;
     }
-    if (
-      ts.isPropertyAccessExpression(left) &&
-      this.libKey(left.name) === 'Array.length'
-    ) {
-      return staticCall(
-        RUNTIME.jsArray,
-        'setLength',
-        [
-          this.expression(left.expression),
-          this.coerce(this.expression(node.right), FLOAT),
-        ],
-        FLOAT,
-        pos,
-      );
+    const length = this.arrayLengthAssign(node);
+    if (length) {
+      return length;
     }
     const target = this.lvalue(node.left);
     if (!target) {
@@ -4390,6 +4465,72 @@ export class ModuleFrontend {
     };
   }
 
+  /** `xs.length = n` on an array: `JsArray.setLength`. */
+  private arrayLengthAssign(node: ts.BinaryExpression): HxExpr | undefined {
+    const target = this.arrayLengthTarget(node.left);
+    return target
+      ? setArrayLength(
+          this.expression(target.expression),
+          this.expression(node.right),
+        )
+      : undefined;
+  }
+
+  /** The `xs.length` of an array, when `node` is one. */
+  private arrayLengthTarget(
+    node: ts.Expression,
+  ): ts.PropertyAccessExpression | undefined {
+    while (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) {
+      node = node.expression;
+    }
+    return ts.isPropertyAccessExpression(node) &&
+      this.libKey(node.name) === 'Array.length'
+      ? node
+      : undefined;
+  }
+
+  /**
+   * `xs.length op= v`, `++xs.length`, `xs.length--`: reads the length of a
+   * once-evaluated array and writes `update(length)` with `JsArray.setLength`.
+   * A postfix update evaluates to the old length.
+   */
+  private arrayLengthUpdate(
+    target: ts.PropertyAccessExpression,
+    update: (length: HxExpr) => HxExpr | undefined,
+    postfix: boolean,
+    pos: SourcePos,
+  ): HxExpr | undefined {
+    const array = this.once(this.expression(target.expression));
+    const length: HxExpr = {
+      kind: 'field',
+      target: array.ref,
+      name: 'length',
+      type: INT,
+      pos,
+    };
+    if (!postfix) {
+      const updated = update(length);
+      return (
+        updated &&
+        this.withStmts(array.stmts, setArrayLength(array.ref, updated))
+      );
+    }
+    const name = this.freshName('length');
+    const old = localExpr(name, FLOAT, pos);
+    const updated = update(old);
+    return (
+      updated &&
+      this.withStmts(
+        [
+          ...array.stmts,
+          { kind: 'var', name, final: true, type: FLOAT, init: length },
+          { kind: 'expr', expr: setArrayLength(array.ref, updated) },
+        ],
+        old,
+      )
+    );
+  }
+
   private compoundAssign(
     node: ts.BinaryExpression,
     operator: ts.BinaryOperator,
@@ -4398,6 +4539,17 @@ export class ModuleFrontend {
     const dict = this.dictAssign(node, pos, operator);
     if (dict) {
       return dict;
+    }
+    const length = this.arrayLengthTarget(node.left);
+    if (length) {
+      const updated = this.arrayLengthUpdate(
+        length,
+        (current) =>
+          this.operation(operator, node.left, node.right, pos, current),
+        false,
+        pos,
+      );
+      return updated ?? this.unsupported(node);
     }
     const target = this.lvalue(node.left);
     if (!target) {
@@ -4813,7 +4965,7 @@ export class ModuleFrontend {
       return {
         kind: 'arrayLit',
         elements: node.elements.map((e) =>
-          this.branch(this.expression(e), element),
+          this.branch(retypeArrayLiteral(this.expression(e), element), element),
         ),
         type,
         pos,
@@ -5310,6 +5462,7 @@ export class ModuleFrontend {
         : undefined;
     const key = nameNode && this.libKey(nameNode);
     if (key !== undefined) {
+      const resultType = () => this.hxTypeOf(node);
       const binding = CALL_BINDINGS.get(key);
       const bound = binding?.({
         receiver: ts.isPropertyAccessExpression(callee)
@@ -5321,6 +5474,9 @@ export class ModuleFrontend {
         toJsString: this.toJsString,
         spreadLast,
         freshName: (hint) => this.freshName(hint),
+        get type() {
+          return resultType();
+        },
       });
       return bound ?? this.unsupported(node);
     }

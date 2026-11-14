@@ -1,14 +1,4 @@
 {
-  "arrays/methods": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "arrays/sort": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
   "async/basic": {
     "js": "fail",
     "cs": "fail",
