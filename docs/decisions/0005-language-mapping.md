@@ -97,9 +97,9 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 | Area | Runtime | Notes |
 | --- | --- | --- |
 | `console` | `ts2hx.Console` | `util.inspect` subset. |
-| `String.prototype.*`, `String.*` | `ts2hx.JsString` | All ES2022 methods except `localeCompare` options, `normalize` forms and `Intl`. |
-| `Number`, `parseInt`, `parseFloat`, `isNaN`, `toFixed`, `toString(radix)`, `toPrecision` | `ts2hx.Num` | |
-| `Math.*` | Haxe `Math` and `ts2hx.JsMath` | JS `Math.round` semantics, variadic `max`/`min`, `sign`, `trunc`, `hypot`, … |
+| `String.prototype.*`, `String.*` | `ts2hx.JsString` | All ES2022 methods with UTF-16 semantics; `RegExp` arguments are left to `RegExp`. Degraded off JS: `localeCompare` (case-insensitive, then code units, no options), `normalize` (Latin-1 letters with combining accents only), locale variants map to the plain ones. |
+| `Number`, `parseInt`, `parseFloat`, `isNaN`, `toFixed`, `toString(radix)`, `toPrecision` | `ts2hx.Num` | Digits come from the exact decimal value of the double, as in V8; `toString(radix)` ports V8's algorithm. |
+| `Math.*` | Haxe `Math` and `ts2hx.JsMath` | JS `Math.round` semantics, variadic `max`/`min`/`hypot`, `cbrt` from fdlibm (libm is not correctly rounded everywhere), constants inlined. |
 | `Array.prototype.*`, `Array.from`/`of`/`isArray` | `ts2hx.JsArray` | Callbacks receive `(value, index, array)`. `sort` defaults to string comparison and is stable. `splice` supports insertion. `length` is writable. |
 | `Map`, `Set`, `WeakMap`, `WeakSet` | `ts2hx.JsMap` / `ts2hx.JsSet` | |
 | `Object.keys`/`values`/`entries`/`assign`/`fromEntries`/`freeze` (no-op) | `ts2hx.Obj` | |

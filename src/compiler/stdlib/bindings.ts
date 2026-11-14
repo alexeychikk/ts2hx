@@ -17,7 +17,10 @@ import {
   typePath,
   VOID,
 } from '../ir/builders';
-import type { HxExpr, HxParam, HxType, SourcePos } from '../ir/types';
+import type { HxExpr, HxType, SourcePos } from '../ir/types';
+import { padCallback } from './callbacks';
+import { NUMBER_CALL_BINDINGS, NUMBER_VALUE_BINDINGS } from './number-bindings';
+import { STRING_CALL_BINDINGS } from './string-bindings';
 
 /** The object a method is called on (`console` in `console.log(x)`). */
 export interface BoundReceiver {
@@ -53,34 +56,6 @@ function elementTypeOf(array: HxExpr): HxType {
     : DYNAMIC;
 }
 
-/**
- * A callback literal padded to the `(value, index, array)` arity the runtime
- * calls it with; other callbacks must already take that many arguments.
- */
-function padCallback(
-  callback: HxExpr,
-  extra: HxType[],
-  freshName: (hint: string) => string,
-): HxExpr | undefined {
-  if (callback.kind === 'fn') {
-    const missing = extra.length + 1 - callback.fn.params.length;
-    if (missing < 0 || callback.fn.params.some((p) => p.rest)) {
-      return undefined;
-    }
-    const padding: HxParam[] = extra
-      .slice(extra.length - missing)
-      .map((type) => ({ name: freshName('unused'), type }));
-    return {
-      ...callback,
-      fn: { ...callback.fn, params: [...callback.fn.params, ...padding] },
-    };
-  }
-  return callback.type.kind === 'fn' &&
-    callback.type.args.length === extra.length + 1
-    ? callback
-    : undefined;
-}
-
 function method(
   owner: Parameters<typeof staticCall>[0],
   name: string,
@@ -90,26 +65,6 @@ function method(
     receiver && !spreadLast
       ? staticCall(owner, name, [receiver.expr, ...args], type, pos)
       : undefined;
-}
-
-function nativeMethod(name: string, type: HxType): CallBinding {
-  return ({ receiver, args, pos, spreadLast }) =>
-    receiver && !spreadLast
-      ? {
-          kind: 'call',
-          callee: { kind: 'field', target: receiver.expr, name, type: DYNAMIC },
-          args,
-          type,
-          pos,
-        }
-      : undefined;
-}
-
-function variadicMath(name: string): CallBinding {
-  return ({ args, pos, spreadLast }) => ({
-    ...staticCall(RUNTIME.jsMath, name, args, FLOAT, pos),
-    spreadLast,
-  });
 }
 
 const arrayMap: CallBinding = ({
@@ -210,8 +165,8 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
         : undefined;
     },
   ],
-  ['Math.max', variadicMath('max')],
-  ['Math.min', variadicMath('min')],
+  ...NUMBER_CALL_BINDINGS,
+  ...STRING_CALL_BINDINGS,
   ['Array.push', method(RUNTIME.jsArray, 'push', FLOAT)],
   ['Array.join', method(RUNTIME.jsArray, 'join', STRING)],
   ['ReadonlyArray.join', method(RUNTIME.jsArray, 'join', STRING)],
@@ -238,8 +193,6 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
           }
         : undefined,
   ],
-  ['String.toUpperCase', nativeMethod('toUpperCase', STRING)],
-  ['String.toLowerCase', nativeMethod('toLowerCase', STRING)],
 ]);
 
 /** `Object.keys`/`values`/`entries` of a `ts2hx.Dict`: its own ordered enumeration. */
@@ -302,6 +255,7 @@ export const VALUE_BINDINGS: ReadonlyMap<string, ValueBinding> = new Map<
       pos,
     }),
   ],
+  ...NUMBER_VALUE_BINDINGS,
 ]);
 
 /** `@types/node` declares the same globals inside namespaces: map them to the lib name. */

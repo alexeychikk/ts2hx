@@ -50,6 +50,7 @@ import {
   stdlibKey,
   VALUE_BINDINGS,
 } from '../stdlib/bindings';
+import { stringCodePoints, stringIndex } from '../stdlib/string-bindings';
 import {
   accessorPair,
   assignsAtTopLevel,
@@ -1272,9 +1273,10 @@ export class ModuleFrontend {
   private forOf(node: ts.ForOfStatement): HxStmt[] {
     const iterated = this.typeOf(node.expression);
     const initializer = node.initializer;
+    const overString = this.isStringLike(node.expression);
     if (
       node.awaitModifier ||
-      !this.checker.isArrayType(iterated) ||
+      (!this.checker.isArrayType(iterated) && !overString) ||
       !ts.isVariableDeclarationList(initializer) ||
       initializer.declarations.length !== 1 ||
       !ts.isIdentifier(initializer.declarations[0].name)
@@ -1286,7 +1288,8 @@ export class ModuleFrontend {
     const name = this.localName(symbol.name);
     const isConst = (initializer.flags & ts.NodeFlags.Const) !== 0;
     const body = this.body(node.statement);
-    const iterable = this.expression(node.expression);
+    const source = this.expression(node.expression);
+    const iterable = overString ? stringCodePoints(source) : source;
     if (isConst) {
       return [{ kind: 'forIn', name, iterable, body }];
     }
@@ -2551,6 +2554,9 @@ export class ModuleFrontend {
     if (ts.isTemplateExpression(node)) {
       return this.template(node, pos);
     }
+    if (ts.isTaggedTemplateExpression(node)) {
+      return this.taggedTemplate(node, pos);
+    }
     if (ts.isIdentifier(node)) {
       return this.narrow(this.identifier(node, pos), node);
     }
@@ -2626,6 +2632,31 @@ export class ModuleFrontend {
     for (const span of node.templateSpans) {
       parts.push(this.stringOf(span.expression));
       parts.push(constExpr(span.literal.text, pos));
+    }
+    return this.concat(parts, pos);
+  }
+
+  /** Only `` String.raw`…` `` so far: the raw text with the values converted by `String()`. */
+  private taggedTemplate(
+    node: ts.TaggedTemplateExpression,
+    pos: SourcePos,
+  ): HxExpr {
+    const tag = ts.isPropertyAccessExpression(node.tag)
+      ? node.tag.name
+      : node.tag;
+    if (this.libKey(tag) !== 'StringConstructor.raw') {
+      return this.unsupported(node);
+    }
+    const template = node.template;
+    if (ts.isNoSubstitutionTemplateLiteral(template)) {
+      return constExpr(template.rawText ?? template.text, pos);
+    }
+    const parts: HxExpr[] = [
+      constExpr(template.head.rawText ?? template.head.text, pos),
+    ];
+    for (const span of template.templateSpans) {
+      parts.push(this.stringOf(span.expression));
+      parts.push(constExpr(span.literal.rawText ?? span.literal.text, pos));
     }
     return this.concat(parts, pos);
   }
@@ -2924,6 +2955,13 @@ export class ModuleFrontend {
       return !assigned && element.kind === 'dynamic' && type.kind !== 'dynamic'
         ? { kind: 'cast', expr: read, checked: false, type, pos }
         : read;
+    }
+    if (
+      isStringType(target.type) &&
+      this.isNumberLike(node.argumentExpression) &&
+      !assigned
+    ) {
+      return stringIndex(target, this.expression(node.argumentExpression));
     }
     const argument = node.argumentExpression;
     if (
@@ -3536,11 +3574,7 @@ export class ModuleFrontend {
     node: ts.ArrayLiteralExpression,
     pos: SourcePos,
   ): HxExpr {
-    if (
-      node.elements.some(
-        (e) => ts.isSpreadElement(e) || ts.isOmittedExpression(e),
-      )
-    ) {
+    if (node.elements.some(ts.isOmittedExpression)) {
       return this.unsupported(node);
     }
     const type = this.hxTypeOf(node);
@@ -3548,14 +3582,98 @@ export class ModuleFrontend {
       type.kind === 'path' && type.path.name === 'Array'
         ? type.params[0]
         : DYNAMIC;
-    return {
-      kind: 'arrayLit',
-      elements: node.elements.map((e) =>
-        this.branch(this.expression(e), element),
-      ),
-      type,
-      pos,
+    if (!node.elements.some(ts.isSpreadElement)) {
+      return {
+        kind: 'arrayLit',
+        elements: node.elements.map((e) =>
+          this.branch(this.expression(e), element),
+        ),
+        type,
+        pos,
+      };
+    }
+    return this.spreadArrayLiteral(node, type, element, pos);
+  }
+
+  /**
+   * `[a, ...xs, ...s]`: runs of plain elements and spread arrays or strings,
+   * joined with `concat` into a fresh array.
+   */
+  private spreadArrayLiteral(
+    node: ts.ArrayLiteralExpression,
+    type: HxType,
+    element: HxType,
+    pos: SourcePos,
+  ): HxExpr {
+    const segments: HxExpr[] = [];
+    const fresh = new Set<HxExpr>();
+    let plain: HxExpr[] = [];
+    const flush = () => {
+      if (plain.length > 0) {
+        const literal: HxExpr = {
+          kind: 'arrayLit',
+          elements: plain,
+          type,
+          pos,
+        };
+        segments.push(literal);
+        fresh.add(literal);
+        plain = [];
+      }
     };
+    for (const e of node.elements) {
+      if (!ts.isSpreadElement(e)) {
+        plain.push(this.branch(this.expression(e), element));
+        continue;
+      }
+      flush();
+      const spread = this.expression(e.expression);
+      if (this.isStringLike(e.expression)) {
+        const codePoints = stringCodePoints(spread);
+        segments.push(codePoints);
+        fresh.add(codePoints);
+      } else if (this.checker.isArrayLikeType(this.typeOf(e.expression))) {
+        if (!isArray(spread.type)) return this.unsupported(node);
+        segments.push(this.coerce(spread, type));
+      } else {
+        return this.unsupported(
+          node,
+          'spreading a non-array iterable is not supported yet',
+        );
+      }
+    }
+    flush();
+    const [first, ...rest] = segments;
+    const head: HxExpr =
+      rest.length === 0 && !fresh.has(first)
+        ? {
+            kind: 'call',
+            callee: {
+              kind: 'field',
+              target: first,
+              name: 'copy',
+              type: DYNAMIC,
+            },
+            args: [],
+            type,
+            pos,
+          }
+        : first;
+    return rest.reduce<HxExpr>(
+      (joined, segment) => ({
+        kind: 'call',
+        callee: {
+          kind: 'field',
+          target: joined,
+          name: 'concat',
+          type: DYNAMIC,
+        },
+        args: [segment],
+        type,
+        pos,
+      }),
+      head,
+    );
   }
 
   private objectLiteral(

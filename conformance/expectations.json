@@ -44,11 +44,6 @@
     "cs": "fail",
     "cpp": "fail"
   },
-  "numbers/math": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
   "objects/keys-order": {
     "js": "fail",
     "cs": "fail",
@@ -60,16 +55,6 @@
     "cpp": "fail"
   },
   "promise/ordering": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "strings/methods": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "strings/unicode": {
     "js": "fail",
     "cs": "fail",
     "cpp": "fail"

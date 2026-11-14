@@ -30,6 +30,7 @@ export const RUNTIME = {
   eventLoop: typePath(['ts2hx'], 'EventLoop'),
   jsArray: typePath(['ts2hx'], 'JsArray'),
   jsMath: typePath(['ts2hx'], 'JsMath'),
+  jsString: typePath(['ts2hx'], 'JsString'),
   dict: typePath(['ts2hx'], 'Dict'),
 };
 
