@@ -185,6 +185,27 @@ describe('ProjectModel', () => {
     ]);
   });
 
+  it('names hoisted classes after their binding, renaming collisions', () => {
+    const project = createProject({
+      'main.ts': [
+        'interface Point { x: number }',
+        'class Local {}',
+        'export const Point2 = 1;',
+        'const Point_ = class { x = 1 };',
+        'function f() { class Local {} return class {}; }',
+        'function g() { class Local {} return Local; }',
+      ].join('\n'),
+    });
+    const model = buildProjectModel(project.program);
+    const main = model.modules.find((m) => m.path.module === 'Main_2')!;
+    expect([...main.hoistedClasses.values()]).toEqual([
+      'Point_',
+      'Local_2',
+      'Class',
+      'Local_3',
+    ]);
+  });
+
   it('resolves imports, re-exports and namespaces to the declaring module', () => {
     const project = createProject({
       'main.ts': [

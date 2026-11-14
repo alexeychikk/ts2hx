@@ -40,7 +40,11 @@ class Vec {
 }
 
 console.log(`[${pad('ab', 4)}]`, `[${pad(7, 3)}]`);
-console.log(new Vec().toString(), new Vec(2).toString(), new Vec(1, 2).toString());
+console.log(
+  new Vec().toString(),
+  new Vec(2).toString(),
+  new Vec(1, 2).toString(),
+);
 const v = new Vec(1, 1).add(new Vec(2, 3)).add(10, 20);
 console.log(v.toString());
 console.log(Vec.of(4).toString(), Vec.of(4, 5).toString());

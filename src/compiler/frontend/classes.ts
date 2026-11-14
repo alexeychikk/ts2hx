@@ -348,7 +348,10 @@ export function inheritedAccessors(
   checker: ts.TypeChecker,
   node: ts.ClassLikeDeclaration,
   name: string,
-): { root: ts.ClassLikeDeclaration; pair: AccessorPair } | 'conflict' | undefined {
+):
+  | { root: ts.ClassLikeDeclaration; pair: AccessorPair }
+  | 'conflict'
+  | undefined {
   let found: { root: ts.ClassLikeDeclaration; pair: AccessorPair } | undefined;
   for (const ancestor of ancestors(checker, node)) {
     const members = instanceMembers(ancestor, name);
@@ -404,10 +407,7 @@ function instanceClass(type: ts.Type): ts.ClassLikeDeclaration | undefined {
     : undefined;
 }
 
-const structuralCache = new WeakMap<
-  ts.Program,
-  Map<ts.ClassLikeDeclaration, Map<string, ts.Symbol>>
->();
+const structuralCache = new WeakMap<ts.Program, StructuralUse>();
 
 /**
  * Optional members of structures a class is used as (through `implements` or an
@@ -418,12 +418,29 @@ const structuralCache = new WeakMap<
 export function structuralOptionalMembers(
   program: ts.Program,
 ): Map<ts.ClassLikeDeclaration, Map<string, ts.Symbol>> {
+  return structuralUse(program).optional;
+}
+
+/** Properties of structure types that some class used as that structure implements with an accessor. */
+export function structuralAccessorMembers(
+  program: ts.Program,
+): ReadonlySet<ts.Symbol> {
+  return structuralUse(program).accessorBacked;
+}
+
+interface StructuralUse {
+  optional: Map<ts.ClassLikeDeclaration, Map<string, ts.Symbol>>;
+  accessorBacked: Set<ts.Symbol>;
+}
+
+function structuralUse(program: ts.Program): StructuralUse {
   const cached = structuralCache.get(program);
   if (cached) {
     return cached;
   }
   const checker = program.getTypeChecker();
   const result = new Map<ts.ClassLikeDeclaration, Map<string, ts.Symbol>>();
+  const accessorBacked = new Set<ts.Symbol>();
   const record = (node: ts.ClassLikeDeclaration, target: ts.Type): void => {
     const structure = checker.getNonNullableType(target);
     if (structure.isUnion()) {
@@ -439,10 +456,11 @@ export function structuralOptionalMembers(
     }
     const instance = checker.getTypeAtLocation(node);
     for (const property of checker.getPropertiesOfType(structure)) {
-      if (
-        property.flags & ts.SymbolFlags.Optional &&
-        !checker.getPropertyOfType(instance, property.name)
-      ) {
+      const own = checker.getPropertyOfType(instance, property.name);
+      if (own && own.flags & ts.SymbolFlags.Accessor) {
+        accessorBacked.add(property);
+      }
+      if (property.flags & ts.SymbolFlags.Optional && !own) {
         const members = result.get(node) ?? new Map<string, ts.Symbol>();
         members.set(property.name, property);
         result.set(node, members);
@@ -478,8 +496,9 @@ export function structuralOptionalMembers(
       }
     }
   }
-  structuralCache.set(program, result);
-  return result;
+  const use = { optional: result, accessorBacked };
+  structuralCache.set(program, use);
+  return use;
 }
 
 /** Whether an ancestor of `node` gets the optional member `name` added (see `structuralOptionalMembers`). */

@@ -55,3 +55,25 @@ const items: Describable[] = [new Item('a'), new Special('b')];
 for (const item of items) {
   console.log(explain(item));
 }
+
+interface HasArea {
+  readonly area: number;
+  label?: string;
+  greet?(): string;
+}
+class Sq implements HasArea {
+  constructor(private side: number) {}
+  get area(): number {
+    return this.side * this.side;
+  }
+}
+class Lab {
+  get label(): string {
+    return 'lab';
+  }
+  area = 1;
+}
+const shapes: HasArea[] = [new Sq(3), new Lab(), { area: 2, label: 'lit' }];
+for (const s of shapes) {
+  console.log(s.area, s.label ?? 'none', s.greet === undefined);
+}

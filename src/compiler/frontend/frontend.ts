@@ -66,6 +66,7 @@ import {
   redeclaredWrittenFields,
   boundClassExpression,
   isHoistedClass,
+  structuralAccessorMembers,
   structuralOptionalMembers,
   inheritsStructuralMember,
   overridesImplementation,
@@ -300,10 +301,7 @@ function isConstantInit(expr: HxExpr): boolean {
 function memberAccess(member: ts.Node): HxAccess {
   const name = (member as ts.NamedDeclaration).name;
   return (name && ts.isPrivateIdentifier(name)) ||
-    hasModifier(
-    member,
-    ts.ModifierFlags.Private | ts.ModifierFlags.Protected,
-  )
+    hasModifier(member, ts.ModifierFlags.Private | ts.ModifierFlags.Protected)
     ? 'private'
     : 'public';
 }
@@ -323,6 +321,28 @@ function memberName(
   return name && (ts.isIdentifier(name) || ts.isStringLiteral(name))
     ? escapeIdentifier(name.text)
     : undefined;
+}
+
+/** The function or class whose `this` a `this` keyword denotes: arrows are transparent. */
+function thisContainer(node: ts.Node): ts.Node | undefined {
+  return ts.findAncestor(
+    node.parent,
+    (n) =>
+      (ts.isFunctionLike(n) && !ts.isArrowFunction(n)) ||
+      ts.isClassLike(n) ||
+      ts.isPropertyDeclaration(n) ||
+      ts.isClassStaticBlockDeclaration(n),
+  );
+}
+
+/** Whether a function body reads its own `this` (arrows included, nested functions not). */
+function usesThis(body: ts.Node): boolean {
+  const visit = (n: ts.Node): boolean =>
+    n.kind === ts.SyntaxKind.ThisKeyword ||
+    (!(ts.isFunctionLike(n) && !ts.isArrowFunction(n)) &&
+      !ts.isClassLike(n) &&
+      (ts.forEachChild(n, visit) ?? false));
+  return ts.forEachChild(body, visit) ?? false;
 }
 
 /** The node a local is scoped to: its block, function, loop or source file. */
@@ -388,6 +408,8 @@ export class ModuleFrontend {
   private pendingInits?: PendingInits;
   /** Classes hoisted out of functions and expressions, declared after the module's own. */
   private readonly hoistedDecls: HxDecl[] = [];
+  /** The local an object literal is bound to while its methods read `this`. */
+  private readonly objectSelves = new Map<ts.ObjectLiteralExpression, HxExpr>();
   private readonly captureCache = new Map<
     ts.ClassLikeDeclaration,
     Capture[] | undefined
@@ -1374,18 +1396,20 @@ export class ModuleFrontend {
       };
     }
     const captured = new Map(captures.map((c) => [c.symbol, c]));
-    const instance: ClassContext = { path, isStatic: false, captures: captured };
+    const instance: ClassContext = {
+      path,
+      isStatic: false,
+      captures: captured,
+    };
     const statics: ClassContext = { path, isStatic: true, captures: captured };
-    const fields: HxClassField[] = captures.map(
-      (c): HxClassField => ({
-        kind: 'var',
-        name: c.field,
-        access: 'private',
-        isStatic: false,
-        final: false,
-        type: c.type,
-      }),
-    );
+    const fields: HxClassField[] = captures.map((c): HxClassField => ({
+      kind: 'var',
+      name: c.field,
+      access: 'private',
+      isStatic: false,
+      final: false,
+      type: c.type,
+    }));
     const captureParams: HxParam[] = captures.map((c) => ({
       name: this.freshName(c.symbol.name),
       type: c.type,
@@ -1510,9 +1534,7 @@ export class ModuleFrontend {
         access: 'public',
         isStatic: false,
         final: false,
-        type: nullable(
-          this.types.map(this.checker.getTypeOfSymbol(property)),
-        ),
+        type: nullable(this.types.map(this.checker.getTypeOfSymbol(property))),
       });
     }
     const constructor = this.classConstructor(
@@ -1585,7 +1607,9 @@ export class ModuleFrontend {
       );
       return [];
     }
-    const root = inherited ? (inherited.pair.get ?? inherited.pair.set)! : member;
+    const root = inherited
+      ? (inherited.pair.get ?? inherited.pair.set)!
+      : member;
     const type = this.types.map(
       this.checker.getTypeOfSymbol(
         this.checker.getSymbolAtLocation(root.name)!,
@@ -1611,15 +1635,18 @@ export class ModuleFrontend {
     const fn =
       kind === 'get'
         ? this.inClass(context, () => this.function(member))
-        : this.setterFunction(member as ts.SetAccessorDeclaration, type, context);
+        : this.setterFunction(
+            member as ts.SetAccessorDeclaration,
+            type,
+            context,
+          );
     fields.push({
       kind: 'method',
       name: `${kind}_${name}`,
       access: 'public',
       isStatic: context.isStatic,
       isOverride:
-        !!inherited &&
-        overridesAccessor(this.checker, node, sourceName, kind),
+        !!inherited && overridesAccessor(this.checker, node, sourceName, kind),
       isAbstract,
       fn: isAbstract ? { ...fn, body: undefined } : fn,
     });
@@ -1850,8 +1877,7 @@ export class ModuleFrontend {
       symbol = this.checker.getAliasedSymbol(symbol);
     }
     const bound =
-      symbol?.valueDeclaration &&
-      boundClassExpression(symbol.valueDeclaration);
+      symbol?.valueDeclaration && boundClassExpression(symbol.valueDeclaration);
     if (bound) {
       return this.classSymbol(bound);
     }
@@ -1965,18 +1991,22 @@ export class ModuleFrontend {
   private captureArguments(
     node: ts.NewExpression,
     pos: SourcePos,
-  ): HxExpr[] | undefined {
+  ): HxExpr[] | string {
     const symbol = this.classSymbolOf(node.expression);
     const declaration = symbol?.declarations?.find(isHoistedClass);
     if (!declaration) {
       return [];
     }
     const captures = this.captures(declaration);
+    if (!captures) {
+      return 'constructing a class that is not supported';
+    }
     if (
-      !captures ||
-      captures.some((c) => !ts.findAncestor(node, (n) => n === scopeOf(c.declaration)))
+      captures.some(
+        (c) => !ts.findAncestor(node, (n) => n === scopeOf(c.declaration)),
+      )
     ) {
-      return undefined;
+      return 'constructing a class outside the scope of the locals it captures is not supported';
     }
     return captures.map(
       (c) =>
@@ -2024,6 +2054,16 @@ export class ModuleFrontend {
   }
 
   private thisExpression(node: ts.Node, pos: SourcePos): HxExpr {
+    const container = thisContainer(node);
+    if (container && ts.isObjectLiteralExpression(container.parent)) {
+      const self = this.objectSelves.get(container.parent);
+      return self
+        ? { ...self, pos }
+        : this.unsupported(
+            node,
+            '`this` in this object method is not supported',
+          );
+    }
     const context = this.classContexts[this.classContexts.length - 1];
     if (!context) {
       return this.unsupported(node, '`this` outside a class is not supported');
@@ -2040,11 +2080,8 @@ export class ModuleFrontend {
       return this.unsupported(node);
     }
     const captured = this.captureArguments(node, pos);
-    if (!captured) {
-      return this.unsupported(
-        node,
-        'constructing a class outside the scope of the locals it captures is not supported',
-      );
+    if (typeof captured === 'string') {
+      return this.unsupported(node, captured);
     }
     return {
       kind: 'new',
@@ -2691,6 +2728,15 @@ export class ModuleFrontend {
     if (name === undefined) {
       return this.unsupported(node);
     }
+    if (this.isAccessorBacked(node)) {
+      return staticCall(
+        REFLECT,
+        'getProperty',
+        [target, constExpr(name, pos)],
+        this.fieldType(target, node),
+        pos,
+      );
+    }
     return {
       kind: 'field',
       target,
@@ -2698,6 +2744,22 @@ export class ModuleFrontend {
       type: this.fieldType(target, node),
       pos,
     };
+  }
+
+  /** Whether a structure member read may hit a class accessor, which Haxe only runs through `Reflect.getProperty`. */
+  private isAccessorBacked(node: ts.PropertyAccessExpression): boolean {
+    const backed = structuralAccessorMembers(this.model.program);
+    if (backed.size === 0) {
+      return false;
+    }
+    const receiver = this.checker.getNonNullableType(
+      this.checker.getTypeAtLocation(node.expression),
+    );
+    const parts = receiver.isUnion() ? receiver.types : [receiver];
+    return parts.some((part) => {
+      const property = this.checker.getPropertyOfType(part, node.name.text);
+      return !!property && backed.has(property);
+    });
   }
 
   /**
@@ -3443,6 +3505,16 @@ export class ModuleFrontend {
     if (dictValueType) {
       return this.dictLiteral(node, this.types.map(dictValueType), pos);
     }
+    const type = this.hxTypeOf(node);
+    const self = node.properties.some(
+      (p) =>
+        (ts.isMethodDeclaration(p) || ts.isAccessor(p)) &&
+        !!p.body &&
+        usesThis(p.body),
+    )
+      ? localExpr(this.freshName('self'), type, pos)
+      : undefined;
+    if (self) this.objectSelves.set(node, self);
     const fields: Array<{ name: string; value: HxExpr }> = [];
     for (const property of node.properties) {
       const name =
@@ -3475,7 +3547,29 @@ export class ModuleFrontend {
         return this.unsupported(node);
       }
     }
-    return { kind: 'objectLit', fields, type: this.hxTypeOf(node), pos };
+    const literal: HxExpr = { kind: 'objectLit', fields, type, pos };
+    if (!self || self.kind !== 'local') {
+      return literal;
+    }
+    return {
+      kind: 'blockExpr',
+      stmts: [
+        {
+          kind: 'var',
+          name: self.name,
+          final: false,
+          type,
+          init: constExpr(null),
+        },
+        {
+          kind: 'expr',
+          expr: { kind: 'assign', op: '=', target: self, value: literal, type },
+        },
+      ],
+      result: self,
+      type,
+      pos,
+    };
   }
 
   /** An object literal typed as a dictionary: `Dict.of(keys, values)` in source order. */

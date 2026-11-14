@@ -55,3 +55,16 @@ console.log(makeCounter(1, 2).join(' '));
 console.log(makeCounter(10, -1).join(' '));
 console.log(greeters(['a', 'b']).join(' '));
 console.log(derive('!').hello(), derive('?').hello());
+
+function withStatic(k: number): number {
+  const C = class {
+    static make(): number {
+      return 1;
+    }
+    v(): number {
+      return k;
+    }
+  };
+  return new C().v() + C.make();
+}
+console.log(withStatic(4), withStatic(10));

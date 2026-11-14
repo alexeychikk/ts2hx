@@ -1,7 +1,12 @@
 import ts from 'typescript';
 
 import {
+  hoistedClassName,
+  isHoistedClass,
   mayReadFieldsBeforeInit,
+  privateMemberName,
+  structuralAccessorMembers,
+  structuralOptionalMembers,
   redeclaredWrittenFields,
   overridesImplementation,
   rootField,
@@ -228,5 +233,177 @@ describe('classes in the frontend', () => {
       console.log(a instanceof A);
     `);
     expect(code).toContain('Std.isOfType(a, Main_2.A)');
+  });
+});
+
+describe('classes II helpers', () => {
+  it('suffixes a #private name redeclared below an ancestor with the same name', () => {
+    const { checker, member } = classesOf(`
+      class A { #x = 1; }
+      class B extends A { #y = 2; }
+      class C extends B { #x = 3; }
+    `);
+    const privateOf = (cls: string, name: string) =>
+      privateMemberName(checker, member(cls, name) as ts.ClassElement);
+    expect(privateOf('A', '#x')).toBe('__x');
+    expect(privateOf('B', '#y')).toBe('__y');
+    expect(privateOf('C', '#x')).toBe('__x_2');
+  });
+
+  it('collects optional structure members a class used as that structure lacks', () => {
+    const { program, classes } = classesOf(`
+      interface L { name: string; label?: string; rank?: number }
+      interface D { describe(): string; note?: string }
+      class P { name = 'p'; rank = 1; }
+      class I implements D { describe() { return ''; } }
+      class S extends I { note = 's'; }
+      class Q extends P {}
+      class Unused { name = 'u'; }
+      const list: L[] = [new P()];
+      function show(l: L | undefined) { return l; }
+      show(new Q());
+    `);
+    const added = structuralOptionalMembers(program);
+    const names = (cls: string) => [
+      ...(added.get(classes.get(cls)!)?.keys() ?? []),
+    ];
+    expect(names('P')).toEqual(['label']);
+    expect(names('I')).toEqual(['note']);
+    expect(names('S')).toEqual([]);
+    expect(names('Q')).toEqual([]);
+    expect(names('Unused')).toEqual([]);
+  });
+
+  it('marks structure members a class implements with an accessor', () => {
+    const { program } = classesOf(`
+      interface H { readonly area: number; label?: string }
+      class Sq implements H { get area() { return 1; } }
+      class Plain { area = 2; }
+      const h: H = new Plain();
+    `);
+    expect(
+      [...structuralAccessorMembers(program)].map((symbol) => symbol.name),
+    ).toEqual(['area']);
+  });
+
+  it('hoists class expressions and local classes, named after their binding', () => {
+    const { program, file } = createProject({
+      'main.ts': `
+        class Top {}
+        const Bound = class {};
+        const Named = class Inner {};
+        function f() { class Local {} return [Local, class {}]; }
+      `,
+    });
+    program.getTypeChecker();
+    const hoisted: string[] = [];
+    const visit = (node: ts.Node): void => {
+      if (isHoistedClass(node)) {
+        hoisted.push(hoistedClassName(node));
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(program.getSourceFile(file('main.ts'))!);
+    expect(hoisted).toEqual(['Bound', 'Inner', 'Local', 'Class']);
+  });
+});
+
+describe('classes II in the frontend', () => {
+  it('maps accessors to a property whose setter returns the assigned value', async () => {
+    const code = await moduleOf(`
+      class T {
+        #c = 0;
+        get c(): number { return this.#c; }
+        set c(v: number) { if (v < 0) return; this.#c = v; }
+        get only(): number { return 1; }
+      }
+      const t = new T();
+      t.c = 2;
+      console.log(t.c + t.only);
+    `);
+    expect(code).toContain('public var c(get, set):Float;');
+    expect(code).toContain('public var only(get, never):Float;');
+    expect(code).toContain(
+      '\tpublic function set_c(__value_1:Float):Float {\n' +
+        '\t\tvar v:Float = __value_1;\n' +
+        '\t\tif (v < 0.0) {\n' +
+        '\t\t\treturn __value_1;\n' +
+        '\t\t}\n' +
+        '\t\tthis.__c = v;\n' +
+        '\t\treturn __value_1;\n' +
+        '\t}',
+    );
+  });
+
+  it('declares an overridden accessor once, overriding only implemented methods', async () => {
+    const code = await moduleOf(`
+      abstract class Shape {
+        abstract get area(): number;
+        get kind(): string { return 'shape'; }
+      }
+      class Sq extends Shape {
+        get area() { return 4; }
+        override get kind() { return 'sq'; }
+      }
+      console.log(new Sq().kind);
+    `);
+    expect(code.match(/var kind\(get, never\)/g)).toHaveLength(1);
+    expect(code.match(/var area\(get, never\)/g)).toHaveLength(1);
+    expect(code).toContain('public override function get_kind():String');
+    expect(code).toContain('\tpublic function get_area():Float');
+  });
+
+  it('reads accessor-backed structure members through Reflect.getProperty', async () => {
+    const code = await moduleOf(`
+      interface H { readonly area: number; label?: string }
+      class Sq implements H { get area() { return 1; } }
+      const h: H = new Sq();
+      console.log(h.area, h.label);
+    `);
+    expect(code).toContain('Reflect.getProperty(h, "area")');
+    expect(code).toContain('h.label');
+    expect(code).toContain('public var label:');
+  });
+
+  it('hoists a local class and passes its captured locals to the constructor', async () => {
+    const code = await moduleOf(`
+      function make(step: number) {
+        class Counter { n = 0; inc() { this.n += step; return this.n; } }
+        return new Counter();
+      }
+      console.log(make(2).inc());
+    `);
+    expect(code).toContain('return new Main_2.Counter(step);');
+    expect(code).toContain(
+      '\tpublic function new(__step_1:Float) {\n' +
+        '\t\tthis.__Counter_step = __step_1;\n',
+    );
+    expect(code).toContain('this.n += this.__Counter_step;');
+  });
+
+  it('reports a class capturing a reassigned local as unsupported', async () => {
+    const { diagnostics } = await compileSources({
+      'main.ts': `
+        function bad(step: number) {
+          let s = step; s++;
+          class R { v() { return s; } }
+          return new R();
+        }
+        console.log(bad(1).v());
+      `,
+    });
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'TODO(ts2hx): a class capturing a reassigned local is not supported',
+      'TODO(ts2hx): constructing a class that is not supported',
+    ]);
+  });
+
+  it('binds this in object-literal methods to a self local', async () => {
+    const code = await moduleOf(`
+      const o = { n: 1, get() { return this.n; } };
+      console.log(o.get());
+    `);
+    expect(code).toContain('__self_1 = {n: 1.0, get: function():Float {');
+    expect(code).toContain('return __self_1.n;');
   });
 });
