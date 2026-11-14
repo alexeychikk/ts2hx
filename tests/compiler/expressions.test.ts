@@ -138,6 +138,54 @@ describe('frontend: expressions, statements and functions', () => {
     );
   });
 
+  it('resolves shorthand properties to the variable they read', async () => {
+    const hx = await moduleOf(
+      [
+        'function a(): number {',
+        '  const handlers = { onTick };',
+        '  function onTick(): number {',
+        '    return 1;',
+        '  }',
+        '  return handlers.onTick();',
+        '}',
+        'function b(): string {',
+        '  function make(): { label: string } {',
+        '    return { label };',
+        '  }',
+        "  const label = 'x';",
+        '  return make().label;',
+        '}',
+      ].join('\n'),
+    );
+    expect(hx).toMatch(
+      /var onTick:\(\) -> Float = null;\s*onTick = \(function\(\):Float \{\s*return 1\.0;\s*\}\);\s*final handlers/,
+    );
+    expect(hx).toMatch(
+      /var make:[^=]+= null;\s*final label:String = "x";\s*make = /,
+    );
+  });
+
+  it('hoists the consts a function captures when an earlier statement reaches it', async () => {
+    const hx = await moduleOf(
+      [
+        'function outer(): number {',
+        '  const g = h();',
+        '  const y = 2;',
+        '  function h(): () => number {',
+        '    return k;',
+        '  }',
+        '  function k(): number {',
+        '    return y;',
+        '  }',
+        '  return g();',
+        '}',
+      ].join('\n'),
+    );
+    expect(hx).toMatch(
+      /var y:Null<Float> = null;\s*var h:\(\) -> \(\(\) -> Float\) = null;\s*var k:\(\) -> Float = null;\s*h = [^;]*;\s*\}\);\s*k = [^;]*;\s*\}\);\s*final g:\(\) -> Float = h\(\);\s*y = 2\.0;/,
+    );
+  });
+
   it('reports generic functions used before their declaration as unsupported', async () => {
     const { code, diagnostics } = await compileSources({
       'main.ts':

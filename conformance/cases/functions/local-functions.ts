@@ -72,3 +72,44 @@ function passedAsValue(): number {
   return value;
 }
 console.log(passedAsValue());
+
+function shorthandBeforeDeclaration(): number {
+  const handlers = { onTick };
+  function onTick(): number {
+    return 1;
+  }
+  return handlers.onTick();
+}
+console.log(shorthandBeforeDeclaration());
+
+function shorthandCapturesLaterConst(): string {
+  function make(): { label: string } {
+    return { label };
+  }
+  const label = 'x';
+  return make().label;
+}
+console.log(shorthandCapturesLaterConst());
+
+function readBeforeCapturedConst(): number {
+  const holder = { run: f };
+  const x = 1;
+  function f(): number {
+    return x;
+  }
+  return holder.run() + x;
+}
+console.log(readBeforeCapturedConst());
+
+function reachedThroughAnotherFunction(): number {
+  const g = h();
+  const y = 2;
+  function h(): () => number {
+    return k;
+  }
+  function k(): number {
+    return y;
+  }
+  return g() * 10 + y;
+}
+console.log(reachedThroughAnotherFunction());

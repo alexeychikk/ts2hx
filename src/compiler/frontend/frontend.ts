@@ -186,6 +186,8 @@ export class ModuleFrontend {
   private readonly types: TypeMapper;
   /** `var`s and module-level bindings: declared up front, so their declarations only assign. */
   private readonly hoisted = new Set<ts.Symbol>();
+  /** Block `let`/`const`s hoisted for a function reached before them: read before assigned. */
+  private readonly hoistedLexicals = new Set<ts.Symbol>();
   private tempCounter = 0;
 
   constructor(
@@ -280,7 +282,8 @@ export class ModuleFrontend {
       : DYNAMIC;
     return isVarDeclarationList(
       declaration.parent as ts.VariableDeclarationList,
-    )
+    ) ||
+      (symbol && this.hoistedLexicals.has(symbol))
       ? nullable(type)
       : type;
   }
@@ -378,13 +381,25 @@ export class ModuleFrontend {
   /**
    * A block in source order. Haxe types a local function where it is declared, so a
    * function JS needs earlier (see `deferredFunctions`) becomes a `var` declared at the
-   * top of the block and assigned once the `let`/`const`s it captures exist.
+   * top of the block and assigned once the `let`/`const`s it captures exist, or at the
+   * top of the block with those `let`/`const`s hoisted when it may be reached before.
    */
   private block(statements: readonly ts.Statement[]): HxStmt[] {
-    const deferred = this.deferredFunctions(statements);
-    const declarations: HxStmt[] = [];
+    const { assignAt, hoistedLexicals } = this.deferredFunctions(statements);
+    const declarations: HxStmt[] = hoistedLexicals.map((declaration) => {
+      const symbol = this.checker.getSymbolAtLocation(declaration.name)!;
+      this.hoisted.add(symbol);
+      this.hoistedLexicals.add(symbol);
+      return {
+        kind: 'var',
+        name: escapeIdentifier((declaration.name as ts.Identifier).text),
+        final: false,
+        type: this.declaredType(declaration),
+        init: constExpr(null),
+      };
+    });
     const assignments = new Map<number, HxStmt[]>();
-    for (const [declaration, index] of deferred) {
+    for (const [declaration, index] of assignAt) {
       const { name, type, value } = this.deferredFunction(declaration);
       declarations.push({
         kind: 'var',
@@ -410,7 +425,7 @@ export class ModuleFrontend {
     const body: HxStmt[] = [...declarations];
     statements.forEach((statement, index) => {
       body.push(...(assignments.get(index) ?? []));
-      if (!deferred.has(statement as ts.FunctionDeclaration)) {
+      if (!assignAt.has(statement as ts.FunctionDeclaration)) {
         body.push(...this.statement(statement));
       }
     });
@@ -421,12 +436,15 @@ export class ModuleFrontend {
   /**
    * Function declarations of a block that cannot stay a Haxe local function at their
    * source position: those referenced before it, those a deferred function calls, and
-   * those capturing a `let`/`const` declared after them. Each maps to the index of the
-   * statement its assignment precedes: right after the last `let`/`const` it captures.
+   * those capturing a `let`/`const` declared after them. `assignAt` maps each to the
+   * index of the statement its assignment precedes: right after the last `let`/`const`
+   * it captures, or 0 when it captures none or an earlier statement may reach it. The
+   * `let`/`const`s captured by a function assigned at 0 are `hoistedLexicals`.
    */
-  private deferredFunctions(
-    statements: readonly ts.Statement[],
-  ): Map<ts.FunctionDeclaration, number> {
+  private deferredFunctions(statements: readonly ts.Statement[]): {
+    assignAt: Map<ts.FunctionDeclaration, number>;
+    hoistedLexicals: ts.VariableDeclaration[];
+  } {
     const functions = new Map<ts.Symbol, ts.FunctionDeclaration>();
     for (const statement of statements) {
       if (
@@ -440,13 +458,16 @@ export class ModuleFrontend {
         );
       }
     }
-    const functionsInOrder = [...functions.values()];
+    const lexicalIndex = (declaration: ts.VariableDeclaration): number =>
+      statements.indexOf(declaration.parent.parent);
     const deferred = new Set<ts.FunctionDeclaration>();
     for (const [symbol, declaration] of functions) {
       const index = statements.indexOf(declaration);
       if (
         statements.slice(0, index).some((s) => this.refersTo(s, symbol)) ||
-        this.capturedLexicals(declaration, statements).some((i) => i > index)
+        this.capturedLexicals(declaration, statements).some(
+          (d) => lexicalIndex(d) > index,
+        )
       ) {
         deferred.add(declaration);
       }
@@ -461,43 +482,87 @@ export class ModuleFrontend {
         }
       }
     }
-    return new Map(
-      functionsInOrder
-        .filter((f) => deferred.has(f))
-        .map((declaration) => {
-          const captured = this.capturedLexicals(declaration, statements);
-          return [
-            declaration,
-            captured.length > 0 ? Math.max(...captured) + 1 : 0,
-          ];
-        }),
-    );
+    const assignAt = new Map<ts.FunctionDeclaration, number>();
+    const hoistedLexicals = new Set<ts.VariableDeclaration>();
+    for (const [symbol, declaration] of functions) {
+      if (!deferred.has(declaration)) continue;
+      const captured = this.capturedLexicals(declaration, statements);
+      const index =
+        captured.length > 0 ? Math.max(...captured.map(lexicalIndex)) + 1 : 0;
+      if (
+        index > 0 &&
+        this.reachedBefore(symbol, index, statements, functions)
+      ) {
+        assignAt.set(declaration, 0);
+        captured.forEach((d) => hoistedLexicals.add(d));
+      } else {
+        assignAt.set(declaration, index);
+      }
+    }
+    return {
+      assignAt,
+      hoistedLexicals: [...hoistedLexicals].sort(
+        (a, b) => a.getStart() - b.getStart(),
+      ),
+    };
   }
 
-  /** Indices of the statements of `statements` declaring a `let`/`const` that `node` reads. */
+  /**
+   * Whether a statement before `index` (other than a function declaration of the block)
+   * refers to `symbol`, or to a function of the block that refers to it, transitively.
+   */
+  private reachedBefore(
+    symbol: ts.Symbol,
+    index: number,
+    statements: readonly ts.Statement[],
+    functions: ReadonlyMap<ts.Symbol, ts.FunctionDeclaration>,
+  ): boolean {
+    const reaching = new Set([symbol]);
+    const pending = [symbol];
+    while (pending.length > 0) {
+      const callee = pending.pop()!;
+      for (const [caller, declaration] of functions) {
+        if (!reaching.has(caller) && this.refersTo(declaration, callee)) {
+          reaching.add(caller);
+          pending.push(caller);
+        }
+      }
+    }
+    const blockFunctions = new Set<ts.Statement>(functions.values());
+    return statements
+      .slice(0, index)
+      .some(
+        (statement) =>
+          !blockFunctions.has(statement) &&
+          [...reaching].some((s) => this.refersTo(statement, s)),
+      );
+  }
+
+  /** The `let`/`const` declarations of `statements` that `node` reads. */
   private capturedLexicals(
     node: ts.Node,
     statements: readonly ts.Statement[],
-  ): number[] {
-    const indices = new Set<number>();
+  ): ts.VariableDeclaration[] {
+    const captured = new Set<ts.VariableDeclaration>();
     const visit = (child: ts.Node): void => {
       if (ts.isIdentifier(child)) {
-        const declaration =
-          this.checker.getSymbolAtLocation(child)?.valueDeclaration;
+        const declaration = this.valueSymbol(child)?.valueDeclaration;
         if (
           declaration &&
           ts.isVariableDeclaration(declaration) &&
+          ts.isIdentifier(declaration.name) &&
           ts.isVariableDeclarationList(declaration.parent) &&
-          !isVarDeclarationList(declaration.parent)
+          !isVarDeclarationList(declaration.parent) &&
+          ts.isVariableStatement(declaration.parent.parent) &&
+          statements.includes(declaration.parent.parent)
         ) {
-          const index = statements.indexOf(declaration.parent.parent);
-          if (index >= 0) indices.add(index);
+          captured.add(declaration);
         }
       }
       ts.forEachChild(child, visit);
     };
     visit(node);
-    return [...indices];
+    return [...captured];
   }
 
   /** The `var` a deferred function declaration becomes, and the closure it is assigned. */
@@ -672,7 +737,7 @@ export class ModuleFrontend {
       if (
         ts.isIdentifier(child) &&
         (inFunction || !onlyInFunctions) &&
-        this.checker.getSymbolAtLocation(child) === symbol
+        this.valueSymbol(child) === symbol
       ) {
         return true;
       }
@@ -1132,11 +1197,16 @@ export class ModuleFrontend {
       : undefined;
   }
 
+  /** The value an identifier reads: the variable, not the property, of a shorthand `{ x }`. */
+  private valueSymbol(node: ts.Identifier): ts.Symbol | undefined {
+    return ts.isShorthandPropertyAssignment(node.parent) &&
+      node.parent.name === node
+      ? this.checker.getShorthandAssignmentValueSymbol(node.parent)
+      : this.checker.getSymbolAtLocation(node);
+  }
+
   private identifier(node: ts.Identifier, pos: SourcePos): HxExpr {
-    const symbol =
-      ts.isShorthandPropertyAssignment(node.parent) && node.parent.name === node
-        ? this.checker.getShorthandAssignmentValueSymbol(node.parent)
-        : this.checker.getSymbolAtLocation(node);
+    const symbol = this.valueSymbol(node);
     if (node.text === 'undefined' && !this.localDeclaration(symbol)) {
       return constExpr(null, pos);
     }

@@ -73,7 +73,8 @@ export function printType(type: HxType): string {
           ? `${prefix}${arg.name}:${argType}`
           : `${prefix}${argType}`;
       });
-      return `(${args.join(', ')}) -> ${printType(type.ret)}`;
+      const ret = printType(type.ret);
+      return `(${args.join(', ')}) -> ${type.ret.kind === 'fn' ? `(${ret})` : ret}`;
     }
     case 'anon':
       if (type.fields.length === 0) {
