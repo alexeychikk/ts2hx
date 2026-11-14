@@ -244,7 +244,12 @@ describe('classes II helpers', () => {
       class C extends B { #x = 3; }
     `);
     const privateOf = (cls: string, name: string) =>
-      privateMemberName(checker, member(cls, name) as ts.ClassElement);
+      privateMemberName(
+        checker,
+        member(cls, name) as ts.PropertyDeclaration & {
+          name: ts.PrivateIdentifier;
+        },
+      );
     expect(privateOf('A', '#x')).toBe('__x');
     expect(privateOf('B', '#y')).toBe('__y');
     expect(privateOf('C', '#x')).toBe('__x_2');
