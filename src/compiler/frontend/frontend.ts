@@ -1,5 +1,6 @@
 import ts from 'typescript';
 
+import { padCallback } from '../stdlib/callbacks';
 import {
   ANY,
   arrayType,
@@ -34,7 +35,6 @@ import type {
   HxParam,
   HxStmt,
   HxType,
-  HxTypeParam,
   HxTypePath,
   SourcePos,
 } from '../ir/types';
@@ -247,8 +247,27 @@ function constituents(type: ts.Type): readonly ts.Type[] {
   return type.isUnion() ? type.types : [type];
 }
 
+/**
+ * Whether a method is declared to return `this`: Haxe types the call as the declaring
+ * class, so the result is cast to the receiver's class.
+ */
+function returnsThis(signature: ts.Signature | undefined): boolean {
+  const type = signature?.declaration?.type;
+  return type !== undefined && type.kind === ts.SyntaxKind.ThisType;
+}
+
+/** Whether every constituent, or the primitive constraint of a type parameter, has `flags`. */
 function everyConstituent(type: ts.Type, flags: ts.TypeFlags): boolean {
-  return constituents(type).every((t) => (t.flags & flags) !== 0);
+  return constituents(type).every((t) => {
+    if (t.flags & flags) return true;
+    const constraint =
+      t.flags & ts.TypeFlags.TypeParameter ? t.getConstraint() : undefined;
+    return (
+      constraint !== undefined &&
+      !(constraint.flags & ts.TypeFlags.TypeParameter) &&
+      everyConstituent(constraint, flags)
+    );
+  });
 }
 
 /** Expressions that can be read twice without repeating a side effect. */
@@ -2388,10 +2407,7 @@ export class ModuleFrontend {
       decl: {
         kind: 'class',
         name: path.name,
-        typeParams: (node.typeParameters ?? []).map((p) => ({
-          name: escapeIdentifier(p.name.text),
-          constraints: [],
-        })),
+        typeParams: this.types.typeParams(node),
         isAbstract: hasModifier(node, ts.ModifierFlags.Abstract),
         superClass:
           base?.kind === 'path'
@@ -3023,10 +3039,7 @@ export class ModuleFrontend {
 
   private function(node: FunctionNode): HxFunction {
     const signature = this.checker.getSignatureFromDeclaration(node);
-    const typeParams: HxTypeParam[] = (node.typeParameters ?? []).map((p) => ({
-      name: escapeIdentifier(p.name.text),
-      constraints: [],
-    }));
+    const typeParams = this.types.typeParams(node);
     const prologue: HxStmt[] = [];
     const params: HxParam[] = node.parameters.map((parameter) => {
       if (!ts.isIdentifier(parameter.name)) {
@@ -4056,7 +4069,108 @@ export class ModuleFrontend {
         pos,
       };
     }
+    if (!assigned && this.isComputedMember(node, target.type)) {
+      return this.getProperty(
+        target,
+        this.propertyKey(argument),
+        this.hxTypeOf(node),
+        pos,
+      );
+    }
     return this.unsupported(node);
+  }
+
+  /**
+   * `o[k]` with a computed key on an object that is not an array, string or
+   * dictionary (e.g. `K extends keyof T`): a reflective property access.
+   */
+  private isComputedMember(
+    node: ts.ElementAccessExpression,
+    targetType: HxType,
+  ): boolean {
+    const keyType = this.typeOf(node.argumentExpression);
+    return (
+      !isArray(targetType) &&
+      !isStringType(targetType) &&
+      !dictValue(targetType) &&
+      !this.isStringLike(node.expression) &&
+      !(keyType.flags & ts.TypeFlags.ESSymbolLike) &&
+      !this.isNumberLike(node.argumentExpression) &&
+      !ts.isStringLiteral(node.argumentExpression) &&
+      !ts.isNoSubstitutionTemplateLiteral(node.argumentExpression)
+    );
+  }
+
+  private getProperty(
+    target: HxExpr,
+    key: HxExpr,
+    type: HxType,
+    pos: SourcePos,
+  ): HxExpr {
+    const read = staticCall(
+      REFLECT,
+      'getProperty',
+      [target, key],
+      DYNAMIC,
+      pos,
+    );
+    return type.kind === 'dynamic'
+      ? read
+      : { kind: 'cast', expr: read, checked: false, type, pos };
+  }
+
+  /** `o[k] = v` / `o[k] op= v` with a computed key: `Ts2hx.setProperty(o, k, v)`. */
+  private computedMemberAssign(
+    node: ts.BinaryExpression,
+    pos: SourcePos,
+    operator?: ts.BinaryOperator,
+  ): HxExpr | undefined {
+    let left = node.left;
+    while (ts.isParenthesizedExpression(left) || ts.isNonNullExpression(left)) {
+      left = left.expression;
+    }
+    if (
+      !ts.isElementAccessExpression(left) ||
+      left.questionDotToken ||
+      this.isDict(left.expression) ||
+      this.enumObject(left.expression) ||
+      !this.isComputedMember(left, this.hxTypeOf(left.expression))
+    ) {
+      return undefined;
+    }
+    const type = this.hxTypeOf(left);
+    const set = (target: HxExpr, key: HxExpr, value: HxExpr): HxExpr =>
+      staticCall(
+        RUNTIME.ts2hx,
+        'setProperty',
+        [target, key, value],
+        value.type,
+        pos,
+      );
+    const targetExpr = this.expression(left.expression);
+    const keyExpr = this.propertyKey(left.argumentExpression);
+    if (operator === undefined) {
+      return set(
+        targetExpr,
+        keyExpr,
+        this.coerce(this.expression(node.right), type),
+      );
+    }
+    const target = this.once(targetExpr);
+    const key = this.once(keyExpr);
+    const value = this.operation(
+      operator,
+      left,
+      node.right,
+      pos,
+      this.getProperty(target.ref, key.ref, type, pos),
+    );
+    return value
+      ? this.withStmts(
+          [...target.stmts, ...key.stmts],
+          set(target.ref, key.ref, value),
+        )
+      : this.unsupported(node);
   }
 
   private deleteExpression(node: ts.DeleteExpression, pos: SourcePos): HxExpr {
@@ -4447,6 +4561,10 @@ export class ModuleFrontend {
     if (dict) {
       return dict;
     }
+    const computed = this.computedMemberAssign(node, pos);
+    if (computed) {
+      return computed;
+    }
     const length = this.arrayLengthAssign(node);
     if (length) {
       return length;
@@ -4539,6 +4657,10 @@ export class ModuleFrontend {
     const dict = this.dictAssign(node, pos, operator);
     if (dict) {
       return dict;
+    }
+    const computed = this.computedMemberAssign(node, pos, operator);
+    if (computed) {
+      return computed;
     }
     const length = this.arrayLengthTarget(node.left);
     if (length) {
@@ -5249,6 +5371,13 @@ export class ModuleFrontend {
     node: ts.ObjectLiteralExpression,
     pos: SourcePos,
   ): HxExpr {
+    if (
+      node.properties.some(
+        (p) => ts.isSpreadAssignment(p) && this.hasUnknownKeys(p.expression),
+      )
+    ) {
+      return this.reflectiveSpreadLiteral(node, pos);
+    }
     const stmts: HxStmt[] = [];
     const fields = new Map<string, HxExpr>();
     for (const property of node.properties) {
@@ -5302,6 +5431,73 @@ export class ModuleFrontend {
       type: this.hxTypeOf(node),
       pos,
     });
+  }
+
+  /** Whether the keys of a spread source are unknown statically: a type parameter or `any`. */
+  private hasUnknownKeys(node: ts.Expression): boolean {
+    return constituents(this.typeOf(node)).some(
+      (t) =>
+        (t.flags &
+          (ts.TypeFlags.TypeParameter |
+            ts.TypeFlags.Any |
+            ts.TypeFlags.IndexedAccess)) !==
+        0,
+    );
+  }
+
+  /**
+   * `{ a, ...t }` where a spread source has keys unknown statically (e.g. a generic
+   * value): a fresh object filled in source order by reflection. Its key order is
+   * the target's `Reflect.fields` order (ADR 0002, degraded).
+   */
+  private reflectiveSpreadLiteral(
+    node: ts.ObjectLiteralExpression,
+    pos: SourcePos,
+  ): HxExpr {
+    const name = this.freshName('spread');
+    const object = localExpr(name, DYNAMIC, pos);
+    const stmts: HxStmt[] = [
+      {
+        kind: 'var',
+        name,
+        final: true,
+        type: DYNAMIC,
+        init: { kind: 'objectLit', fields: [], type: DYNAMIC, pos },
+      },
+    ];
+    for (const property of node.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        if (this.isDict(property.expression)) {
+          return this.unsupported(node);
+        }
+        stmts.push({
+          kind: 'expr',
+          expr: staticCall(
+            RUNTIME.ts2hx,
+            'assign',
+            [object, this.expression(property.expression)],
+            VOID,
+            pos,
+          ),
+        });
+        continue;
+      }
+      const converted = this.literalProperty(property);
+      if (!converted) {
+        return this.unsupported(node);
+      }
+      stmts.push({
+        kind: 'expr',
+        expr: staticCall(
+          REFLECT,
+          'setField',
+          [object, constExpr(converted.name, pos), converted.value],
+          VOID,
+          pos,
+        ),
+      });
+    }
+    return this.withStmts(stmts, this.coerce(object, this.hxTypeOf(node)));
   }
 
   /** A dictionary literal with spreads: a fresh `Dict` filled in source order. */
@@ -5503,7 +5699,7 @@ export class ModuleFrontend {
         ? (this.classContexts[this.classContexts.length - 1]?.superCaptures ??
           [])
         : [];
-    return {
+    const call: HxExpr = {
       kind: 'call',
       callee: this.expression(callee),
       args: [...superCaptures, ...this.arguments(node, args, spreadLast)],
@@ -5511,6 +5707,9 @@ export class ModuleFrontend {
       type: ret,
       pos,
     };
+    return returnsThis(signature)
+      ? { kind: 'cast', expr: call, checked: false, type: ret, pos }
+      : call;
   }
 
   /** Call or `new` arguments typed as the resolved signature's parameters. */
@@ -5528,11 +5727,29 @@ export class ModuleFrontend {
       const parameter = parameterTypes[Math.min(i, parameterTypes.length - 1)];
       return parameter && !(spreadLast && i === args.length - 1)
         ? this.coerce(
-            arg,
+            this.padToParameter(arg, parameter.type),
             parameter.optional ? nullable(parameter.type) : parameter.type,
           )
         : arg;
     });
+  }
+
+  /** A callback passed where a function type with more parameters is expected, padded to its arity. */
+  private padToParameter(arg: HxExpr, parameter: HxType): HxExpr {
+    const expected = parameter.kind === 'null' ? parameter.inner : parameter;
+    if (
+      expected.kind !== 'fn' ||
+      arg.type.kind !== 'fn' ||
+      expected.args.length === 0 ||
+      expected.args.some((a) => a.rest || a.optional) ||
+      arg.type.args.length >= expected.args.length
+    ) {
+      return arg;
+    }
+    const [first, ...extra] = expected.args.map((a) => a.type);
+    return (
+      padCallback(arg, first, extra, (hint) => this.freshName(hint)) ?? arg
+    );
   }
 
   private spreadsIntoRest(

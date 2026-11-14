@@ -10,7 +10,13 @@ import {
   STRING,
   VOID,
 } from '../ir/builders';
-import type { HxAnonField, HxDecl, HxType, HxTypePath } from '../ir/types';
+import type {
+  HxAnonField,
+  HxDecl,
+  HxType,
+  HxTypeParam,
+  HxTypePath,
+} from '../ir/types';
 import { escapeIdentifier, HAXE_STD_TYPES, MAIN_CLASS } from '../model/names';
 import { libErrorClassPath } from '../stdlib/errors';
 import { ancestors, isHoistedClass } from './classes';
@@ -83,6 +89,13 @@ export function className(
 /** Maps checker types to Haxe types: the single place doing so (ADR 0001). */
 export class TypeMapper {
   private readonly visiting = new Set<ts.Type>();
+  private readonly typeParamConstraints = new Map<
+    ts.Symbol,
+    HxType[] | undefined
+  >();
+  private readonly erasedSignatureParams = new Set<ts.Symbol>();
+  private readonly decidingTypeParams: ts.Symbol[] = [];
+  private readonly cyclicTypeParams = new Set<ts.Symbol>();
   private readonly classDeclarations = new Map<
     string,
     ts.ClassLikeDeclaration
@@ -186,6 +199,73 @@ export class TypeMapper {
     };
   }
 
+  /**
+   * The Haxe type parameters of a class, function or method declaration: those it
+   * keeps generic. Others are erased to `Dynamic` (ADR 0005).
+   */
+  typeParams(node: ts.Declaration): HxTypeParam[] {
+    const declarations = ts.getEffectiveTypeParameterDeclarations(
+      node as ts.DeclarationWithTypeParameters,
+    );
+    return declarations.flatMap((declaration) => {
+      const symbol = this.checker.getSymbolAtLocation(declaration.name);
+      const constraints = symbol && this.keptConstraints(symbol);
+      return constraints
+        ? [{ name: escapeIdentifier(symbol.name), constraints }]
+        : [];
+    });
+  }
+
+  /**
+   * The Haxe constraints of a type parameter kept generic, or `undefined` when it is
+   * erased: it belongs to a declaration Haxe cannot make generic (arrows, function
+   * expressions, signatures, interfaces, aliases), its constraint is not a project
+   * class or typedef, or its constraint refers back to it (`T extends Node<T>`).
+   */
+  private keptConstraints(symbol: ts.Symbol): HxType[] | undefined {
+    const deciding = this.decidingTypeParams.indexOf(symbol);
+    if (deciding >= 0) {
+      this.decidingTypeParams
+        .slice(deciding)
+        .forEach((s) => this.cyclicTypeParams.add(s));
+      return undefined;
+    }
+    if (this.typeParamConstraints.has(symbol)) {
+      return this.typeParamConstraints.get(symbol);
+    }
+    this.decidingTypeParams.push(symbol);
+    try {
+      const constraints = this.constraintsOf(symbol);
+      const kept = this.cyclicTypeParams.has(symbol) ? undefined : constraints;
+      this.typeParamConstraints.set(symbol, kept);
+      return kept;
+    } finally {
+      this.decidingTypeParams.pop();
+    }
+  }
+
+  private constraintsOf(symbol: ts.Symbol): HxType[] | undefined {
+    const declaration = symbol.declarations?.find(
+      ts.isTypeParameterDeclaration,
+    );
+    if (!declaration || !isHaxeGenericDeclaration(declaration.parent)) {
+      return undefined;
+    }
+    const constraintNode =
+      ts.getEffectiveConstraintOfTypeParameter(declaration);
+    let constraints: HxType[] | undefined = [];
+    if (constraintNode) {
+      const constraint = this.map(
+        this.checker.getTypeFromTypeNode(constraintNode),
+      );
+      constraints =
+        constraint.kind === 'path' && !isPrimitivePath(constraint.path)
+          ? [constraint]
+          : undefined;
+    }
+    return constraints;
+  }
+
   private mapUncached(type: ts.Type): HxType {
     const flags = type.flags;
     if (flags & ts.TypeFlags.NumberLike) return FLOAT;
@@ -197,7 +277,9 @@ export class TypeMapper {
         const constraint = type.getConstraint();
         return constraint ? this.map(constraint) : DYNAMIC;
       }
-      return type.symbol
+      return type.symbol &&
+        !this.erasedSignatureParams.has(type.symbol) &&
+        this.keptConstraints(type.symbol)
         ? { kind: 'typeParam', name: escapeIdentifier(type.symbol.name) }
         : DYNAMIC;
     }
@@ -342,14 +424,16 @@ export class TypeMapper {
     if (!path) {
       return undefined;
     }
-    const arity = (target as ts.InterfaceType).typeParameters?.length ?? 0;
-    const params =
-      objectFlags & ts.ObjectFlags.Reference && arity > 0
-        ? this.checker
-            .getTypeArguments(type as ts.TypeReference)
-            .slice(0, arity)
-            .map((t) => this.map(t))
+    const typeParameters = (target as ts.InterfaceType).typeParameters ?? [];
+    const args =
+      objectFlags & ts.ObjectFlags.Reference
+        ? this.checker.getTypeArguments(type as ts.TypeReference)
         : [];
+    const params = typeParameters.flatMap((parameter, i) =>
+      parameter.symbol && this.keptConstraints(parameter.symbol)
+        ? [args[i] ? this.map(args[i]) : DYNAMIC]
+        : [],
+    );
     return { kind: 'path', path, params };
   }
 
@@ -459,6 +543,18 @@ export class TypeMapper {
 
   /** Haxe function type of a call signature. */
   signatureType(signature: ts.Signature): HxType {
+    const erased = (signature.typeParameters ?? []).flatMap((p) =>
+      p.symbol && !this.erasedSignatureParams.has(p.symbol) ? [p.symbol] : [],
+    );
+    erased.forEach((symbol) => this.erasedSignatureParams.add(symbol));
+    try {
+      return this.signatureTypeUncached(signature);
+    } finally {
+      erased.forEach((symbol) => this.erasedSignatureParams.delete(symbol));
+    }
+  }
+
+  private signatureTypeUncached(signature: ts.Signature): HxType {
     return {
       kind: 'fn',
       args: signature.parameters.map((parameter) => {
@@ -493,6 +589,22 @@ export class TypeMapper {
     }
     return DYNAMIC;
   }
+}
+
+/** Whether Haxe can declare type parameters on the class or function `node` becomes. */
+function isHaxeGenericDeclaration(node: ts.Node): boolean {
+  return (
+    ts.isClassLike(node) ||
+    ts.isFunctionDeclaration(node) ||
+    (ts.isMethodDeclaration(node) && ts.isClassLike(node.parent))
+  );
+}
+
+function isPrimitivePath(path: HxTypePath): boolean {
+  return (
+    path.pack.length === 0 &&
+    ['Float', 'Int', 'Bool', 'String'].includes(path.name)
+  );
 }
 
 function isReadonly(property: ts.Symbol): boolean {

@@ -19,6 +19,20 @@ class Ts2hx {
 		#end
 	}
 
+	/** Copies the fields of `source` onto `target`, like a spread of a value whose type is not known statically. */
+	public static function assign(target:Dynamic, source:Dynamic):Void {
+		if (source == null)
+			return;
+		for (field in Reflect.fields(source))
+			Reflect.setField(target, field, Reflect.field(source, field));
+	}
+
+	/** JS `o[key] = value` for a computed key: runs a setter and evaluates to `value`. */
+	public static function setProperty<T>(o:Dynamic, key:String, value:T):T {
+		Reflect.setProperty(o, key, value);
+		return value;
+	}
+
 	/** JS `String(value)`; `null` reads as `undefined` (ADR 0002 merges them). */
 	public static function string(value:Dynamic):String {
 		if (value == null)
