@@ -2,18 +2,17 @@ import { log } from './log';
 
 log('stack initialised');
 
-export default class Stack<T> {
-  private items: T[] = [];
+const items: number[] = [];
 
-  push(item: T): void {
-    this.items.push(item);
-  }
+export default function push(item: number): number {
+  items.push(item);
+  return items.length;
+}
 
-  pop(): T | undefined {
-    return this.items.pop();
-  }
+export function peek(): number {
+  return items[items.length - 1];
+}
 
-  size(): number {
-    return this.items.length;
-  }
+export function size(): number {
+  return items.length;
 }

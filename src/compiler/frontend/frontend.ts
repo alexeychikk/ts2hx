@@ -34,7 +34,11 @@ import type {
   HxTypeParam,
   SourcePos,
 } from '../ir/types';
-import type { ModuleInfo, ProjectModel } from '../model/project-model';
+import type {
+  ModuleInfo,
+  ModuleValue,
+  ProjectModel,
+} from '../model/project-model';
 import { escapeIdentifier } from '../model/names';
 import {
   type BoundReceiver,
@@ -269,20 +273,22 @@ export class ModuleFrontend {
       this.hoisted.add(symbol);
       decls.push({
         kind: 'moduleVar',
-        name: escapeIdentifier(symbol.name),
+        name: this.bindingName(declaration),
         final: false,
         type: this.declaredType(declaration),
       });
     }
     const init: HxStmt[] = [];
     for (const statement of this.sourceFile.statements) {
-      if (ts.isFunctionDeclaration(statement) && statement.name) {
+      if (ts.isFunctionDeclaration(statement)) {
         if (!statement.body) continue;
         decls.push({
           kind: 'moduleFunction',
-          name: escapeIdentifier(statement.name.text),
+          name: this.info.fields.get(statement)!,
           fn: this.function(statement),
         });
+      } else if (ts.isExportAssignment(statement)) {
+        init.push(...this.exportAssignment(statement, decls));
       } else {
         init.push(...this.statement(statement));
       }
@@ -295,6 +301,51 @@ export class ModuleFrontend {
       decls,
       init,
     };
+  }
+
+  /** `export default <expression>`: a module var assigned where the export stands. */
+  private exportAssignment(
+    statement: ts.ExportAssignment,
+    decls: HxDecl[],
+  ): HxStmt[] {
+    const name = this.info.fields.get(statement);
+    if (statement.isExportEquals) {
+      return this.unsupportedStmt(statement, '`export =` is not supported');
+    }
+    if (name === undefined) {
+      return [];
+    }
+    const type = this.hxTypeOf(statement.expression);
+    decls.push({ kind: 'moduleVar', name, final: false, type });
+    return [
+      {
+        kind: 'expr',
+        expr: {
+          kind: 'assign',
+          op: '=',
+          target: localExpr(name, type),
+          value: this.coerce(this.expression(statement.expression), type),
+          type,
+        },
+      },
+    ];
+  }
+
+  /**
+   * Haxe name of a local binding: escaped, and renamed when it would shadow a root
+   * package the generated code references (`lib` in `lib.Util.f()`).
+   */
+  private localName(name: string): string {
+    const id = escapeIdentifier(name);
+    return this.model.reservedLocalNames.has(id) ? `${id}_` : id;
+  }
+
+  /** Haxe name of a variable: its module field name at the top level (ProjectModel). */
+  private bindingName(declaration: ts.VariableDeclaration): string {
+    return (
+      this.info.fields.get(declaration) ??
+      this.localName((declaration.name as ts.Identifier).text)
+    );
   }
 
   private freshName(hint: string): string {
@@ -483,7 +534,7 @@ export class ModuleFrontend {
       this.hoistedLexicals.add(symbol);
       return {
         kind: 'var',
-        name: escapeIdentifier((declaration.name as ts.Identifier).text),
+        name: this.localName((declaration.name as ts.Identifier).text),
         final: false,
         type: this.declaredType(declaration),
         init: constExpr(null),
@@ -694,7 +745,7 @@ export class ModuleFrontend {
     type: HxType;
     value: HxExpr;
   } {
-    const name = escapeIdentifier(declaration.name!.text);
+    const name = this.localName(declaration.name!.text);
     if (declaration.typeParameters) {
       return {
         name,
@@ -736,7 +787,7 @@ export class ModuleFrontend {
         ? [
             {
               kind: 'localFunction',
-              name: escapeIdentifier(node.name.text),
+              name: this.localName(node.name.text),
               fn: this.function(node),
             },
           ]
@@ -882,7 +933,7 @@ export class ModuleFrontend {
         );
       }
       const symbol = this.checker.getSymbolAtLocation(declaration.name)!;
-      const name = escapeIdentifier(declaration.name.text);
+      const name = this.bindingName(declaration);
       const type = this.declaredType(declaration);
       const init =
         declaration.initializer &&
@@ -964,7 +1015,7 @@ export class ModuleFrontend {
         for (const declaration of initializer.declarations) {
           const symbol = this.checker.getSymbolAtLocation(declaration.name);
           if (symbol && this.refersTo(node, symbol, true)) {
-            perIterationBindings.push(escapeIdentifier(symbol.name));
+            perIterationBindings.push(this.localName(symbol.name));
           }
         }
       }
@@ -1012,7 +1063,7 @@ export class ModuleFrontend {
     }
     const declaration = initializer.declarations[0];
     const symbol = this.checker.getSymbolAtLocation(declaration.name)!;
-    const name = escapeIdentifier(symbol.name);
+    const name = this.localName(symbol.name);
     const isConst = (initializer.flags & ts.NodeFlags.Const) !== 0;
     const body = this.body(node.statement);
     const iterable = this.expression(node.expression);
@@ -1055,7 +1106,7 @@ export class ModuleFrontend {
     ) {
       return this.unsupportedStmt(node);
     }
-    const name = escapeIdentifier(initializer.declarations[0].name.text);
+    const name = this.localName(initializer.declarations[0].name.text);
     const keys: HxExpr = {
       kind: 'call',
       callee: { kind: 'field', target: iterated, name: 'keys', type: DYNAMIC },
@@ -1105,7 +1156,7 @@ export class ModuleFrontend {
         );
         return { name: this.freshName('param'), type: DYNAMIC, optional: true };
       }
-      const name = escapeIdentifier(parameter.name.text);
+      const name = this.localName(parameter.name.text);
       const declared = this.typeOf(parameter);
       if (parameter.dotDotDotToken) {
         const restName = this.freshName(name);
@@ -1218,7 +1269,7 @@ export class ModuleFrontend {
       this.hoisted.add(symbol);
       return {
         kind: 'var',
-        name: escapeIdentifier(symbol.name),
+        name: this.localName(symbol.name),
         final: false,
         type: this.declaredType(declaration),
         init: constExpr(null),
@@ -1559,6 +1610,10 @@ export class ModuleFrontend {
     if (key !== undefined) {
       return VALUE_BINDINGS.get(key)?.(pos) ?? this.unsupported(node);
     }
+    const value = symbol && this.model.resolveValue(symbol);
+    if (value) {
+      return this.moduleValue(node, value, pos);
+    }
     const declaration = this.localDeclaration(symbol);
     if (!symbol || !declaration) {
       return this.unsupported(
@@ -1574,13 +1629,50 @@ export class ModuleFrontend {
       return this.unsupported(node);
     }
     return localExpr(
-      escapeIdentifier(symbol.name),
+      this.localName(symbol.name),
       ts.isVariableDeclaration(declaration)
         ? this.declaredType(declaration)
         : ts.isParameter(declaration)
           ? this.parameterType(declaration)
           : this.types.map(this.checker.getTypeOfSymbol(symbol)),
       pos,
+    );
+  }
+
+  /**
+   * A module-level value, possibly imported or re-exported: a bare name in its own
+   * module, `pack.Module.name` elsewhere. Namespace objects only exist as `ns.member`.
+   */
+  private moduleValue(
+    node: ts.Expression,
+    value: ModuleValue,
+    pos: SourcePos,
+  ): HxExpr {
+    if (value.kind === 'namespace') {
+      return this.unsupported(
+        node,
+        'a module namespace object used as a value is not supported yet',
+      );
+    }
+    const { declaration, module, name } = value;
+    const type = ts.isVariableDeclaration(declaration)
+      ? this.declaredType(declaration)
+      : ts.isExportAssignment(declaration)
+        ? this.hxTypeOf(declaration.expression)
+        : this.hxTypeOf(declaration);
+    return module === this.info
+      ? localExpr(name, type, pos)
+      : { kind: 'moduleField', module: module.path, name, type, pos };
+  }
+
+  /** The project module an `import * as ns` (or re-exported namespace) expression names. */
+  private isNamespace(node: ts.Expression): boolean {
+    const target = ts.isPropertyAccessExpression(node) ? node.name : node;
+    const symbol = this.checker.getSymbolAtLocation(target);
+    return (
+      (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node)) &&
+      !!symbol &&
+      this.model.resolveValue(symbol)?.kind === 'namespace'
     );
   }
 
@@ -1595,6 +1687,13 @@ export class ModuleFrontend {
     node: ts.PropertyAccessExpression,
     pos: SourcePos,
   ): HxExpr {
+    if (this.isNamespace(node.expression)) {
+      const symbol = this.checker.getSymbolAtLocation(node.name);
+      const value = symbol && this.model.resolveValue(symbol);
+      return value
+        ? this.moduleValue(node, value, pos)
+        : this.unsupported(node);
+    }
     const key = this.libKey(node.name);
     if (key !== undefined) {
       const property = PROPERTY_BINDINGS.get(key);
