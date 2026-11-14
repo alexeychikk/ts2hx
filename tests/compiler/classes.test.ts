@@ -2,7 +2,7 @@ import ts from 'typescript';
 
 import {
   mayReadFieldsBeforeInit,
-  mutablyRedeclaredFields,
+  redeclaredWrittenFields,
   overridesImplementation,
   rootField,
   superCallStatement,
@@ -60,14 +60,22 @@ describe('class helpers', () => {
     expect(rootField(checker, field('C', 'y'))).toBe(member('C', 'y'));
   });
 
-  it('collects readonly roots redeclared mutable', () => {
+  it('collects roots redeclared by a subclass that writes them', () => {
     const { program, member } = classesOf(`
-      class A { readonly x = 1; readonly y = 2; }
-      class B extends A { x = 3; readonly y = 4; }
+      class A { readonly x = 1; readonly y = 2; readonly z = 3; readonly w = 4; readonly v = 5; }
+      class B extends A {
+        x = 3; readonly y = 4; declare readonly v: number;
+        constructor(readonly w: number) { super(); if (w) { this.z += 1; } }
+      }
+      class C { constructor(readonly name: string) {} }
+      class D extends C { constructor(readonly name: string) { super(name); } }
     `);
-    const mutable = mutablyRedeclaredFields(program);
-    expect(mutable.has(member('A', 'x'))).toBe(true);
-    expect(mutable.has(member('A', 'y'))).toBe(false);
+    const written = redeclaredWrittenFields(program);
+    expect(written.has(member('A', 'x'))).toBe(true);
+    expect(written.has(member('A', 'y'))).toBe(true);
+    expect(written.has(member('A', 'w'))).toBe(true);
+    expect(written.has(member('A', 'v'))).toBe(false);
+    expect(written.has(member('C', 'name'))).toBe(true);
   });
 
   it('detects superclass code that may read fields before they are set', () => {
@@ -177,6 +185,26 @@ describe('classes in the frontend', () => {
     `);
     expect(code).toContain('public var n:Null<Float>;');
     expect(code).toContain('ts2hx.Ts2hx.string(this.n)');
+  });
+
+  it('keeps a readonly root mutable when a readonly redeclaration assigns it', async () => {
+    const code = await moduleOf(`
+      class A { readonly kind: string = 'a'; }
+      class B extends A { readonly kind: string = 'b'; }
+      console.log(new B().kind);
+    `);
+    expect(code).toContain('public var kind:String;');
+    expect(code).not.toContain('final kind');
+  });
+
+  it('reports extending a non-project class as unsupported', async () => {
+    const { code, diagnostics } = await compileSources({
+      'main.ts': 'class Stack extends Array<number> {}',
+    });
+    expect(code['Main_2.hx']).not.toContain('extends Array');
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'TODO(ts2hx): extending Array is not supported yet',
+    ]);
   });
 
   it('maps instanceof on project classes to Std.isOfType', async () => {

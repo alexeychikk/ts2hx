@@ -59,7 +59,7 @@ import {
   isParameterProperty,
   isStatic,
   mayReadFieldsBeforeInit,
-  mutablyRedeclaredFields,
+  redeclaredWrittenFields,
   overridesImplementation,
   owningClass,
   rootField,
@@ -1254,7 +1254,10 @@ export class ModuleFrontend {
     }
     const heritage = extendsClause(node);
     const base = heritage && this.types.map(this.typeOf(heritage));
-    if (heritage && base?.kind !== 'path') {
+    if (
+      heritage &&
+      (base?.kind !== 'path' || !this.classOf(heritage.expression))
+    ) {
       return {
         init: this.unsupportedStmt(
           heritage,
@@ -1436,12 +1439,12 @@ export class ModuleFrontend {
   /**
    * A `readonly` field is Haxe `final` when it is assigned where Haxe can see it (an
    * initialiser, a parameter property, a top-level constructor assignment) and no
-   * subclass redeclares it mutable.
+   * subclass redeclares and writes it.
    */
   private isFinalField(field: FieldDeclaration, name: string): boolean {
     if (
       !hasModifier(field, ts.ModifierFlags.Readonly) ||
-      mutablyRedeclaredFields(this.model.program).has(field)
+      redeclaredWrittenFields(this.model.program).has(field)
     ) {
       return false;
     }

@@ -221,14 +221,51 @@ export function mayReadFieldsBeforeInit(
   );
 }
 
-const mutableRedeclarationCache = new WeakMap<ts.Program, Set<ts.Node>>();
+/** Whether `node` assigns `this.<name>` anywhere, including compound assignments. */
+function assignsThisField(node: ts.Node, name: string): boolean {
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+    node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+    ts.isPropertyAccessExpression(node.left) &&
+    node.left.expression.kind === ts.SyntaxKind.ThisKeyword &&
+    node.left.name.text === name
+  ) {
+    return true;
+  }
+  return (
+    ts.forEachChild(node, (child) => assignsThisField(child, name)) ?? false
+  );
+}
+
+/**
+ * Whether a field redeclaration writes the field: it is mutable, has an initialiser,
+ * is a parameter property, or its class's constructor assigns it.
+ */
+function writesRedeclaredField(field: FieldDeclaration): boolean {
+  if (
+    !hasModifier(field, ts.ModifierFlags.Readonly) ||
+    isParameterProperty(field) ||
+    field.initializer !== undefined
+  ) {
+    return true;
+  }
+  const name = memberName(field);
+  const ctor = owningClass(field).members.find(ts.isConstructorDeclaration);
+  return (
+    name !== undefined && !!ctor?.body && assignsThisField(ctor.body, name)
+  );
+}
+
+const writtenRedeclarationCache = new WeakMap<ts.Program, Set<ts.Node>>();
 
 /**
  * Root field declarations (see `rootField`) that a subclass somewhere in the program
- * redeclares without `readonly`: Haxe declares those `var` even when the root is `readonly`.
+ * redeclares and writes (see `writesRedeclaredField`): Haxe declares those `var` even
+ * when the root is `readonly`.
  */
-export function mutablyRedeclaredFields(program: ts.Program): Set<ts.Node> {
-  const cached = mutableRedeclarationCache.get(program);
+export function redeclaredWrittenFields(program: ts.Program): Set<ts.Node> {
+  const cached = writtenRedeclarationCache.get(program);
   if (cached) {
     return cached;
   }
@@ -237,8 +274,8 @@ export function mutablyRedeclaredFields(program: ts.Program): Set<ts.Node> {
   const visit = (node: ts.Node): void => {
     if (
       isFieldDeclaration(node) &&
-      !hasModifier(node, ts.ModifierFlags.Readonly) &&
-      ts.isClassLike(owningClass(node))
+      ts.isClassLike(owningClass(node)) &&
+      writesRedeclaredField(node)
     ) {
       const root = rootField(checker, node);
       if (root !== node) {
@@ -251,6 +288,6 @@ export function mutablyRedeclaredFields(program: ts.Program): Set<ts.Node> {
     .getSourceFiles()
     .filter((sf) => !sf.isDeclarationFile)
     .forEach(visit);
-  mutableRedeclarationCache.set(program, result);
+  writtenRedeclarationCache.set(program, result);
   return result;
 }

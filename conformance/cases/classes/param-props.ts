@@ -58,3 +58,24 @@ console.log(r.value, r.kind, r.bump(), r.value);
 const c = new Counted(5, 6, 'c', 7);
 c.count++;
 console.log(c.toText(), c.count);
+
+class Kind {
+  readonly kind: string = 'a';
+}
+
+class SubKind extends Kind {
+  override readonly kind: string = 'b';
+}
+
+class Named {
+  constructor(readonly name: string) {}
+}
+
+class Renamed extends Named {
+  constructor(readonly name: string) {
+    super(`${name}!`);
+  }
+}
+
+console.log(new Kind().kind, new SubKind().kind);
+console.log(new Named('n').name, new Renamed('r').name);
