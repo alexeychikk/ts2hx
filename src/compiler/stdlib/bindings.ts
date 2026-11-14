@@ -18,7 +18,11 @@ import {
   VOID,
 } from '../ir/builders';
 import type { HxExpr, HxType, SourcePos } from '../ir/types';
-import { padCallback } from './callbacks';
+import {
+  ARRAY_CALL_BINDINGS,
+  ITERATOR_CALL_BINDINGS,
+  ITERATOR_PROPERTY_BINDINGS,
+} from './array-bindings';
 import { NUMBER_CALL_BINDINGS, NUMBER_VALUE_BINDINGS } from './number-bindings';
 import { STRING_CALL_BINDINGS } from './string-bindings';
 
@@ -45,67 +49,12 @@ export interface BoundCall {
   spreadLast?: boolean;
   /** Fresh, collision-free local name. */
   freshName: (hint: string) => string;
+  /** Haxe type of the call's TS result type. */
+  readonly type: HxType;
 }
 
 /** A property read on a lib value (`xs.length`), given the converted receiver. */
 export type PropertyBinding = (receiver: HxExpr, pos?: SourcePos) => HxExpr;
-
-function elementTypeOf(array: HxExpr): HxType {
-  return array.type.kind === 'path' && array.type.path.name === 'Array'
-    ? (array.type.params[0] ?? DYNAMIC)
-    : DYNAMIC;
-}
-
-function method(
-  owner: Parameters<typeof staticCall>[0],
-  name: string,
-  type: HxType,
-): CallBinding {
-  return ({ receiver, args, pos, spreadLast }) =>
-    receiver && !spreadLast
-      ? staticCall(owner, name, [receiver.expr, ...args], type, pos)
-      : undefined;
-}
-
-const arrayMap: CallBinding = ({
-  receiver,
-  args,
-  pos,
-  spreadLast,
-  freshName,
-}) => {
-  if (!receiver || spreadLast || args.length !== 1) return undefined;
-  const callback = padCallback(args[0], [FLOAT, receiver.expr.type], freshName);
-  const result =
-    args[0].type.kind === 'fn' ? arrayType(args[0].type.ret) : DYNAMIC;
-  return callback
-    ? staticCall(RUNTIME.jsArray, 'map', [receiver.expr, callback], result, pos)
-    : undefined;
-};
-
-const arrayReduce: CallBinding = ({
-  receiver,
-  args,
-  pos,
-  spreadLast,
-  freshName,
-}) => {
-  if (!receiver || spreadLast || args.length !== 2) return undefined;
-  const callback = padCallback(
-    args[0],
-    [elementTypeOf(receiver.expr), FLOAT, receiver.expr.type],
-    freshName,
-  );
-  return callback
-    ? staticCall(
-        RUNTIME.jsArray,
-        'reduce',
-        [receiver.expr, callback, args[1]],
-        args[1].type,
-        pos,
-      )
-    : undefined;
-};
 
 /** Returns the bound expression, or `undefined` when this call shape is not supported. */
 export type CallBinding = (call: BoundCall) => HxExpr | undefined;
@@ -167,13 +116,8 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
   ],
   ...NUMBER_CALL_BINDINGS,
   ...STRING_CALL_BINDINGS,
-  ['Array.push', method(RUNTIME.jsArray, 'push', FLOAT)],
-  ['Array.join', method(RUNTIME.jsArray, 'join', STRING)],
-  ['ReadonlyArray.join', method(RUNTIME.jsArray, 'join', STRING)],
-  ['Array.map', arrayMap],
-  ['ReadonlyArray.map', arrayMap],
-  ['Array.reduce', arrayReduce],
-  ['ReadonlyArray.reduce', arrayReduce],
+  ...ARRAY_CALL_BINDINGS,
+  ...ITERATOR_CALL_BINDINGS,
   ['ObjectConstructor.keys', dictEnumeration('keys', () => arrayType(STRING))],
   ['ObjectConstructor.values', dictEnumeration('values', arrayType)],
   [
@@ -228,6 +172,7 @@ export const PROPERTY_BINDINGS: ReadonlyMap<string, PropertyBinding> = new Map([
   ['Array.length', lengthField],
   ['ReadonlyArray.length', lengthField],
   ['String.length', lengthField],
+  ...ITERATOR_PROPERTY_BINDINGS,
 ]);
 
 /** Lib values read as plain identifiers or properties (`NaN`, `Infinity`). */

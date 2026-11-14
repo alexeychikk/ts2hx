@@ -108,7 +108,7 @@ function replace(name: string): CallBinding {
         pos,
       );
     }
-    const replacer = padCallback(args[1], [FLOAT, STRING], freshName);
+    const replacer = padCallback(args[1], STRING, [FLOAT, STRING], freshName);
     return replacer
       ? staticCall(
           RUNTIME.jsString,

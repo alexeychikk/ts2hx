@@ -50,6 +50,7 @@ import {
   stdlibKey,
   VALUE_BINDINGS,
 } from '../stdlib/bindings';
+import { arrayConstructor, setArrayLength } from '../stdlib/array-bindings';
 import { stringCodePoints, stringIndex } from '../stdlib/string-bindings';
 import {
   accessorPair,
@@ -167,6 +168,33 @@ function isArray(
 
 function arrayElement(type: HxType): HxType {
   return isArray(type) ? type.params[0] : DYNAMIC;
+}
+
+/**
+ * A nested array literal takes the element type its outer literal expects, so
+ * `[[1, 2], [3, [4]]]` builds `Array<Dynamic>` rows on every target.
+ */
+function retypeArrayLiteral(value: HxExpr, expected: HxType): HxExpr {
+  if (
+    value.kind !== 'arrayLit' ||
+    !isArray(expected) ||
+    sameType(value.type, expected)
+  ) {
+    return value;
+  }
+  const element = expected.params[0];
+  if (element.kind !== 'dynamic') {
+    return value;
+  }
+  return {
+    ...value,
+    type: expected,
+    elements: value.elements.map((e) =>
+      e.type.kind === 'dynamic'
+        ? e
+        : { kind: 'cast', expr: e, checked: false, type: DYNAMIC },
+    ),
+  };
 }
 
 /** A run of plain elements, or one spread array of an array literal. */
@@ -1285,7 +1313,9 @@ export class ModuleFrontend {
     const overString = this.isStringLike(node.expression);
     if (
       node.awaitModifier ||
-      (!this.checker.isArrayType(iterated) && !overString) ||
+      (!this.checker.isArrayType(iterated) &&
+        !this.checker.isTupleType(iterated) &&
+        !overString) ||
       !ts.isVariableDeclarationList(initializer) ||
       initializer.declarations.length !== 1 ||
       !ts.isIdentifier(initializer.declarations[0].name)
@@ -2145,8 +2175,11 @@ export class ModuleFrontend {
   }
 
   private newExpression(node: ts.NewExpression, pos: SourcePos): HxExpr {
-    const path = this.classOf(node.expression);
     const args = node.arguments ?? [];
+    if (this.libKey(node.expression) === 'Array') {
+      return this.newArray(node, args, pos);
+    }
+    const path = this.classOf(node.expression);
     if (!path || args.some(ts.isSpreadElement)) {
       return this.unsupported(node);
     }
@@ -2169,6 +2202,41 @@ export class ModuleFrontend {
       type: this.hxTypeOf(node),
       pos,
     };
+  }
+
+  /** `new Array(n)` / `new Array(a, b)`. */
+  private newArray(
+    node: ts.NewExpression,
+    args: readonly ts.Expression[],
+    pos: SourcePos,
+  ): HxExpr {
+    const spreadIndex = args.findIndex(ts.isSpreadElement);
+    const type = this.hxTypeOf(node);
+    const element = arrayElement(type);
+    const isLength = args.length === 1 && this.isNumberLike(args[0]);
+    const converted = args.map((a) =>
+      ts.isSpreadElement(a)
+        ? this.expression(a.expression)
+        : isLength
+          ? this.expression(a)
+          : this.coerce(this.expression(a), element),
+    );
+    const bound =
+      spreadIndex < 0 || spreadIndex === args.length - 1
+        ? arrayConstructor(
+            {
+              args: converted,
+              argTypes: args.map((a) => this.typeOf(a)),
+              pos,
+              toJsString: this.toJsString,
+              spreadLast: spreadIndex >= 0,
+              freshName: (hint) => this.freshName(hint),
+              type,
+            },
+            type,
+          )
+        : undefined;
+    return bound ?? this.unsupported(node);
   }
 
   // ------------------------------------------------------------ functions
@@ -3342,6 +3410,10 @@ export class ModuleFrontend {
     if (dict) {
       return dict;
     }
+    const length = this.arrayLengthAssign(node);
+    if (length) {
+      return length;
+    }
     const target = this.lvalue(node.left);
     if (!target) {
       return this.unsupported(node);
@@ -3354,6 +3426,24 @@ export class ModuleFrontend {
       type: target.type,
       pos,
     };
+  }
+
+  /** `xs.length = n` on an array: `JsArray.setLength`. */
+  private arrayLengthAssign(node: ts.BinaryExpression): HxExpr | undefined {
+    let left = node.left;
+    while (ts.isParenthesizedExpression(left) || ts.isNonNullExpression(left)) {
+      left = left.expression;
+    }
+    if (
+      !ts.isPropertyAccessExpression(left) ||
+      this.libKey(left.name) !== 'Array.length'
+    ) {
+      return undefined;
+    }
+    return setArrayLength(
+      this.expression(left.expression),
+      this.expression(node.right),
+    );
   }
 
   private compoundAssign(
@@ -3595,7 +3685,7 @@ export class ModuleFrontend {
       return {
         kind: 'arrayLit',
         elements: node.elements.map((e) =>
-          this.branch(this.expression(e), element),
+          this.branch(retypeArrayLiteral(this.expression(e), element), element),
         ),
         type,
         pos,
@@ -3890,6 +3980,7 @@ export class ModuleFrontend {
         : undefined;
     const key = nameNode && this.libKey(nameNode);
     if (key !== undefined) {
+      const resultType = () => this.hxTypeOf(node);
       const binding = CALL_BINDINGS.get(key);
       const bound = binding?.({
         receiver: ts.isPropertyAccessExpression(callee)
@@ -3901,6 +3992,9 @@ export class ModuleFrontend {
         toJsString: this.toJsString,
         spreadLast,
         freshName: (hint) => this.freshName(hint),
+        get type() {
+          return resultType();
+        },
       });
       return bound ?? this.unsupported(node);
     }

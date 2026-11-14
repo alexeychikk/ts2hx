@@ -442,7 +442,8 @@ class JsString {
 		return ch == ch.toLowerCase() && ch != ch.toUpperCase();
 	}
 
-	static function compareUnits(a:String, b:String):Int {
+	/** Compares two strings by UTF-16 code units, like JS `<`. */
+	public static function compareUnits(a:String, b:String):Int {
 		for (i in 0...Std.int(Math.min(a.length, b.length))) {
 			var diff = unitAt(a, i) - unitAt(b, i);
 			if (diff != 0)
