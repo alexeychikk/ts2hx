@@ -1,19 +1,18 @@
 {
   "compilerOptions": {
     "allowSyntheticDefaultImports": true,
-    "baseUrl": ".",
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,
     "experimentalDecorators": true,
     "forceConsistentCasingInFileNames": true,
     "lib": ["ESNext"],
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "paths": {
-      "@src": ["src/index.ts"],
-      "@src/*": ["src/*"],
-      "@tests": ["tests/index.ts"],
-      "@tests/*": ["tests/*"]
+      "@src": ["./src/index.ts"],
+      "@src/*": ["./src/*"],
+      "@tests": ["./tests/index.ts"],
+      "@tests/*": ["./tests/*"]
     },
     "rootDir": ".",
     "skipLibCheck": true,

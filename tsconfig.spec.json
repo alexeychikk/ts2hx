@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
+    "isolatedModules": true,
     "types": ["jest", "node"]
   },
   "include": [
@@ -16,12 +17,5 @@
     "**/*.spec.jsx",
     "**/*.d.ts"
   ],
-  "exclude": [
-    ".vscode",
-    "dist",
-    "examples",
-    "haxe_libraries",
-    "lib",
-    "node_modules"
-  ]
+  "exclude": [".vscode", "dist", "examples", "lib", "node_modules"]
 }

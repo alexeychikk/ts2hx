@@ -441,8 +441,8 @@ const defineHaxeGetSetProperty = function (
   const type = getter?.type
     ? this.emitNode(getter.type, context)
     : setter?.parameters[0].type
-    ? this.emitNode(setter.parameters[0].type, context)
-    : `${this.utils.createTodoComment()} Any`;
+      ? this.emitNode(setter.parameters[0].type, context)
+      : `${this.utils.createTodoComment()} Any`;
 
   if (type === 'Any') {
     logger.warn(

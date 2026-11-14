@@ -85,12 +85,9 @@ export function isBooleanExpressionOfVariableDeclaration(
 
   let parent = node.parent;
   while (!ts.isVariableDeclaration(parent)) {
-    if (
-      !(
-        isBooleanBinaryExpression(parent) ||
-        ts.isParenthesizedExpression(parent)
-      )
-    ) {
+    if (!(
+      isBooleanBinaryExpression(parent) || ts.isParenthesizedExpression(parent)
+    )) {
       return false;
     }
     parent = parent.parent;
@@ -242,12 +239,10 @@ export function toSeparateStatements(
   node: ts.Node,
   context: VisitNodeContext,
 ): string {
-  if (
-    !(
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === SyntaxKind.CommaToken
-    )
-  ) {
+  if (!(
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === SyntaxKind.CommaToken
+  )) {
     return `${this.utils.getIndent(node)}${this.emitNode(
       node,
       context,

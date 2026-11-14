@@ -35,8 +35,7 @@ export const transformDeleteExpression: TransformerFn = function (
   if (!ts.isDeleteExpression(node)) return;
 
   const expression = node.expression as
-    | ts.PropertyAccessExpression
-    | ts.ElementAccessExpression;
+    ts.PropertyAccessExpression | ts.ElementAccessExpression;
 
   return context.factory.createCallExpression(
     context.factory.createPropertyAccessExpression(

@@ -11,7 +11,6 @@
     ".vscode",
     "dist",
     "examples",
-    "haxe_libraries",
     "lib",
     "node_modules"
   ]

@@ -39,6 +39,18 @@ Status: accepted (2026-11-14). Versions were checked on that date.
 - **npm** uses exact versions in `package.json` plus `package-lock.json`.
   `npm ci` no longer runs a postinstall.
 
+## Migration notes
+
+- TypeScript 6 deprecates `baseUrl` and `moduleResolution: node`, and
+  `types` defaults to `[]`. `tsconfig.json` uses `NodeNext` with `./`-relative
+  `paths`, and each tsconfig lists its `types`.
+- ts-jest's `isolatedModules` option is deprecated: `tsconfig.spec.json` sets
+  `isolatedModules` and ts-jest reads that file.
+- commander 15 rejects multi-letter short flags, so the CLI aliases became
+  long ones (`-cfj` → `--cfj`, `-ife` → `--ife`, …). `--copyHaxeLibraries`
+  is gone with lix.
+- ESLint keeps `standard`'s `no-unused-vars` policy (`args: 'none'`).
+
 ## Environment notes (recorded so nobody re-learns them)
 
 - `haxelib` needs `LD_LIBRARY_PATH` to include the Neko install directory

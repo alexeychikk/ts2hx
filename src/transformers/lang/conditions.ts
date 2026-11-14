@@ -25,18 +25,14 @@ export const transformConditions: EmitFn = function (
   // let the remaining emitters process it
   if (this.explicitBooleanConversions.has(node)) return;
 
-  if (
-    !(
-      //  myVar ? a : b
-      (
-        this.utils.isOperandOfConditionalExpression(node) ||
-        // myVar || hisVar > 0
-        this.utils.isOperandOfBooleanExpression(node) ||
-        // if (myVar) ; while(myVar) ;
-        this.utils.isBooleanExpressionOfStatement(node)
-      )
-    )
-  )
+  if (!(
+    //  myVar ? a : b
+    this.utils.isOperandOfConditionalExpression(node) ||
+    // myVar || hisVar > 0
+    this.utils.isOperandOfBooleanExpression(node) ||
+    // if (myVar) ; while(myVar) ;
+    this.utils.isBooleanExpressionOfStatement(node)
+  ))
     return;
 
   if (this.utils.isValueBooleanExpression(node.parent)) return;

@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: node
+      - run: npm ci
+      - run: npm run lint
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: node haxe neko
+      - run: npm ci
+      - uses: actions/cache@v6
+        with:
+          path: .haxelib
+          key: haxelib-${{ runner.os }}-${{ hashFiles('scripts/setup-haxe.sh') }}
+      - run: npm run setup:haxe
+      - run: npm run test:coverage -- --maxWorkers=2 --coverageReporters=text --coverageReporters=json-summary
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore

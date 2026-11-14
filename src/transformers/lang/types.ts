@@ -333,9 +333,9 @@ export const transformMissingTypeArguments: EmitFn = function (
   node,
   context,
 ) {
-  if (
-    !(ts.isTypeReferenceNode(node) || ts.isExpressionWithTypeArguments(node))
-  ) {
+  if (!(
+    ts.isTypeReferenceNode(node) || ts.isExpressionWithTypeArguments(node)
+  )) {
     return;
   }
 
@@ -347,9 +347,7 @@ export const transformMissingTypeArguments: EmitFn = function (
     (
       dec,
     ): dec is
-      | ts.ClassDeclaration
-      | ts.InterfaceDeclaration
-      | ts.TypeAliasDeclaration =>
+      ts.ClassDeclaration | ts.InterfaceDeclaration | ts.TypeAliasDeclaration =>
       ts.isClassDeclaration(dec) ||
       ts.isInterfaceDeclaration(dec) ||
       ts.isTypeAliasDeclaration(dec),
@@ -375,7 +373,7 @@ export const transformMissingTypeArguments: EmitFn = function (
     resolvedArguments =
       objectFlags & ts.ObjectFlags.Reference
         ? this.typeChecker.getTypeArguments(type as ts.TypeReference)
-        : type.aliasTypeArguments ?? [];
+        : (type.aliasTypeArguments ?? []);
   } catch {
     resolvedArguments = [];
   }
