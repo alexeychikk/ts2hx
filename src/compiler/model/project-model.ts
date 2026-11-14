@@ -152,6 +152,19 @@ function exportsImmutableBinding(
   );
 }
 
+/** The elements of a destructuring pattern that bind a name, nested ones included, in source order. */
+export function bindingElements(
+  pattern: ts.BindingPattern,
+): ts.BindingElement[] {
+  return pattern.elements.flatMap((element) =>
+    ts.isOmittedExpression(element)
+      ? []
+      : ts.isIdentifier(element.name)
+        ? [element]
+        : bindingElements(element.name),
+  );
+}
+
 /** Module-level value declarations of a file with their TS names, in source order. */
 function fieldDeclarations(
   sf: ts.SourceFile,
@@ -161,10 +174,11 @@ function fieldDeclarations(
   for (const statement of sf.statements) {
     if (ts.isVariableStatement(statement)) {
       for (const declaration of statement.declarationList.declarations) {
-        if (
-          ts.isIdentifier(declaration.name) &&
-          !boundClassExpression(declaration)
-        ) {
+        if (!ts.isIdentifier(declaration.name)) {
+          for (const element of bindingElements(declaration.name)) {
+            result.push([element, (element.name as ts.Identifier).text]);
+          }
+        } else if (!boundClassExpression(declaration)) {
           result.push([declaration, declaration.name.text]);
         }
       }

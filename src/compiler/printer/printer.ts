@@ -308,7 +308,9 @@ class Printer {
   /** Prints `expr`, parenthesised unless it binds at least as tight as `maxLevel`. */
   private sub(expr: HxExpr, maxLevel: number): string {
     const text = this.expr(expr);
-    return precedenceOf(expr) > maxLevel ? `(${text})` : text;
+    const blockOperand =
+      expr.kind === 'blockExpr' && maxLevel < PRECEDENCE_TERNARY;
+    return blockOperand || precedenceOf(expr) > maxLevel ? `(${text})` : text;
   }
 
   /** Target of a field access, call or index: must be a primary expression. */

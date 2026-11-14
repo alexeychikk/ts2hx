@@ -7,7 +7,7 @@ function __init():Void {
 	// TODO(ts2hx): EnumDeclaration is not supported yet: enum A { B }
 	ts2hx.Ts2hx.unsupported("EnumDeclaration is not supported yet");
 	x = {a: 1.0};
-	ts2hx.Console.log(/* TODO(ts2hx): PropertyAccessExpression is not supported yet: x?.a */ ts2hx.Ts2hx.unsupported("PropertyAccessExpression is not supported yet"), /* TODO(ts2hx): NewExpression is not supported yet: new Date() */ ts2hx.Ts2hx.unsupported("NewExpression is not supported yet"));
+	ts2hx.Console.log(ts2hx.Console.inspectNumber(x.a), /* TODO(ts2hx): NewExpression is not supported yet: new Date() */ ts2hx.Ts2hx.unsupported("NewExpression is not supported yet"));
 }
 "
 `;

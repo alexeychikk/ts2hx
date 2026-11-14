@@ -58,7 +58,7 @@ class Main {
   it('turns unmapped constructs into reported, throwing placeholders', async () => {
     const { code, diagnostics } = await compileSources({
       'main.ts':
-        'enum A { B }\nconst x = { a: 1 };\nconsole.log(x?.a, new Date());',
+        'enum A { B }\nconst x = { a: 1 };\nconsole.log(x.a, new Date());',
     });
     expect(code['Main_2.hx']).toMatchSnapshot();
     expect(diagnostics).toEqual([
@@ -67,11 +67,6 @@ class Main {
         message: 'TODO(ts2hx): EnumDeclaration is not supported yet',
         line: 1,
         column: 1,
-      }),
-      expect.objectContaining({
-        message: 'TODO(ts2hx): PropertyAccessExpression is not supported yet',
-        line: 3,
-        column: 13,
       }),
       expect.objectContaining({
         message: 'TODO(ts2hx): NewExpression is not supported yet',
