@@ -71,3 +71,17 @@ const nested: Record<string, string[]> = {};
 nested.list = [];
 nested.list.push('a', 'b');
 console.log(nested.list.length, nested['list'].join('+'));
+
+interface Stats {
+  counts?: Record<string, number>;
+}
+const stats: Stats = { counts: { z: 26, y: 25 } };
+if (stats.counts) {
+  stats.counts.x = 24;
+  console.log(Object.keys(stats.counts), stats.counts['z'], stats.counts.x);
+  for (const key in stats.counts) {
+    console.log(key, stats.counts[key]);
+  }
+}
+const maybe: Record<string, number> | undefined = { m: 1 };
+console.log(maybe ? Object.values(maybe) : []);

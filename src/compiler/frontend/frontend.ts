@@ -329,6 +329,11 @@ export class ModuleFrontend {
     return this.checker.getTypeAtLocation(node);
   }
 
+  private isDict(node: ts.Node): boolean {
+    const type = this.checker.getNonNullableType(this.typeOf(node));
+    return this.types.dictValueType(type) !== undefined;
+  }
+
   private hxTypeOf(node: ts.Node): HxType {
     return this.types.map(this.typeOf(node));
   }
@@ -1793,11 +1798,10 @@ export class ModuleFrontend {
     ) {
       return undefined;
     }
-    const target = this.expression(left.expression);
-    const value = dictValue(target.type);
-    if (!value) {
+    if (!this.isDict(left.expression)) {
       return undefined;
     }
+    const target = this.expression(left.expression);
     const key = ts.isPropertyAccessExpression(left)
       ? constExpr(left.name.text, pos)
       : this.propertyKey(left.argumentExpression);
@@ -2332,7 +2336,9 @@ export class ModuleFrontend {
     pos: SourcePos,
   ): HxExpr {
     const contextual = this.checker.getContextualType(node);
-    const dictValueType = contextual && this.types.dictValueType(contextual);
+    const dictValueType =
+      contextual &&
+      this.types.dictValueType(this.checker.getNonNullableType(contextual));
     if (dictValueType) {
       return this.dictLiteral(node, this.types.map(dictValueType), pos);
     }

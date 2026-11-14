@@ -165,6 +165,26 @@ console.log('a' in d, delete d.a, Object.keys(d), {} as Record<string, number>);
     );
   });
 
+  it('builds a ts2hx.Dict for literals in optional or undefined-able Record positions', async () => {
+    const init =
+      await initOf(`const o: { counts?: Record<string, number> } = { counts: { a: 1 } };
+const u: Record<string, number> | undefined = { b: 2 };
+function f(d?: Record<string, number>): number { return d ? Object.keys(d).length : 0; }
+console.log(f({ c: 3 }), u, o);`);
+    expect(init).toContain('counts: ts2hx.Dict.of(["a"], [1.0])');
+    expect(init).toContain('u = ts2hx.Dict.of(["b"], [2.0]);');
+    expect(init).toContain('f(ts2hx.Dict.of(["c"], [3.0]))');
+  });
+
+  it('reports an unsupported node inside an assignment target once', async () => {
+    const { diagnostics } = await compileSources({
+      'main.ts': '(new Date() as any).x = 1;',
+    });
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'TODO(ts2hx): NewExpression is not supported yet',
+    ]);
+  });
+
   it('casts tuple element reads, truncates Float indexes and maps array checks', async () => {
     const init = await initOf(`const t: [string, number] = ['a', 1];
 const xs: number[] = [1, 2]; let i = 1;
