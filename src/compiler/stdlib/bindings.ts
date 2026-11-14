@@ -2,7 +2,9 @@ import ts from 'typescript';
 
 import {
   arrayType,
+  BOOL,
   constExpr,
+  dictValue,
   DYNAMIC,
   FLOAT,
   HX_MATH,
@@ -12,6 +14,7 @@ import {
   RUNTIME,
   staticCall,
   STRING,
+  typePath,
   VOID,
 } from '../ir/builders';
 import type { HxExpr, HxParam, HxType, SourcePos } from '../ir/types';
@@ -216,9 +219,48 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
   ['ReadonlyArray.map', arrayMap],
   ['Array.reduce', arrayReduce],
   ['ReadonlyArray.reduce', arrayReduce],
+  ['ObjectConstructor.keys', dictEnumeration('keys', () => arrayType(STRING))],
+  ['ObjectConstructor.values', dictEnumeration('values', arrayType)],
+  [
+    'ObjectConstructor.entries',
+    dictEnumeration('entries', () => arrayType(arrayType(DYNAMIC))),
+  ],
+  [
+    'ArrayConstructor.isArray',
+    ({ args, pos }) =>
+      args.length === 1
+        ? {
+            kind: 'isOfType',
+            expr: args[0],
+            path: typePath([], 'Array'),
+            type: BOOL,
+            pos,
+          }
+        : undefined,
+  ],
   ['String.toUpperCase', nativeMethod('toUpperCase', STRING)],
   ['String.toLowerCase', nativeMethod('toLowerCase', STRING)],
 ]);
+
+/** `Object.keys`/`values`/`entries` of a `ts2hx.Dict`: its own ordered enumeration. */
+function dictEnumeration(
+  name: string,
+  resultType: (value: HxType) => HxType,
+): CallBinding {
+  return ({ receiver, args, pos }) => {
+    const value = args.length === 1 ? dictValue(args[0].type) : undefined;
+    if (!receiver || receiver.libKey !== 'Object' || value === undefined) {
+      return undefined;
+    }
+    return {
+      kind: 'call',
+      callee: { kind: 'field', target: args[0], name, type: DYNAMIC, pos },
+      args: [],
+      type: resultType(value),
+      pos,
+    };
+  };
+}
 
 const lengthField: PropertyBinding = (receiver, pos) => ({
   kind: 'field',
