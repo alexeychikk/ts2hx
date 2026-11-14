@@ -50,6 +50,7 @@ import {
   stdlibKey,
   VALUE_BINDINGS,
 } from '../stdlib/bindings';
+import { stringCodePoints, stringIndex } from '../stdlib/string-bindings';
 import {
   accessorPair,
   assignsAtTopLevel,
@@ -163,6 +164,15 @@ function isArray(
     type.path.name === 'Array'
   );
 }
+
+function arrayElement(type: HxType): HxType {
+  return isArray(type) ? type.params[0] : DYNAMIC;
+}
+
+/** A run of plain elements, or one spread array of an array literal. */
+type ArraySegment =
+  | { spread: false; value: HxExpr[] }
+  | { spread: true; value: HxExpr; fresh: boolean };
 
 const SYNTAX_KIND_NAMES: ReadonlyMap<ts.SyntaxKind, string> = (() => {
   const names = new Map<ts.SyntaxKind, string>();
@@ -1272,9 +1282,10 @@ export class ModuleFrontend {
   private forOf(node: ts.ForOfStatement): HxStmt[] {
     const iterated = this.typeOf(node.expression);
     const initializer = node.initializer;
+    const overString = this.isStringLike(node.expression);
     if (
       node.awaitModifier ||
-      !this.checker.isArrayType(iterated) ||
+      (!this.checker.isArrayType(iterated) && !overString) ||
       !ts.isVariableDeclarationList(initializer) ||
       initializer.declarations.length !== 1 ||
       !ts.isIdentifier(initializer.declarations[0].name)
@@ -1286,7 +1297,8 @@ export class ModuleFrontend {
     const name = this.localName(symbol.name);
     const isConst = (initializer.flags & ts.NodeFlags.Const) !== 0;
     const body = this.body(node.statement);
-    const iterable = this.expression(node.expression);
+    const source = this.expression(node.expression);
+    const iterable = overString ? stringCodePoints(source) : source;
     if (isConst) {
       return [{ kind: 'forIn', name, iterable, body }];
     }
@@ -2551,6 +2563,9 @@ export class ModuleFrontend {
     if (ts.isTemplateExpression(node)) {
       return this.template(node, pos);
     }
+    if (ts.isTaggedTemplateExpression(node)) {
+      return this.taggedTemplate(node, pos);
+    }
     if (ts.isIdentifier(node)) {
       return this.narrow(this.identifier(node, pos), node);
     }
@@ -2626,6 +2641,31 @@ export class ModuleFrontend {
     for (const span of node.templateSpans) {
       parts.push(this.stringOf(span.expression));
       parts.push(constExpr(span.literal.text, pos));
+    }
+    return this.concat(parts, pos);
+  }
+
+  /** Only `` String.raw`…` `` so far: the raw text with the values converted by `String()`. */
+  private taggedTemplate(
+    node: ts.TaggedTemplateExpression,
+    pos: SourcePos,
+  ): HxExpr {
+    const tag = ts.isPropertyAccessExpression(node.tag)
+      ? node.tag.name
+      : node.tag;
+    if (this.libKey(tag) !== 'StringConstructor.raw') {
+      return this.unsupported(node);
+    }
+    const template = node.template;
+    if (ts.isNoSubstitutionTemplateLiteral(template)) {
+      return constExpr(template.rawText ?? template.text, pos);
+    }
+    const parts: HxExpr[] = [
+      constExpr(template.head.rawText ?? template.head.text, pos),
+    ];
+    for (const span of template.templateSpans) {
+      parts.push(this.stringOf(span.expression));
+      parts.push(constExpr(span.literal.rawText ?? span.literal.text, pos));
     }
     return this.concat(parts, pos);
   }
@@ -2924,6 +2964,13 @@ export class ModuleFrontend {
       return !assigned && element.kind === 'dynamic' && type.kind !== 'dynamic'
         ? { kind: 'cast', expr: read, checked: false, type, pos }
         : read;
+    }
+    if (
+      isStringType(target.type) &&
+      this.isNumberLike(node.argumentExpression) &&
+      !assigned
+    ) {
+      return stringIndex(target, this.expression(node.argumentExpression));
     }
     const argument = node.argumentExpression;
     if (
@@ -3536,11 +3583,7 @@ export class ModuleFrontend {
     node: ts.ArrayLiteralExpression,
     pos: SourcePos,
   ): HxExpr {
-    if (
-      node.elements.some(
-        (e) => ts.isSpreadElement(e) || ts.isOmittedExpression(e),
-      )
-    ) {
+    if (node.elements.some(ts.isOmittedExpression)) {
       return this.unsupported(node);
     }
     const type = this.hxTypeOf(node);
@@ -3548,14 +3591,146 @@ export class ModuleFrontend {
       type.kind === 'path' && type.path.name === 'Array'
         ? type.params[0]
         : DYNAMIC;
-    return {
-      kind: 'arrayLit',
-      elements: node.elements.map((e) =>
-        this.branch(this.expression(e), element),
-      ),
+    if (!node.elements.some(ts.isSpreadElement)) {
+      return {
+        kind: 'arrayLit',
+        elements: node.elements.map((e) =>
+          this.branch(this.expression(e), element),
+        ),
+        type,
+        pos,
+      };
+    }
+    return this.spreadArrayLiteral(node, type, element, pos);
+  }
+
+  /**
+   * `[a, ...xs, ...s]`: runs of plain elements and spread arrays or strings,
+   * joined with `concat` into a fresh array, or appended one element at a
+   * time when a spread's element type differs from the literal's.
+   */
+  private spreadArrayLiteral(
+    node: ts.ArrayLiteralExpression,
+    type: HxType,
+    element: HxType,
+    pos: SourcePos,
+  ): HxExpr {
+    const segments: ArraySegment[] = [];
+    let plain: HxExpr[] = [];
+    const flush = () => {
+      if (plain.length > 0) {
+        segments.push({ spread: false, value: plain });
+        plain = [];
+      }
+    };
+    for (const e of node.elements) {
+      if (!ts.isSpreadElement(e)) {
+        plain.push(this.branch(this.expression(e), element));
+        continue;
+      }
+      flush();
+      const spread = this.expression(e.expression);
+      if (this.isStringLike(e.expression)) {
+        segments.push({
+          spread: true,
+          value: stringCodePoints(spread),
+          fresh: true,
+        });
+      } else if (this.checker.isArrayLikeType(this.typeOf(e.expression))) {
+        if (!isArray(spread.type)) return this.unsupported(node);
+        segments.push({ spread: true, value: spread, fresh: false });
+      } else {
+        return this.unsupported(
+          node,
+          'spreading a non-array iterable is not supported yet',
+        );
+      }
+    }
+    flush();
+    const uniform = segments.every(
+      (s) => !s.spread || sameType(arrayElement(s.value.type), element),
+    );
+    return uniform
+      ? this.concatSegments(segments, type, pos)
+      : this.appendSegments(segments, type, element, pos);
+  }
+
+  private concatSegments(
+    segments: ArraySegment[],
+    type: HxType,
+    pos: SourcePos,
+  ): HxExpr {
+    const arrays = segments.map<HxExpr>((s) =>
+      s.spread ? s.value : { kind: 'arrayLit', elements: s.value, type, pos },
+    );
+    const [first, ...rest] = arrays;
+    const firstIsFresh = !segments[0].spread || segments[0].fresh;
+    const method = (target: HxExpr, name: string, args: HxExpr[]): HxExpr => ({
+      kind: 'call',
+      callee: { kind: 'field', target, name, type: DYNAMIC },
+      args,
       type,
       pos,
-    };
+    });
+    const head =
+      rest.length === 0 && !firstIsFresh ? method(first, 'copy', []) : first;
+    return rest.reduce<HxExpr>(
+      (joined, segment) => method(joined, 'concat', [segment]),
+      head,
+    );
+  }
+
+  /** `{ final r = [...]; for (x in xs) r.push(x); r; }`: each element converted to the literal's element type. */
+  private appendSegments(
+    segments: ArraySegment[],
+    type: HxType,
+    element: HxType,
+    pos: SourcePos,
+  ): HxExpr {
+    const name = this.freshName('spread');
+    const result = localExpr(name, type, pos);
+    const push = (value: HxExpr): HxStmt => ({
+      kind: 'expr',
+      expr: {
+        kind: 'call',
+        callee: { kind: 'field', target: result, name: 'push', type: DYNAMIC },
+        args: [value],
+        type: INT,
+        pos,
+      },
+    });
+    const [first, ...rest] = segments;
+    const initial = first.spread ? [] : first.value;
+    const stmts: HxStmt[] = [
+      {
+        kind: 'var',
+        name,
+        final: true,
+        type,
+        init: { kind: 'arrayLit', elements: initial, type, pos },
+      },
+    ];
+    for (const segment of first.spread ? segments : rest) {
+      if (!segment.spread) {
+        stmts.push(...segment.value.map(push));
+        continue;
+      }
+      const item = this.freshName('item');
+      stmts.push({
+        kind: 'forIn',
+        name: item,
+        iterable: segment.value,
+        body: [
+          push(
+            this.branch(
+              localExpr(item, arrayElement(segment.value.type), pos),
+              element,
+            ),
+          ),
+        ],
+      });
+    }
+    return { kind: 'blockExpr', stmts, result, type, pos };
   }
 
   private objectLiteral(

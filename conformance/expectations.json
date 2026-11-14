@@ -44,7 +44,7 @@
     "cs": "fail",
     "cpp": "fail"
   },
-  "numbers/math": {
+  "numbers/format-range-errors": {
     "js": "fail",
     "cs": "fail",
     "cpp": "fail"
@@ -60,16 +60,6 @@
     "cpp": "fail"
   },
   "promise/ordering": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "strings/methods": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "strings/unicode": {
     "js": "fail",
     "cs": "fail",
     "cpp": "fail"
