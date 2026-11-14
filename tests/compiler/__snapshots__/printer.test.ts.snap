@@ -1,0 +1,35 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`printer prints control flow 1`] = `
+"if (a) {
+	break;
+} else if (b) {
+	continue;
+} else {
+	return;
+}
+switch (a) {
+	case 1.0, 2.0: {}
+	default: {
+		throw "x";
+	}
+}
+do {
+	final i:Float = 0.0;
+} while (true);"
+`;
+
+exports[`printer prints declarations 1`] = `
+"@:keep
+abstract class Shape<T:String> extends geo.Base {
+	public static var count:Float = 0.0;
+
+	public var area(get, never):Float;
+
+	public abstract function describe():String;
+
+	private override function scale(by:Float = 1.0, ...rest:Float):Void {
+		// TODO(ts2hx): scaled
+	}
+}"
+`;

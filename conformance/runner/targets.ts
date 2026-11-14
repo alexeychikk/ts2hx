@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { csproj } from '../../src/compiler/emit/project-emit';
 import { attributeBuildErrors } from './build-errors';
 import { exec, mapPool } from './process';
 import type { ConformanceCase, ProgramOutput, Target } from './types';
@@ -124,24 +125,7 @@ interface BatchTarget {
   command(ctx: TargetContext): { file: string; args: string[] };
 }
 
-export const CSPROJ = `<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>App</AssemblyName>
-    <StartupObject>ConformanceMain</StartupObject>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <Nullable>disable</Nullable>
-    <ImplicitUsings>disable</ImplicitUsings>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <NoWarn>$(NoWarn);CS0108;CS0114;CS0162;CS0168;CS0219;CS0414;CS0649;CS0659;CS0661;CS8981;SYSLIB0050;SYSLIB0051</NoWarn>
-  </PropertyGroup>
-  <ItemGroup>
-    <Compile Include="src/**/*.cs" />
-  </ItemGroup>
-</Project>
-`;
+export const CSPROJ = csproj('ConformanceMain');
 
 const csTarget: BatchTarget = {
   name: 'cs',

@@ -1,0 +1,12 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`frontend turns unmapped constructs into reported, throwing placeholders 1`] = `
+"function __init():Void {
+	// TODO(ts2hx): ClassDeclaration is not supported yet: class A {}
+	ts2hx.Ts2hx.unsupported("ClassDeclaration is not supported yet");
+	// TODO(ts2hx): VariableStatement is not supported yet: let x = 1;
+	ts2hx.Ts2hx.unsupported("VariableStatement is not supported yet");
+	ts2hx.Console.log(ts2hx.Console.inspectNumber(/* TODO(ts2hx): Identifier is not supported yet: x */ ts2hx.Ts2hx.unsupported("Identifier is not supported yet")), ts2hx.Console.inspectNumber(/* TODO(ts2hx): PropertyAccessExpression is not supported yet: [1].length */ ts2hx.Ts2hx.unsupported("PropertyAccessExpression is not supported yet")));
+}
+"
+`;

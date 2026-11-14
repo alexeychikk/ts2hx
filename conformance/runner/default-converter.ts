@@ -18,6 +18,7 @@ export function compileProjectConverter(
       rootPackage,
       outDir,
       targets: ['js', 'cs', 'cpp'],
+      copyRuntime: false,
     });
     const errors = result.diagnostics.filter((d) => d.severity === 'error');
     if (errors.length > 0) {
