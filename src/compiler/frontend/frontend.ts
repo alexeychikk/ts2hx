@@ -3241,6 +3241,24 @@ export class ModuleFrontend {
     postfix: boolean,
     pos: SourcePos,
   ): HxExpr {
+    const length = this.arrayLengthTarget(operand);
+    if (length) {
+      const op = operator === ts.SyntaxKind.PlusPlusToken ? '+' : '-';
+      const updated = this.arrayLengthUpdate(
+        length,
+        (current) => ({
+          kind: 'binop',
+          op,
+          left: current,
+          right: constExpr(1, pos),
+          type: FLOAT,
+          pos,
+        }),
+        postfix,
+        pos,
+      );
+      return updated ?? this.unsupported(node);
+    }
     const target = this.lvalue(operand);
     if (!target || !this.isNumberLike(operand)) {
       return this.unsupported(node);
@@ -3430,19 +3448,67 @@ export class ModuleFrontend {
 
   /** `xs.length = n` on an array: `JsArray.setLength`. */
   private arrayLengthAssign(node: ts.BinaryExpression): HxExpr | undefined {
-    let left = node.left;
-    while (ts.isParenthesizedExpression(left) || ts.isNonNullExpression(left)) {
-      left = left.expression;
+    const target = this.arrayLengthTarget(node.left);
+    return target
+      ? setArrayLength(
+          this.expression(target.expression),
+          this.expression(node.right),
+        )
+      : undefined;
+  }
+
+  /** The `xs.length` of an array, when `node` is one. */
+  private arrayLengthTarget(
+    node: ts.Expression,
+  ): ts.PropertyAccessExpression | undefined {
+    while (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) {
+      node = node.expression;
     }
-    if (
-      !ts.isPropertyAccessExpression(left) ||
-      this.libKey(left.name) !== 'Array.length'
-    ) {
-      return undefined;
+    return ts.isPropertyAccessExpression(node) &&
+      this.libKey(node.name) === 'Array.length'
+      ? node
+      : undefined;
+  }
+
+  /**
+   * `xs.length op= v`, `++xs.length`, `xs.length--`: reads the length of a
+   * once-evaluated array and writes `update(length)` with `JsArray.setLength`.
+   * A postfix update evaluates to the old length.
+   */
+  private arrayLengthUpdate(
+    target: ts.PropertyAccessExpression,
+    update: (length: HxExpr) => HxExpr | undefined,
+    postfix: boolean,
+    pos: SourcePos,
+  ): HxExpr | undefined {
+    const array = this.once(this.expression(target.expression));
+    const length: HxExpr = {
+      kind: 'field',
+      target: array.ref,
+      name: 'length',
+      type: INT,
+      pos,
+    };
+    if (!postfix) {
+      const updated = update(length);
+      return (
+        updated &&
+        this.withStmts(array.stmts, setArrayLength(array.ref, updated))
+      );
     }
-    return setArrayLength(
-      this.expression(left.expression),
-      this.expression(node.right),
+    const name = this.freshName('length');
+    const old = localExpr(name, FLOAT, pos);
+    const updated = update(old);
+    return (
+      updated &&
+      this.withStmts(
+        [
+          ...array.stmts,
+          { kind: 'var', name, final: true, type: FLOAT, init: length },
+          { kind: 'expr', expr: setArrayLength(array.ref, updated) },
+        ],
+        old,
+      )
     );
   }
 
@@ -3454,6 +3520,17 @@ export class ModuleFrontend {
     const dict = this.dictAssign(node, pos, operator);
     if (dict) {
       return dict;
+    }
+    const length = this.arrayLengthTarget(node.left);
+    if (length) {
+      const updated = this.arrayLengthUpdate(
+        length,
+        (current) =>
+          this.operation(operator, node.left, node.right, pos, current),
+        false,
+        pos,
+      );
+      return updated ?? this.unsupported(node);
     }
     const target = this.lvalue(node.left);
     if (!target) {

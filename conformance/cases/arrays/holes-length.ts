@@ -45,3 +45,32 @@ console.log(
   [1, 2, 3].keys().next().value,
   [7].values().next().done,
 );
+const rows = [
+  [1, 2],
+  [3, 4],
+];
+const flatRows: number[] = rows.flat();
+flatRows.push(5);
+console.log(
+  flatRows,
+  flatRows.length,
+  rows.flat().map((v) => v * 2),
+);
+const shrinking = [1, 2, 3, 4, 5, 6];
+shrinking.length -= 1;
+shrinking.length--;
+console.log(shrinking, shrinking.length);
+const before = shrinking.length--;
+const after = --shrinking.length;
+console.log(before, after, shrinking, (shrinking.length *= 1));
+console.log((shrinking.length += 2), shrinking.length++, shrinking.length);
+const lists = [[1, 2, 3]];
+lists[0].length -= 2;
+console.log(lists, lists[0].length);
+console.log(
+  [1, 2, 1].lastIndexOf(1, -Infinity),
+  [1, 2, 1].lastIndexOf(1, -4),
+  [1, 2, 1].lastIndexOf(1, -3),
+  [1, 2, 1].lastIndexOf(1, Infinity),
+  [1, 2, 1].lastIndexOf(1, -2),
+);

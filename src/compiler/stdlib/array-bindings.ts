@@ -341,7 +341,15 @@ const arrayMethods: Array<[string, CallBinding]> = [
   ['findLast', callbackMethod('findLast', maybeElement, true)],
   ['findLastIndex', callbackMethod('findLastIndex', fixed(FLOAT), true)],
   ['fill', arrayMethod('fill', sameArray, 3)],
-  ['flat', arrayMethod('flat', fixed(arrayType(DYNAMIC)), 1)],
+  [
+    'flat',
+    arrayMethod(
+      'flat',
+      (_r, _e, call) =>
+        arrayElement(call.type) ? nonNull(call.type) : arrayType(DYNAMIC),
+      1,
+    ),
+  ],
   [
     'flatMap',
     callbackMethod('flatMap', (_r, _e, call) => {

@@ -109,8 +109,12 @@ class JsArray {
 
 	public static function lastIndexOf<T>(array:Array<T>, search:T, ?fromIndex:Float):Float {
 		var length = array.length;
-		var i = fromIndex == null ? length - 1 : Std.int(Math.min(integerOf(fromIndex) < 0 ? length + integerOf(fromIndex) : integerOf(fromIndex),
-			length - 1));
+		var start = fromIndex == null ? length - 1 : integerOf(fromIndex);
+		if (start < 0)
+			start += length;
+		if (start < 0)
+			return -1;
+		var i = Std.int(Math.min(start, length - 1));
 		while (i >= 0) {
 			if (strictEquals(array[i], search))
 				return i;
@@ -267,10 +271,13 @@ class JsArray {
 	}
 
 	/** `flat(depth)`: nested arrays are spliced in up to `depth` levels. */
-	public static function flat<T>(array:Array<T>, ?depth:Float):Array<Dynamic> {
+	public static function flat<T, S>(array:Array<T>, ?depth:Float):Array<S> {
 		var result:Array<Dynamic> = [];
 		flatten(result, array, depth == null ? 1 : integerOf(depth));
-		return result;
+		var typed:Array<S> = [];
+		for (value in result)
+			typed.push(value);
+		return typed;
 	}
 
 	public static function flatMap<T, S>(array:Array<T>, callback:(T, Float, Array<T>) -> Dynamic):Array<S> {

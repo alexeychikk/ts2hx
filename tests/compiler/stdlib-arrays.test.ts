@@ -81,6 +81,37 @@ describe('stdlib: arrays', () => {
     expect(hx).toContain('ts2hx.JsArray.fromArrayLike(');
   });
 
+  it('lowers compound and ++/-- writes to length through setLength', async () => {
+    const hx = await moduleOf([
+      'const xs: number[] = [1, 2, 3];',
+      'const lists: number[][] = [[1, 2]];',
+      'xs.length -= 1;',
+      'const old = xs.length--;',
+      '++xs.length;',
+      'lists[0].length += 1;',
+      'console.log(old, lists);',
+    ]);
+    expect(hx).not.toContain('ts2hx.Ts2hx.unsupported');
+    expect(hx).toContain('ts2hx.JsArray.setLength(xs, xs.length - 1.0)');
+    expect(hx).toMatch(
+      /final (__length_\d+):Float = xs\.length;\s*ts2hx\.JsArray\.setLength\(xs, \1 - 1\.0\);\s*\1;/,
+    );
+    expect(hx).toContain('ts2hx.JsArray.setLength(xs, xs.length + 1.0)');
+    expect(hx).toMatch(
+      /ts2hx\.JsArray\.setLength\((__value_\d+), \1\.length \+ 1\.0\)/,
+    );
+  });
+
+  it('types flat() from the checked result type', async () => {
+    const hx = await moduleOf([
+      'const rows: number[][] = [[1], [2]];',
+      'const ys: number[] = rows.flat();',
+      'console.log(ys);',
+    ]);
+    expect(hx).toMatch(/var ys:Array<Float>/);
+    expect(hx).toContain('ys = ts2hx.JsArray.flat(rows)');
+  });
+
   it('reads iterator results of entries() dynamically', async () => {
     const hx = await moduleOf([
       'const xs: number[] = [1];',
