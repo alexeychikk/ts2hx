@@ -36,6 +36,101 @@ class Num {
 		#end
 	}
 
+	/** JS truthiness of a number: neither `0`, `-0` nor `NaN`. */
+	public static function truthy(value:Float):Bool {
+		return value != 0 && !Math.isNaN(value);
+	}
+
+	/** JS `ToInt32`: truncates and wraps modulo 2^32 into the signed range. */
+	public static function toInt32(value:Float):Int {
+		#if js
+		return js.Syntax.code("{0} | 0", value);
+		#else
+		if (!Math.isFinite(value))
+			return 0;
+		var truncated = value < 0 ? Math.fceil(value) : Math.ffloor(value);
+		var wrapped = truncated % TWO_POW_32;
+		if (wrapped < 0)
+			wrapped += TWO_POW_32;
+		if (wrapped >= TWO_POW_31)
+			wrapped -= TWO_POW_32;
+		return Std.int(wrapped);
+		#end
+	}
+
+	/** JS `ToUint32`, as a Float since it may exceed the Int range. */
+	public static function toUint32(value:Float):Float {
+		var signed:Float = toInt32(value);
+		return signed < 0 ? signed + TWO_POW_32 : signed;
+	}
+
+	/** JS `a << b`. */
+	public static function shl(a:Float, b:Float):Float {
+		return toInt32(a) << (toInt32(b) & 31);
+	}
+
+	/** JS `a >> b`. */
+	public static function shr(a:Float, b:Float):Float {
+		return toInt32(a) >> (toInt32(b) & 31);
+	}
+
+	/** JS `a >>> b`. */
+	public static function ushr(a:Float, b:Float):Float {
+		var shift = toInt32(b) & 31;
+		var result:Float = toInt32(a) >>> shift;
+		return result < 0 ? result + TWO_POW_32 : result;
+	}
+
+	/** JS `a ** b`: unlike C# and C++ `pow`, `1 ** NaN` and `(-1) ** ±Infinity` are `NaN`. */
+	public static function pow(base:Float, exponent:Float):Float {
+		if (Math.isNaN(exponent))
+			return Math.NaN;
+		if (!Math.isFinite(exponent) && Math.abs(base) == 1)
+			return Math.NaN;
+		return Math.pow(base, exponent);
+	}
+
+	/** JS `Number(string)`: trimmed decimal, `0x`/`0o`/`0b` integers, `Infinity`; anything else is `NaN`. */
+	public static function fromString(text:String):Float {
+		var s = StringTools.trim(text);
+		if (s == "")
+			return 0;
+		var sign = 1.0;
+		var unsigned = s;
+		if (s.charAt(0) == "+" || s.charAt(0) == "-") {
+			sign = s.charAt(0) == "-" ? -1.0 : 1.0;
+			unsigned = s.substr(1);
+		}
+		if (unsigned == "Infinity")
+			return sign * Math.POSITIVE_INFINITY;
+		if (unsigned != s)
+			return DECIMAL.match(unsigned) ? sign * Std.parseFloat(unsigned) : Math.NaN;
+		if (RADIX_INTEGER.match(s))
+			return parseRadix(s.substr(2), radixOf(s.charAt(1)));
+		return DECIMAL.match(s) ? Std.parseFloat(s) : Math.NaN;
+	}
+
+	static final TWO_POW_31 = 2147483648.0;
+	static final TWO_POW_32 = 4294967296.0;
+	static final DECIMAL = ~/^([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$/;
+	static final RADIX_INTEGER = ~/^0([xX][0-9a-fA-F]+|[oO][0-7]+|[bB][01]+)$/;
+
+	static function radixOf(marker:String):Int {
+		return switch (marker.toLowerCase()) {
+			case "x": 16;
+			case "o": 8;
+			default: 2;
+		}
+	}
+
+	static function parseRadix(digits:String, radix:Int):Float {
+		var result = 0.0;
+		for (i in 0...digits.length) {
+			result = result * radix + "0123456789abcdef".indexOf(digits.charAt(i).toLowerCase());
+		}
+		return result;
+	}
+
 	#if !js
 	/** Shortest round-trip digits of a positive finite value as `d.ddde±x` (any case, any exponent padding). */
 	static function shortestExponential(value:Float):String {

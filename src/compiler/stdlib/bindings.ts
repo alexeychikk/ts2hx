@@ -1,20 +1,27 @@
 import ts from 'typescript';
 
 import {
+  arrayType,
   constExpr,
+  DYNAMIC,
   FLOAT,
   HX_MATH,
+  INT,
+  isFloatType,
+  isIntType,
   RUNTIME,
   staticCall,
   STRING,
   VOID,
 } from '../ir/builders';
-import type { HxExpr, SourcePos } from '../ir/types';
+import type { HxExpr, HxParam, HxType, SourcePos } from '../ir/types';
 
 /** The object a method is called on (`console` in `console.log(x)`). */
 export interface BoundReceiver {
   /** Binding key of the receiver when it is a plain reference to a lib value. */
   libKey?: string;
+  /** The converted receiver; a binding that uses it keeps its side effects. */
+  expr: HxExpr;
 }
 
 /**
@@ -28,7 +35,119 @@ export interface BoundCall {
   pos?: SourcePos;
   /** Converts a value of the given TS type to a JS string (`String(x)` semantics). */
   toJsString: (expr: HxExpr, type: ts.Type) => HxExpr;
+  /** The last argument is a spread (`f(...xs)`). */
+  spreadLast?: boolean;
+  /** Fresh, collision-free local name. */
+  freshName: (hint: string) => string;
 }
+
+/** A property read on a lib value (`xs.length`), given the converted receiver. */
+export type PropertyBinding = (receiver: HxExpr, pos?: SourcePos) => HxExpr;
+
+function elementTypeOf(array: HxExpr): HxType {
+  return array.type.kind === 'path' && array.type.path.name === 'Array'
+    ? (array.type.params[0] ?? DYNAMIC)
+    : DYNAMIC;
+}
+
+/**
+ * A callback literal padded to the `(value, index, array)` arity the runtime
+ * calls it with; other callbacks must already take that many arguments.
+ */
+function padCallback(
+  callback: HxExpr,
+  extra: HxType[],
+  freshName: (hint: string) => string,
+): HxExpr | undefined {
+  if (callback.kind === 'fn') {
+    const missing = extra.length + 1 - callback.fn.params.length;
+    if (missing < 0 || callback.fn.params.some((p) => p.rest)) {
+      return undefined;
+    }
+    const padding: HxParam[] = extra
+      .slice(extra.length - missing)
+      .map((type) => ({ name: freshName('unused'), type }));
+    return {
+      ...callback,
+      fn: { ...callback.fn, params: [...callback.fn.params, ...padding] },
+    };
+  }
+  return callback.type.kind === 'fn' &&
+    callback.type.args.length === extra.length + 1
+    ? callback
+    : undefined;
+}
+
+function method(
+  owner: Parameters<typeof staticCall>[0],
+  name: string,
+  type: HxType,
+): CallBinding {
+  return ({ receiver, args, pos, spreadLast }) =>
+    receiver && !spreadLast
+      ? staticCall(owner, name, [receiver.expr, ...args], type, pos)
+      : undefined;
+}
+
+function nativeMethod(name: string, type: HxType): CallBinding {
+  return ({ receiver, args, pos, spreadLast }) =>
+    receiver && !spreadLast
+      ? {
+          kind: 'call',
+          callee: { kind: 'field', target: receiver.expr, name, type: DYNAMIC },
+          args,
+          type,
+          pos,
+        }
+      : undefined;
+}
+
+function variadicMath(name: string): CallBinding {
+  return ({ args, pos, spreadLast }) => ({
+    ...staticCall(RUNTIME.jsMath, name, args, FLOAT, pos),
+    spreadLast,
+  });
+}
+
+const arrayMap: CallBinding = ({
+  receiver,
+  args,
+  pos,
+  spreadLast,
+  freshName,
+}) => {
+  if (!receiver || spreadLast || args.length !== 1) return undefined;
+  const callback = padCallback(args[0], [FLOAT, receiver.expr.type], freshName);
+  const result =
+    args[0].type.kind === 'fn' ? arrayType(args[0].type.ret) : DYNAMIC;
+  return callback
+    ? staticCall(RUNTIME.jsArray, 'map', [receiver.expr, callback], result, pos)
+    : undefined;
+};
+
+const arrayReduce: CallBinding = ({
+  receiver,
+  args,
+  pos,
+  spreadLast,
+  freshName,
+}) => {
+  if (!receiver || spreadLast || args.length !== 2) return undefined;
+  const callback = padCallback(
+    args[0],
+    [elementTypeOf(receiver.expr), FLOAT, receiver.expr.type],
+    freshName,
+  );
+  return callback
+    ? staticCall(
+        RUNTIME.jsArray,
+        'reduce',
+        [receiver.expr, callback, args[1]],
+        args[1].type,
+        pos,
+      )
+    : undefined;
+};
 
 /** Returns the bound expression, or `undefined` when this call shape is not supported. */
 export type CallBinding = (call: BoundCall) => HxExpr | undefined;
@@ -51,7 +170,8 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
             RUNTIME.console,
             'log',
             args.map((arg, i) =>
-              argTypes[i].flags & ts.TypeFlags.NumberLike
+              argTypes[i].flags & ts.TypeFlags.NumberLike &&
+              (isFloatType(arg.type) || isIntType(arg.type))
                 ? staticCall(
                     RUNTIME.console,
                     'inspectNumber',
@@ -76,6 +196,43 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
             ? toJsString(args[0], argTypes[0])
             : undefined,
   ],
+  [
+    'Number',
+    ({ receiver, args, argTypes, pos }) => {
+      if (receiver || args.length > 1) return undefined;
+      if (args.length === 0) return constExpr(0, pos);
+      if (argTypes[0].flags & ts.TypeFlags.NumberLike) return args[0];
+      return argTypes[0].flags & ts.TypeFlags.StringLike
+        ? staticCall(RUNTIME.num, 'fromString', [args[0]], FLOAT, pos)
+        : undefined;
+    },
+  ],
+  ['Math.max', variadicMath('max')],
+  ['Math.min', variadicMath('min')],
+  ['Array.push', method(RUNTIME.jsArray, 'push', FLOAT)],
+  ['Array.join', method(RUNTIME.jsArray, 'join', STRING)],
+  ['ReadonlyArray.join', method(RUNTIME.jsArray, 'join', STRING)],
+  ['Array.map', arrayMap],
+  ['ReadonlyArray.map', arrayMap],
+  ['Array.reduce', arrayReduce],
+  ['ReadonlyArray.reduce', arrayReduce],
+  ['String.toUpperCase', nativeMethod('toUpperCase', STRING)],
+  ['String.toLowerCase', nativeMethod('toLowerCase', STRING)],
+]);
+
+const lengthField: PropertyBinding = (receiver, pos) => ({
+  kind: 'field',
+  target: receiver,
+  name: 'length',
+  type: INT,
+  pos,
+});
+
+/** Lib properties read on a value (`xs.length`). */
+export const PROPERTY_BINDINGS: ReadonlyMap<string, PropertyBinding> = new Map([
+  ['Array.length', lengthField],
+  ['ReadonlyArray.length', lengthField],
+  ['String.length', lengthField],
 ]);
 
 /** Lib values read as plain identifiers or properties (`NaN`, `Infinity`). */

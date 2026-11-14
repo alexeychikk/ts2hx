@@ -61,7 +61,7 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 | class expressions | hoisted to module-level classes. Captured locals are passed to the constructor | |
 | mixins, `Object.setPrototypeOf`, prototype mutation | Out of scope | |
 | `instanceof` | `Std.isOfType` | Primitives are handled by the runtime. |
-| functions, arrows, closures | local functions and arrows | Haxe closures capture by reference and `this` lexically, which matches arrows. Function declarations are hoisted by a pass. |
+| functions, arrows, closures | local functions and arrows | Haxe closures capture by reference and `this` lexically, which matches arrows. Function declarations are hoisted to the top of their block by the frontend. |
 | `function` expressions using a dynamic `this`, `call`/`apply`/`bind` with a foreign `this`, `arguments` | Degraded (`bind` keeps the receiver) / out of scope | |
 | default parameters | Haxe constant defaults, otherwise `if (p == null) p = …` | Explicit `null` triggers the default (degraded, see 0002). |
 | rest parameters, spread arguments | `...rest:T` (`haxe.Rest`). Spread into a fixed-arity call goes through `Reflect.callMethod` or an inlined unpack | |
@@ -71,7 +71,7 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 
 | TS | Haxe | Notes |
 | --- | --- | --- |
-| `var`/`let`/`const`, TDZ | `var`/`final`. `var` is hoisted by a pass | Per-iteration `let` bindings captured by closures in loops get a fresh copy. |
+| `var`/`let`/`const`, TDZ | `var`/`final`. The frontend hoists `var` to its function as `Null<T>`; C-style `for` is lowered by the `lowerCFor` pass | Per-iteration `let` bindings captured by closures in loops get a fresh copy. |
 | `if`/`while`/`do`/`for`/`for…of`/`for…in` | lowered by a pass: C-style `for` becomes `while` with correct `continue`. `for…of` uses the iterator protocol (arrays fast-path to Haxe `for`) | |
 | `switch` with fall-through, `break` inside a switch inside a loop, non-constant cases | lowered to if-chains or labelled-flag form when needed | Haxe `break` in a `switch` breaks the loop. The pass handles it. |
 | labels, labelled `break`/`continue` | flag-based lowering | |
@@ -81,11 +81,11 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 | `?.`, `??`, `??=`, `\|\|=`, `&&=` | Haxe 4.3 `?.` and `??` where equivalent, otherwise lowered with temporaries | `a?.[i]` and `a?.()` are lowered. |
 | truthiness, `!`, `\|\|`, `&&` | type-directed (0002) | |
 | `==`/`!=` (loose) | `==` when both sides have the same primitive or class type, otherwise `Ts2hx.looseEq` | `===` becomes Haxe `==`. |
-| arithmetic, `%`, `**`, bitwise, `++` on fields and indexes | Float arithmetic, `Math.pow`, `Num.toInt32` | `+` with a string operand converts the other side with `Num.toString` or `Ts2hx.str`. |
-| `typeof x` | static constant when the type is known, otherwise `Ts2hx.typeof` | |
+| arithmetic, `%`, `**`, bitwise, `++` on fields and indexes | Float arithmetic, `Num.pow` (JS `NaN`/`±1 ** ±Infinity` results), `Num.toInt32`, `Num.shl`/`shr`/`ushr` | `+` with a string operand converts the other side with `Num.toString` or `Ts2hx.string`. |
+| `typeof x` | static constant when the type is known, otherwise `Ts2hx.typeOf` | |
 | `in`, `delete` | `Reflect.hasField`/`Dict` / `Reflect.deleteField` | |
 | comma, `void`, assignment as an expression | block expressions | |
-| template literals, tagged templates | `+` chains through `Ts2hx.str` / a call with a strings array and the values | |
+| template literals, tagged templates | `+` chains through `Num.toString` or `Ts2hx.string` (`null`/`undefined` literals print as constants) / a call with a strings array and the values | |
 | regex literals and methods | `ts2hx.RegExp` | 0002. |
 | generators, iterators, `yield*` | state-machine pass plus `ts2hx.Generator` | |
 | `async`/`await`, `for await`, async generators | the same state machine driven by `ts2hx.Promise` | Microtask ordering matches Node (0002). |

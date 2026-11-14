@@ -19,7 +19,7 @@ class Ts2hx {
 		#end
 	}
 
-	/** JS `String(value)` for primitives; other values fall back to `Std.string`. */
+	/** JS `String(value)`; `null` reads as `undefined` (ADR 0002 merges them). */
 	public static function string(value:Dynamic):String {
 		if (value == null)
 			return "undefined";
@@ -29,6 +29,66 @@ class Ts2hx {
 			return value ? "true" : "false";
 		if (Std.isOfType(value, Float))
 			return Num.toString(value);
+		if (Std.isOfType(value, Array))
+			return JsArray.join(value, ",");
+		if (Reflect.isFunction(value))
+			return "function () { [native code] }";
+		if (Reflect.isObject(value) && Type.getClass(value) == null)
+			return "[object Object]";
 		return Std.string(value);
+	}
+
+	/** JS truthiness of a value whose static type is not known. */
+	public static function truthy(value:Dynamic):Bool {
+		if (value == null)
+			return false;
+		if (Std.isOfType(value, Bool))
+			return value;
+		if (Std.isOfType(value, Float))
+			return Num.truthy(value);
+		if (Std.isOfType(value, String))
+			return (value : String).length > 0;
+		return true;
+	}
+
+	/** JS truthiness of a string: neither `undefined` nor empty. */
+	public static function truthyString(value:Null<String>):Bool {
+		return value != null && value.length > 0;
+	}
+
+	/** JS `typeof` of a value whose static type is not known; `null` reads as `undefined`. */
+	public static function typeOf(value:Dynamic):String {
+		if (value == null)
+			return "undefined";
+		if (Std.isOfType(value, Bool))
+			return "boolean";
+		if (Std.isOfType(value, Float))
+			return "number";
+		if (Std.isOfType(value, String))
+			return "string";
+		if (Reflect.isFunction(value))
+			return "function";
+		return "object";
+	}
+
+	/** JS loose equality `a == b` for primitives; objects compare by identity. */
+	public static function looseEq(a:Dynamic, b:Dynamic):Bool {
+		if (a == null || b == null)
+			return a == null && b == null;
+		if (Std.isOfType(a, Bool))
+			return looseEq(a ? 1.0 : 0.0, b);
+		if (Std.isOfType(b, Bool))
+			return looseEq(a, b ? 1.0 : 0.0);
+		var aNumber = Std.isOfType(a, Float);
+		var bNumber = Std.isOfType(b, Float);
+		if (aNumber && Std.isOfType(b, String))
+			return (a : Float) == Num.fromString(b);
+		if (bNumber && Std.isOfType(a, String))
+			return Num.fromString(a) == (b : Float);
+		if (aNumber && bNumber)
+			return (a : Float) == (b : Float);
+		if (Std.isOfType(a, String) && Std.isOfType(b, String))
+			return (a : String) == (b : String);
+		return a == b;
 	}
 }
