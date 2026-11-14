@@ -1,5 +1,7 @@
 import ts from 'typescript';
 
+import { libErrorClassPath } from '../stdlib/errors';
+
 /** A class member that declares an instance field: a property or a parameter property. */
 export type FieldDeclaration = ts.PropertyDeclaration | ts.ParameterDeclaration;
 
@@ -59,6 +61,17 @@ export function baseClass(
       ? checker.getAliasedSymbol(symbol)
       : symbol;
   return target?.declarations?.find(ts.isClassDeclaration);
+}
+
+/** Whether `node` or one of its ancestors extends a lib error class (`ts2hx.Error`). */
+export function extendsLibError(
+  checker: ts.TypeChecker,
+  node: ts.ClassLikeDeclaration,
+): boolean {
+  const root = [node, ...ancestors(checker, node)].pop()!;
+  const heritage = extendsClause(root);
+  const symbol = heritage && checker.getSymbolAtLocation(heritage.expression);
+  return !!symbol && libErrorClassPath(symbol) !== undefined;
 }
 
 /** The classes `node` extends, nearest first. */
@@ -127,6 +140,9 @@ export function overridesImplementation(
   member: ts.MethodDeclaration,
 ): boolean {
   const name = memberName(member);
+  if (name === 'toString' && extendsLibError(checker, owningClass(member))) {
+    return true;
+  }
   return (
     name !== undefined &&
     ancestors(checker, owningClass(member)).some((ancestor) =>

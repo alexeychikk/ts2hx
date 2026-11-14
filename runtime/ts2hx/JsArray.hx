@@ -21,6 +21,12 @@ class JsArray {
 		return accumulator;
 	}
 
+	/** JS `array.length = length`: truncates, or grows with holes (ADR 0002). */
+	public static function setLength<T>(array:Array<T>, length:Float):Float {
+		array.resize(Std.int(length));
+		return length;
+	}
+
 	/** JS `join`: `null` elements are empty, everything else goes through `String()`. */
 	public static function join<T>(array:Array<T>, ?separator:String):String {
 		var parts = [];

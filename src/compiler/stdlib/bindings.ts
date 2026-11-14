@@ -19,6 +19,7 @@ import {
 } from '../ir/builders';
 import type { HxExpr, HxType, SourcePos } from '../ir/types';
 import { padCallback } from './callbacks';
+import { ERROR_CALL_BINDINGS, ERROR_PROPERTY_BINDINGS } from './errors';
 import { NUMBER_CALL_BINDINGS, NUMBER_VALUE_BINDINGS } from './number-bindings';
 import { STRING_CALL_BINDINGS } from './string-bindings';
 
@@ -167,6 +168,7 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
   ],
   ...NUMBER_CALL_BINDINGS,
   ...STRING_CALL_BINDINGS,
+  ...ERROR_CALL_BINDINGS,
   ['Array.push', method(RUNTIME.jsArray, 'push', FLOAT)],
   ['Array.join', method(RUNTIME.jsArray, 'join', STRING)],
   ['ReadonlyArray.join', method(RUNTIME.jsArray, 'join', STRING)],
@@ -228,6 +230,7 @@ export const PROPERTY_BINDINGS: ReadonlyMap<string, PropertyBinding> = new Map([
   ['Array.length', lengthField],
   ['ReadonlyArray.length', lengthField],
   ['String.length', lengthField],
+  ...ERROR_PROPERTY_BINDINGS,
 ]);
 
 /** Lib values read as plain identifiers or properties (`NaN`, `Infinity`). */
