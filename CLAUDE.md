@@ -1,135 +1,71 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+ts2hx converts a TypeScript project into Haxe that **compiles and behaves
+like the original** on the JS, C# and C++ targets (`--interp` is an optional
+fast check). Decisions live in `docs/decisions/`. Read them before changing
+architecture, runtime semantics or tooling:
 
-## Project Overview
+| ADR | Topic |
+| --- | --- |
+| [0001](docs/decisions/0001-rewrite-as-typed-ir-compiler.md) | New engine: typed IR compiler in `src/compiler/`. The legacy engine is frozen |
+| [0002](docs/decisions/0002-targets-and-runtime.md) | JS/C#/C++ targets, measured target differences, `ts2hx` runtime semantics, per-target build and run |
+| [0003](docs/decisions/0003-toolchain.md) | Pinned toolchain versions and environment gotchas |
+| [0004](docs/decisions/0004-conformance-harness.md) | Unit tests plus the conformance corpus run on all targets |
+| [0005](docs/decisions/0005-language-mapping.md) | TS → Haxe coverage matrix (the definition of "complete") |
 
-ts2hx is a tool that converts TypeScript code into Haxe code. It helps with transitioning codebases by handling syntax differences, basic types, and other features. The tool parses TypeScript AST (Abstract Syntax Tree) and transforms it into equivalent Haxe code.
+## Layout
 
-## Common Commands
+- `src/compiler/`: the **new engine**. Its pipeline is ProjectModel → Frontend → typed IR → Passes → Printer:
+  - `ir/` holds the IR types.
+  - `model/` holds the module graph, init order and symbol → Haxe name table.
+  - `frontend/` maps TS AST + checker to IR.
+  - `passes/` holds the IR lowerings.
+  - `stdlib/` holds lib bindings by checker symbol.
+  - `printer/` prints the IR.
+  - The public API is `compileProject` in `src/compiler/index.ts`.
+- `runtime/ts2hx/`: the Haxe runtime with JS semantics, copied into the output. It is cross-target: no `js.lib`, and target-specific code goes behind `#if js`/`#if cs`/`#if cpp`.
+- `conformance/`: the end-to-end corpus (ADR 0004).
+- `src/transformers/`, `lib/`, `tests/<area>/`: the **legacy engine** (string emitters). It is frozen: only critical fixes, no new features. It is deleted when the new engine becomes the default.
+- `src/cli.ts`, `src/Converter.ts`: the CLI and the legacy orchestration.
 
-### Development Commands
+## Commands
 
 ```bash
-# Install dependencies
-npm install
-
-# Build the project
-npm run ts
-
-# Run the converter
-npm start -- ./path/to/your/tsconfig.json ./output/folder/path
-
-# Clean build artifacts
-npm run clean
-
-# Run linting
-npm run lint
-
-# Fix linting issues
-npm run lint:fix
-
-# Format all files with prettier
-npm run prettify
-
-# Run tests
-npm run test
-
-# Run tests with coverage
-npm run test:coverage
+mise install                 # node, haxe, neko, dotnet (pinned in mise.toml)
+npm ci
+npm run setup:haxe           # project-local haxelib repo .haxelib/ (hxcpp, hxcs, formatter)
+npm run ts                   # build
+npm run lint                 # eslint
+npm run prettify             # prettier
+npm test                     # jest unit tests
+npm run conformance -- --targets js,cs,cpp --filter 'classes/*' --keep
+npm start -- ./path/to/tsconfig.json ./out
 ```
 
-### CLI Options
+Building a converted project by hand (each target's details are in ADR 0002):
 
-The CLI tool supports various options:
-
-```
-Usage: cli [options] <ts-config-path> <output-dir-path>
-
-Arguments:
-  ts-config-path                        path to tsconfig.json of your project
-  output-dir-path                       path to directory where to output final Haxe code
-
-Options:
-  -c, --clean [bool]                    empty output directory before converting
-  -cfj, --copyFormatJson [bool]         copy hxformat.json file into output directory
-  -chl, --copyHaxeLibraries [bool]      copy haxe_libraries and .haxerc files into output directory
-  -clf, --copyLibFiles [bool]           copy ts2hx lib files into output directory
-  -cih, --copyImportHx [bool]           copy import.hx file into root folders of output
-  -cbh, --createBuildHxml [bool]        create build.hxml file
-  -f, --format [bool]                   format final Haxe code using haxe-formatter
-  -ife, --ignoreFormatError [bool]      prevents exit code 1 when Haxe formatter fails
-  -ie, --ignoreErrors [bool]            prevents exit code 1 when internal ts2hx error happens
-  -ic, --includeComments [bool]         include comments generated during transformation
-  -it, --includeTodos [bool]            include todos generated during transformation
-  -l, --logLevel <level>                log level (choices: "Log", "Warn", "Error", "None")
-  --transformTemplateExpression [bool]  converts (`foo ${expression} bar`) to ("foo " + expression + " bar")
+```bash
+haxe build-js.hxml && node out/main.js
+haxe build-cpp.hxml && ./out/cpp/Main
+haxe build-cs.hxml && dotnet build out/cs -c Release -o out/cs/bin && dotnet out/cs/bin/App.dll
 ```
 
-## Architecture Overview
+Environment gotchas:
+- haxelib needs `LD_LIBRARY_PATH="$(mise where neko)"`.
+- C# needs `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` on hosts without libicu.
+- Never pass `-D HXCPP_M64`: it breaks on aarch64.
+- Set `HXCPP_COMPILE_CACHE` to a persistent directory: C++ rebuilds drop from about 40 s to under 1 s.
 
-The project has several main components:
+## Rules
 
-1. **CLI Tool (`src/cli.ts`)**: Handles command-line arguments and initiates the conversion process.
-
-2. **Converter (`src/Converter.ts`)**: Orchestrates the entire conversion process including:
-   - Creating a TypeScript program
-   - Running transformers
-   - Emitting Haxe code
-   - Copying supporting files
-   - Formatting output
-
-3. **Transpiler (`src/transformers/Transpiler.ts`)**: Core transformation engine that:
-   - Applies transformers to TypeScript nodes
-   - Emits Haxe code
-   - Manages code transformation utilities
-
-4. **Transformers**: Various modules that handle specific aspects of transformation:
-   - Language basics (`transformers/lang/basics.ts`)
-   - Classes (`transformers/lang/classes.ts`)
-   - Functions (`transformers/lang/functions.ts`) 
-   - Types (`transformers/lang/types.ts`)
-   - Variables (`transformers/lang/variables.ts`)
-   - and many others
-
-5. **Utils**: Utility functions for the conversion process:
-   - TypeScript source file management
-   - Compiler host creation
-   - Error handling
-
-## Testing Framework
-
-The project uses Jest for testing. The test framework is defined in `tests/framework.ts`, which provides:
-
-1. `ts2hx` function: A template literal function for easily writing tests
-2. `Ts2hx` class: For more complex test cases with multiple source files
-
-Tests follow a pattern of providing TypeScript input and asserting on the expected Haxe output using snapshot testing. The tests are organized by feature, with separate directories for:
-
-- basics
-- classes
-- conditions
-- functions
-- objects
-- promise
-- types
-- variables
-
-## Project Status
-
-The project is marked as "WORK IN PROGRESS" in the README. It currently supports many essential features like:
-- keywords and syntax tokens
-- basic data types
-- variable declarations
-- loops
-- switches
-- dynamic property access
-- functions
-- classes
-- interfaces and type definitions
-- enums
-- imports
-- exceptions
-
-But some features are not yet fully supported, including:
-- decorators
+- **Never emit broken Haxe.** A construct the engine can't map becomes an
+  `Unsupported` IR node: a `TODO(ts2hx)` comment plus
+  `ts2hx.Ts2hx.unsupported("…")`. Its row in ADR 0005 says whether that is
+  allowed.
+- Semantics come from the type checker, not from syntax. Number formatting,
+  key order, truthiness and equality follow ADR 0002. Call the runtime with
+  explicit static calls (`JsArray.push(a, x)`), never `using`.
+- Every behaviour change adds or un-expects conformance cases
+  (`conformance/expectations.json`), checked on all three targets.
+  Compiler-internal logic also gets Jest unit tests under `tests/compiler/`.
+- Toolchain versions change only together with ADR 0003 and `mise.toml`.
