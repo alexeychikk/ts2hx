@@ -61,7 +61,7 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 | class expressions | hoisted to module-level classes. Captured locals are passed to the constructor | |
 | mixins, `Object.setPrototypeOf`, prototype mutation | Out of scope | |
 | `instanceof` | `Std.isOfType` | Primitives are handled by the runtime. |
-| functions, arrows, closures | local functions and arrows | Haxe closures capture by reference and `this` lexically, which matches arrows. Function declarations stay in source order, because Haxe types a local function where it is declared. A function that is used before its declaration, called by such a function, or captures a `let`/`const` declared after it becomes a `var f:FnType = null` at the top of its block. It is assigned right after the last `let`/`const` it captures. If an earlier statement may reach it (directly or through another function of the block), it is assigned at the top instead, and the `let`/`const`s it captures are hoisted like `var`s (`Null<T>`, assigned at their declaration). A generic one is `Unsupported`. A `let`/`const` read by any closure (arrow, function expression, nested function) that appears before its declaration is hoisted the same way. |
+| functions, arrows, closures | local functions and arrows | Haxe closures capture by reference and `this` lexically, which matches arrows. Function declarations stay in source order, because Haxe types a local function where it is declared. A function that is used before its declaration, called by such a function, or captures a `let`/`const` declared after it becomes a `var f:FnType = null` at the top of its block. It is assigned right after the last `let`/`const` it captures. If an earlier statement may reach it (directly or through another function of the block), it is assigned at the top instead, and the `let`/`const`s it captures are hoisted like `var`s (`Null<T>`, assigned at their declaration). A generic one is `Unsupported`. A `let`/`const` read by any closure (arrow, function expression, nested function) that appears before its declaration is hoisted the same way. A value-returning function whose end is reachable (the binder's `HasImplicitReturn`) ends with `return null`, and a bare `return;` in it returns `null`. When its Haxe return type is not nullable, TS guarantees the end is unreachable (e.g. after a `never` call), so it ends with `throw "unreachable"`. |
 | `function` expressions using a dynamic `this`, `call`/`apply`/`bind` with a foreign `this`, `arguments` | Degraded (`bind` keeps the receiver) / out of scope | |
 | default parameters | Haxe constant defaults, otherwise `if (p == null) p = …` | Explicit `null` triggers the default (degraded, see 0002). |
 | rest parameters, spread arguments | `...rest:T` (`haxe.Rest`). Spread into a fixed-arity call goes through `Reflect.callMethod` or an inlined unpack | |
@@ -79,12 +79,12 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 | destructuring (declaration, parameter, assignment, `for…of`, `catch`), defaults, rest | temporaries plus assignments | |
 | spread in arrays and objects | `concat` / runtime `Obj.spread` with the static key order | |
 | `?.`, `??`, `??=`, `\|\|=`, `&&=` | Haxe 4.3 `?.` and `??` where equivalent, otherwise lowered with temporaries | `a?.[i]` and `a?.()` are lowered. |
-| truthiness, `!`, `\|\|`, `&&` | type-directed (0002) | |
+| truthiness, `!`, `\|\|`, `&&` | type-directed (0002) | A value whose type is only `null`/`undefined` (e.g. narrowed by assignment) is `false`. |
 | `==`/`!=` (loose) | `==` when both sides have the same primitive or class type, otherwise `Ts2hx.looseEq` | `===` becomes Haxe `==`. |
 | arithmetic, `%`, `**`, bitwise, `++` on fields and indexes | Float arithmetic, `Num.pow` (JS `NaN`/`±1 ** ±Infinity` results), `Num.toInt32`, `Num.shl`/`shr`/`ushr` | `+` with a string operand converts the other side with `Num.toString` or `Ts2hx.string`. |
 | `typeof x` | static constant when the type is known, otherwise `Ts2hx.typeOf` | |
 | `in`, `delete` | `Reflect.hasField`/`Dict` / `Reflect.deleteField` | |
-| comma, `void`, assignment as an expression | block expressions | |
+| comma, `void`, assignment as an expression | block expressions | A `void` call used as a value becomes `{ f(); null; }`; `return f();` in a `void` function becomes `f(); return;`. |
 | template literals, tagged templates | `+` chains through `Num.toString` or `Ts2hx.string` (`null`/`undefined` literals print as constants) / a call with a strings array and the values | |
 | regex literals and methods | `ts2hx.RegExp` | 0002. |
 | generators, iterators, `yield*` | state-machine pass plus `ts2hx.Generator` | |

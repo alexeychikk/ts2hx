@@ -188,6 +188,8 @@ export class ModuleFrontend {
   private readonly hoisted = new Set<ts.Symbol>();
   /** Block `let`/`const`s hoisted for a function reached before them: read before assigned. */
   private readonly hoistedLexicals = new Set<ts.Symbol>();
+  /** Haxe return types of the functions being converted, innermost last. */
+  private readonly returnTypes: HxType[] = [];
   private tempCounter = 0;
 
   constructor(
@@ -626,7 +628,7 @@ export class ModuleFrontend {
 
   private statement(node: ts.Statement): HxStmt[] {
     if (ts.isExpressionStatement(node)) {
-      return [{ kind: 'expr', expr: this.expression(node.expression) }];
+      return [{ kind: 'expr', expr: this.effect(node.expression) }];
     }
     if (
       ts.isEmptyStatement(node) ||
@@ -681,12 +683,7 @@ export class ModuleFrontend {
       return this.forOf(node);
     }
     if (ts.isReturnStatement(node)) {
-      return [
-        {
-          kind: 'return',
-          value: node.expression && this.expression(node.expression),
-        },
-      ];
+      return this.returnStatement(node);
     }
     if (ts.isBreakStatement(node) && !node.label) {
       return [{ kind: 'break' }];
@@ -695,6 +692,24 @@ export class ModuleFrontend {
       return [{ kind: 'continue' }];
     }
     return this.unsupportedStmt(node);
+  }
+
+  private returnStatement(node: ts.ReturnStatement): HxStmt[] {
+    const ret = this.returnTypes[this.returnTypes.length - 1] ?? VOID;
+    if (!sameType(ret, VOID)) {
+      return [
+        {
+          kind: 'return',
+          value: node.expression
+            ? this.expression(node.expression)
+            : constExpr(null),
+        },
+      ];
+    }
+    const effect = node.expression && this.effect(node.expression);
+    return effect && !isPure(effect)
+      ? [{ kind: 'expr', expr: effect }, { kind: 'return' }]
+      : [{ kind: 'return' }];
   }
 
   private variableList(list: ts.VariableDeclarationList): HxStmt[] {
@@ -949,20 +964,47 @@ export class ModuleFrontend {
     const ret = signature
       ? this.types.mapReturn(signature.getReturnType())
       : DYNAMIC;
-    const body = node.body;
-    let statements: HxStmt[] = [];
-    if (body && ts.isBlock(body)) {
-      statements = [
-        ...this.hoistVars(body.statements),
-        ...this.block(body.statements),
-      ];
-    } else if (body) {
-      const value = this.expression(body);
-      statements = sameType(ret, VOID)
-        ? [{ kind: 'expr', expr: value }]
-        : [{ kind: 'return', value: this.coerce(value, ret) }];
+    this.returnTypes.push(ret);
+    try {
+      return {
+        typeParams,
+        params,
+        ret,
+        body: [...prologue, ...this.functionBody(node, ret)],
+      };
+    } finally {
+      this.returnTypes.pop();
     }
-    return { typeParams, params, ret, body: [...prologue, ...statements] };
+  }
+
+  private functionBody(node: FunctionNode, ret: HxType): HxStmt[] {
+    const body = node.body;
+    if (!body) {
+      return [];
+    }
+    if (!ts.isBlock(body)) {
+      return sameType(ret, VOID)
+        ? [{ kind: 'expr', expr: this.effect(body) }]
+        : [{ kind: 'return', value: this.coerce(this.expression(body), ret) }];
+    }
+    return [
+      ...this.hoistVars(body.statements),
+      ...this.block(body.statements),
+      ...this.implicitReturn(node, ret),
+    ];
+  }
+
+  /** JS returns `undefined` when control reaches the end of a function body. */
+  private implicitReturn(node: FunctionNode, ret: HxType): HxStmt[] {
+    if (
+      sameType(ret, VOID) ||
+      (node.flags & ts.NodeFlags.HasImplicitReturn) === 0
+    ) {
+      return [];
+    }
+    return isNullable(ret)
+      ? [{ kind: 'return', value: constExpr(null) }]
+      : [{ kind: 'throw', value: constExpr('unreachable') }];
   }
 
   /** Declares a function's `var`s at its top, as JS hoists them. */
@@ -1057,6 +1099,11 @@ export class ModuleFrontend {
   /** JS truthiness of `expr`, made explicit from its static type (ADR 0002). */
   private truthy(expr: HxExpr, type: ts.Type): HxExpr {
     const pos = expr.pos;
+    if (everyConstituent(type, NULLISH_FLAGS)) {
+      return isPure(expr)
+        ? constExpr(false, pos)
+        : staticCall(RUNTIME.ts2hx, 'truthy', [expr], BOOL, pos);
+    }
     if (
       everyConstituent(type, ts.TypeFlags.BooleanLike) &&
       isBoolType(expr.type)
@@ -1139,7 +1186,23 @@ export class ModuleFrontend {
         };
   }
 
+  /** Converts `node` as a value: a `Void` call reads as `undefined`. */
   expression(node: ts.Expression): HxExpr {
+    const value = this.effect(node);
+    if (!sameType(value.type, VOID)) {
+      return value;
+    }
+    return {
+      kind: 'blockExpr',
+      stmts: [{ kind: 'expr', expr: value }],
+      result: constExpr(null),
+      type: DYNAMIC,
+      pos: value.pos,
+    };
+  }
+
+  /** Converts `node` for its side effects only: its value may be `Void`. */
+  private effect(node: ts.Expression): HxExpr {
     const pos = this.pos(node);
     if (ts.isParenthesizedExpression(node)) {
       return this.expression(node.expression);

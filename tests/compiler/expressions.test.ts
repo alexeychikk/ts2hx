@@ -216,4 +216,60 @@ describe('frontend: expressions, statements and functions', () => {
       'TODO(ts2hx): generic function declarations used before their declaration are not supported yet',
     ]);
   });
+  it('returns null where control reaches the end of a value-returning function', async () => {
+    const hx = await moduleOf(
+      [
+        'function sign(n: number) {',
+        '  if (n > 0) return 1;',
+        '  if (n < 0) return -1;',
+        '}',
+        'function early(flag: boolean): string | undefined {',
+        '  if (flag) return;',
+        "  return 'late';",
+        '}',
+        'function fail(): never {',
+        '  while (true) {}',
+        '}',
+        'function always(n: number): number {',
+        '  if (n > 0) return 1;',
+        '  fail();',
+        '}',
+        'function whole(): number {',
+        '  return 1;',
+        '}',
+      ].join('\n'),
+    );
+    expect(hx).toMatch(
+      /function sign\(n:Float\):Null<Float> \{[\s\S]*return -1\.0;\s*\}\s*return null;\s*\}/,
+    );
+    expect(hx).toMatch(/if \(flag\) \{\s*return null;\s*\}/);
+    expect(hx).toMatch(/function whole\(\):Float \{\s*return 1\.0;\s*\}/);
+    expect(hx).toMatch(/fail\(\);\s*throw "unreachable";/);
+  });
+
+  it('reads a void call used as a value as undefined', async () => {
+    const hx = await moduleOf(
+      [
+        'function noop(): void {}',
+        'function relay(): void {',
+        '  return noop();',
+        '}',
+        'noop();',
+        'console.log(noop());',
+      ].join('\n'),
+    );
+    expect(hx).toMatch(/function relay\(\):Void \{\s*noop\(\);\s*return;\s*\}/);
+    expect(hx).toMatch(/\n\tnoop\(\);\n/);
+    expect(hx).toMatch(/ts2hx\.Console\.log\(\{\s*noop\(\);\s*null;\s*\}\);/);
+  });
+
+  it('makes a value narrowed to undefined falsy', async () => {
+    const hx = await moduleOf(
+      [
+        'const f: (() => number) | undefined = undefined;',
+        'console.log(f ? 1 : 2, !f);',
+      ].join('\n'),
+    );
+    expect(hx).toContain('ts2hx.Console.log(false ? 1.0 : 2.0, !false);');
+  });
 });
