@@ -39,16 +39,6 @@
     "cs": "fail",
     "cpp": "fail"
   },
-  "control/labels": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "control/switch-fallthrough": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
   "enums/numeric": {
     "js": "fail",
     "cs": "fail",

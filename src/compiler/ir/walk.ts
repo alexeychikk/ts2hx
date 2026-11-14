@@ -152,7 +152,10 @@ function transformStmt(stmt: HxStmt, transform: IrTransform): HxStmt {
     case 'tsSwitch':
       return {
         ...stmt,
-        subject: e(stmt.subject),
+        subject: stmt.subject && {
+          ...stmt.subject,
+          value: e(stmt.subject.value),
+        },
         clauses: stmt.clauses.map((c) => ({
           test: c.test && e(c.test),
           body: s(c.body),

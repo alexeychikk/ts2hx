@@ -73,8 +73,8 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 | --- | --- | --- |
 | `var`/`let`/`const`, TDZ | `var`/`final`. The frontend hoists `var` to its function as `Null<T>`; C-style `for` is lowered by the `lowerCFor` pass | Per-iteration `let` bindings captured by closures in loops get a fresh copy. |
 | `if`/`while`/`do`/`for`/`for…of`/`for…in` | lowered by a pass: C-style `for` becomes `while` with correct `continue`. `for…of` uses the iterator protocol (arrays fast-path to Haxe `for`) | |
-| `switch` with fall-through, `break` inside a switch inside a loop, non-constant cases | lowered to if-chains or labelled-flag form when needed | Haxe `break` in a `switch` breaks the loop. The pass handles it. |
-| labels, labelled `break`/`continue` | flag-based lowering | |
+| `switch` with fall-through, `break` inside a switch inside a loop, non-constant cases | the `lowerControlFlow` pass: the subject is read once into a `final`, each case is an `===` test. Without fall-through, an if-chain in clause order with `default` as the final `else`; with fall-through, a clause index (`c0 ? 0 : c1 ? 1 : default`) and `if (index <= i)` per body. A `break` left inside a body exits a `do {} while (false)` wrapper | No Haxe `switch` is emitted (its `break` would break the loop). A `default` sharing a body with a case whose test has side effects takes the clause-index form so tests run in JS order. A `let`/`const` used across clauses is `Unsupported`. A value function whose lowered body Haxe sees falling off its end gets `throw "unreachable"`. |
+| labels, labelled `break`/`continue` | `lowerControlFlow`: a label on a loop or `switch` names it; a labelled block that is broken becomes `do {} while (false)`. A jump to the innermost Haxe loop stays a `break`/`continue`; one that crosses loops sets a `Bool` flag declared before its target and breaks, and each crossed loop is followed by `if (flag) break;`, or at the target by the jump itself | Runs before `lowerCFor`, so a flagged `continue` of a C-style `for` still runs its update. |
 | `try`/`catch`/`finally` | `finally` lowered, including `return`/`break`/`throw` inside `try` | |
 | destructuring (declaration, parameter, assignment, `for…of`, `catch`), defaults, rest | temporaries plus assignments | |
 | spread in arrays and objects | `concat` / runtime `Obj.spread` with the static key order | |
@@ -84,7 +84,7 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 | arithmetic, `%`, `**`, bitwise, `++` on fields and indexes | Float arithmetic, `Num.pow` (JS `NaN`/`±1 ** ±Infinity` results), `Num.toInt32`, `Num.shl`/`shr`/`ushr` | `+` with a string operand converts the other side with `Num.toString` or `Ts2hx.string`. |
 | `typeof x` | static constant when the type is known, otherwise `Ts2hx.typeOf` | |
 | `in`, `delete` | `Reflect.hasField`/`Dict` / `Reflect.deleteField` | |
-| comma, `void`, assignment as an expression | block expressions | A `void` call used as a value becomes `{ f(); null; }`; `return f();` in a `void` function becomes `f(); return;`. |
+| comma, `void`, assignment as an expression | block expressions; Haxe assignments are expressions | A `void` call used as a value becomes `{ f(); null; }`; `return f();` in a `void` function becomes `f(); return;`. `void x` is `null`, or `{ x; null; }` when `x` has effects. A compound assignment to a module var whose value is used is spelled `m = m * v`: Haxe 4.3.7's JS generator references an elided `_Fields_` class for `m *= v` as a value. |
 | template literals, tagged templates | `+` chains through `Num.toString` or `Ts2hx.string` (`null`/`undefined` literals print as constants) / a call with a strings array and the values | |
 | regex literals and methods | `ts2hx.RegExp` | 0002. |
 | generators, iterators, `yield*` | state-machine pass plus `ts2hx.Generator` | |
