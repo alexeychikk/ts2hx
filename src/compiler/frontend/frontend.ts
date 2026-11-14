@@ -1914,9 +1914,14 @@ export class ModuleFrontend {
   }
 
   private classSymbol(node: ts.ClassLikeDeclaration): ts.Symbol | undefined {
-    return node.name
-      ? this.checker.getSymbolAtLocation(node.name)
-      : this.checker.getTypeAtLocation(node).getSymbol();
+    if (node.name) {
+      return this.checker.getSymbolAtLocation(node.name);
+    }
+    const type = this.checker.getTypeAtLocation(node);
+    const parts = type.isIntersection() ? type.types : [type];
+    return parts
+      .map((part) => part.getSymbol())
+      .find((symbol) => symbol?.declarations?.includes(node));
   }
 
   /**
@@ -2595,11 +2600,16 @@ export class ModuleFrontend {
       return this.functionExpr(node, pos);
     }
     if (ts.isClassExpression(node)) {
+      const declared = this.hoistedDecls.length;
       const stmts = this.hoistClass(node);
-      const path = this.types.classPath(this.classSymbol(node)!);
+      const symbol = this.classSymbol(node);
+      const path =
+        this.hoistedDecls.length > declared &&
+        symbol &&
+        this.types.classPath(symbol);
       const ref: HxExpr = path
         ? { kind: 'typeRef', path, type: DYNAMIC, pos }
-        : this.unsupported(node);
+        : constExpr(null, pos);
       return this.withStmts(stmts, ref);
     }
     if (ts.isArrayLiteralExpression(node)) {

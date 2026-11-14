@@ -466,6 +466,24 @@ describe('classes II in the frontend', () => {
     ]);
   });
 
+  it('reports an anonymous class extending a constructor parameter as unsupported', async () => {
+    for (const base of ['T', 'typeof Plain']) {
+      const { code, diagnostics } = await compileSources({
+        'main.ts': `
+          class Plain { hi() { return 'hi'; } }
+          function mixin<T extends new (...args: any[]) => object>(B: ${base}) {
+            return class extends B { extra(): string { return 'extra'; } };
+          }
+          console.log(typeof mixin);
+        `,
+      });
+      expect(diagnostics.map((d) => d.message)).toEqual([
+        'TODO(ts2hx): extending B is not supported yet',
+      ]);
+      expect(code['Main_2.hx']).not.toMatch(/Main_2\.Class\b/);
+    }
+  });
+
   it('reports a class capturing a reassigned local as unsupported', async () => {
     const { diagnostics } = await compileSources({
       'main.ts': `
