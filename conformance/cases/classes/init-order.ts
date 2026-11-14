@@ -28,3 +28,24 @@ class Derived extends Base {
 const d = new Derived(5);
 console.log(log.join('\n'));
 console.log(d.baseField, d.derivedField, d.value);
+
+abstract class Eager {
+  constructor() {
+    this.peek();
+  }
+  abstract peek(): void;
+}
+
+class Late extends Eager {
+  name: string = 'late';
+  count = 3;
+  peek(): void {
+    console.log(`t:${this.name}`);
+    console.log('c:' + this.name, this.name + ':c');
+    console.log(String(this.name), `n:${this.count}`);
+  }
+}
+
+const late = new Late();
+late.peek();
+console.log(`after:${late.name}`, 'after:' + late.name);

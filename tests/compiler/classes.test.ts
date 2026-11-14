@@ -187,6 +187,20 @@ describe('classes in the frontend', () => {
     expect(code).toContain('ts2hx.Ts2hx.string(this.n)');
   });
 
+  it('converts a string field to text null-safely when it may be read before it is set', async () => {
+    const code = await moduleOf(`
+      abstract class A { constructor() { this.peek(); } abstract peek(): void; }
+      class B extends A { name: string = 'b'; peek(): void { console.log(\`t:\${this.name}\`, 'c:' + this.name); } }
+      class C { name: string = 'c'; }
+      console.log('c:' + new C().name);
+      new B();
+    `);
+    expect(code).toContain('public var name:String;');
+    expect(code).toContain('"t:" + ts2hx.Ts2hx.string(this.name)');
+    expect(code).toContain('"c:" + ts2hx.Ts2hx.string(this.name)');
+    expect(code).toContain('"c:" + new Main_2.C().name');
+  });
+
   it('keeps a readonly root mutable when a readonly redeclaration assigns it', async () => {
     const code = await moduleOf(`
       class A { readonly kind: string = 'a'; }

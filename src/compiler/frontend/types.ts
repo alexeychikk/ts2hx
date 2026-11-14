@@ -33,6 +33,13 @@ export function nullable(type: HxType): HxType {
   return isNullable(type) ? type : { kind: 'null', inner: type };
 }
 
+/** `Null<T>` even for types Haxe already lets hold `null`, to mark a value that may be `undefined`. */
+export function explicitlyNullable(type: HxType): HxType {
+  return type.kind === 'null' || type.kind === 'dynamic'
+    ? type
+    : { kind: 'null', inner: type };
+}
+
 /** Haxe module path of a project source file, or `undefined` for lib and external files. */
 export type ModulePathResolver = (
   sourceFile: ts.SourceFile,

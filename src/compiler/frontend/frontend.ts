@@ -65,7 +65,7 @@ import {
   rootField,
   superCallStatement,
 } from './classes';
-import { isNullable, nullable, TypeMapper } from './types';
+import { explicitlyNullable, isNullable, nullable, TypeMapper } from './types';
 
 export interface UnsupportedReport {
   message: string;
@@ -1466,8 +1466,7 @@ export class ModuleFrontend {
   private instanceFieldType(field: FieldDeclaration): HxType {
     const root = rootField(this.checker, field);
     const type = this.types.map(this.typeOf(root));
-    return root.questionToken ||
-      mayReadFieldsBeforeInit(this.checker, owningClass(root))
+    return root.questionToken || this.readsBeforeInit(root)
       ? nullable(type)
       : type;
   }
@@ -1835,8 +1834,9 @@ export class ModuleFrontend {
           ? 'undefined'
           : undefined;
     if (
-      everyConstituent(type, ts.TypeFlags.StringLike) ||
-      (nullishText === undefined && isStringType(expr.type))
+      expr.type.kind !== 'null' &&
+      (everyConstituent(type, ts.TypeFlags.StringLike) ||
+        (nullishText === undefined && isStringType(expr.type)))
     ) {
       return expr;
     }
@@ -2283,14 +2283,22 @@ export class ModuleFrontend {
     }
     const type = this.types.map(this.checker.getTypeOfSymbol(symbol));
     const declaration = symbol.valueDeclaration;
-    const field =
+    if (
       declaration &&
       isFieldDeclaration(declaration) &&
-      this.instanceFieldType(declaration);
-    return symbol.flags & ts.SymbolFlags.Optional ||
-      (field && isNullable(field))
-      ? nullable(type)
-      : type;
+      this.readsBeforeInit(declaration)
+    ) {
+      return explicitlyNullable(type);
+    }
+    return symbol.flags & ts.SymbolFlags.Optional ? nullable(type) : type;
+  }
+
+  /** Whether superclass code may read the field while it is still `undefined`. */
+  private readsBeforeInit(field: FieldDeclaration): boolean {
+    return mayReadFieldsBeforeInit(
+      this.checker,
+      owningClass(rootField(this.checker, field)),
+    );
   }
 
   private dictGet(dict: HxExpr, key: HxExpr, pos: SourcePos): HxExpr {
