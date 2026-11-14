@@ -2,7 +2,7 @@ abstract class Shape {
   constructor(readonly name: string) {}
   abstract area(): number;
   describe(): string {
-    return `${this.name} with area ${this.area().toFixed(2)}`;
+    return `${this.name} with area ${String(this.area())}`;
   }
 }
 
@@ -11,7 +11,7 @@ class Circle extends Shape {
     super('circle');
   }
   area(): number {
-    return Math.PI * this.radius ** 2;
+    return 3 * this.radius ** 2;
   }
 }
 

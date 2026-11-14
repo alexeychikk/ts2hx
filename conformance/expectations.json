@@ -19,21 +19,6 @@
     "cs": "fail",
     "cpp": "fail"
   },
-  "classes/inheritance": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "classes/init-order": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "classes/statics": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
   "collections/map-set": {
     "js": "fail",
     "cs": "fail",

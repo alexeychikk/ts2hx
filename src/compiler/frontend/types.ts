@@ -12,6 +12,7 @@ import {
 } from '../ir/builders';
 import type { HxAnonField, HxDecl, HxType, HxTypePath } from '../ir/types';
 import { escapeIdentifier } from '../model/names';
+import { ancestors } from './classes';
 
 const NULLISH = ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void;
 /** `CheckFlags.Readonly` of a symbol synthesized by a mapped type (`Readonly<T>`). */
@@ -46,9 +47,15 @@ export function typedefName(name: string, moduleName: string): string {
   return capitalised === moduleName ? `${capitalised}_` : capitalised;
 }
 
+/** The Haxe name of a project class: like a typedef, it must start upper-case. */
+export function className(name: string, moduleName: string): string {
+  return typedefName(name, moduleName);
+}
+
 /** Maps checker types to Haxe types: the single place doing so (ADR 0001). */
 export class TypeMapper {
   private readonly visiting = new Set<ts.Type>();
+  private readonly classDeclarations = new Map<string, ts.ClassDeclaration>();
 
   constructor(
     private readonly checker: ts.TypeChecker,
@@ -151,6 +158,10 @@ export class TypeMapper {
     if (flags & ts.TypeFlags.BooleanLike) return BOOL;
     if (flags & ts.TypeFlags.Unknown) return ANY;
     if (flags & ts.TypeFlags.TypeParameter) {
+      if ((type as { isThisType?: boolean }).isThisType) {
+        const constraint = type.getConstraint();
+        return constraint ? this.map(constraint) : DYNAMIC;
+      }
       return type.symbol
         ? { kind: 'typeParam', name: escapeIdentifier(type.symbol.name) }
         : DYNAMIC;
@@ -187,6 +198,10 @@ export class TypeMapper {
       const [element] = this.checker.getTypeArguments(type as ts.TypeReference);
       return arrayType(element ? this.map(element) : DYNAMIC);
     }
+    const instance = this.classInstanceType(type);
+    if (instance) {
+      return instance;
+    }
     const typedef = this.typedefReference(type);
     if (typedef) {
       return { kind: 'path', path: typedef, params: [] };
@@ -201,6 +216,79 @@ export class TypeMapper {
       return this.signatureType(calls[0]);
     }
     return this.isStructure(type) ? this.structure(type) : DYNAMIC;
+  }
+
+  /**
+   * Haxe path of the class a project class becomes: a named class declared at the
+   * top level of a project module, merged at most with interfaces.
+   */
+  classPath(symbol: ts.Symbol): HxTypePath | undefined {
+    const declarations = symbol.declarations ?? [];
+    const declaration = declarations.find(ts.isClassDeclaration);
+    if (
+      !(symbol.flags & ts.SymbolFlags.Class) ||
+      !declaration?.name ||
+      !ts.isSourceFile(declaration.parent) ||
+      declarations.some(
+        (d) => d !== declaration && !ts.isInterfaceDeclaration(d),
+      )
+    ) {
+      return undefined;
+    }
+    const module = this.modulePath(declaration.getSourceFile());
+    if (!module) {
+      return undefined;
+    }
+    const path = {
+      pack: module.pack,
+      module: module.module,
+      name: className(declaration.name.text, module.module),
+    };
+    this.classDeclarations.set(pathKey(path), declaration);
+    return path;
+  }
+
+  /** Whether the project class at `from` extends the one at `to`, so Haxe upcasts it implicitly. */
+  isSubclass(from: HxTypePath, to: HxTypePath): boolean {
+    const declaration = this.classDeclarations.get(pathKey(from));
+    const target = pathKey(to);
+    return (
+      !!declaration &&
+      ancestors(this.checker, declaration).some((ancestor) => {
+        const symbol =
+          ancestor.name && this.checker.getSymbolAtLocation(ancestor.name);
+        const path = symbol && this.classPath(symbol);
+        return !!path && pathKey(path) === target;
+      })
+    );
+  }
+
+  /** `pack.Module.C<T>` for an instance type of a project class. */
+  private classInstanceType(type: ts.Type): HxType | undefined {
+    const objectFlags = (type as ts.ObjectType).objectFlags ?? 0;
+    const target =
+      objectFlags & ts.ObjectFlags.Reference
+        ? (type as ts.TypeReference).target
+        : type;
+    if (
+      !type.symbol ||
+      !(((target as ts.ObjectType).objectFlags ?? 0) & ts.ObjectFlags.Class)
+    ) {
+      return undefined;
+    }
+    const path = this.classPath(type.symbol);
+    if (!path) {
+      return undefined;
+    }
+    const arity = (target as ts.InterfaceType).typeParameters?.length ?? 0;
+    const params =
+      objectFlags & ts.ObjectFlags.Reference && arity > 0
+        ? this.checker
+            .getTypeArguments(type as ts.TypeReference)
+            .slice(0, arity)
+            .map((t) => this.map(t))
+        : [];
+    return { kind: 'path', path, params };
   }
 
   /** The typedef a named, non-generic project interface or alias refers to. */
@@ -371,4 +459,8 @@ function isLibSymbol(symbol: ts.Symbol): boolean {
       /[\\/]@types[\\/]/.test(file.fileName)
     );
   });
+}
+
+function pathKey(path: HxTypePath): string {
+  return [...path.pack, path.module, path.name].join('.');
 }

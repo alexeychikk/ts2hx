@@ -58,13 +58,13 @@ class Main {
   it('turns unmapped constructs into reported, throwing placeholders', async () => {
     const { code, diagnostics } = await compileSources({
       'main.ts':
-        'class A {}\nconst x = { a: 1 };\nconsole.log(x?.a, new Date());',
+        'enum A { B }\nconst x = { a: 1 };\nconsole.log(x?.a, new Date());',
     });
     expect(code['Main_2.hx']).toMatchSnapshot();
     expect(diagnostics).toEqual([
       expect.objectContaining({
         severity: 'warning',
-        message: 'TODO(ts2hx): ClassDeclaration is not supported yet',
+        message: 'TODO(ts2hx): EnumDeclaration is not supported yet',
         line: 1,
         column: 1,
       }),

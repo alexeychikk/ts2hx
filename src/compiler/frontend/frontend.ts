@@ -22,8 +22,10 @@ import {
   VOID,
 } from '../ir/builders';
 import type {
+  HxAccess,
   HxAssignOp,
   HxBinop,
+  HxClassField,
   HxDecl,
   HxExpr,
   HxFunction,
@@ -32,6 +34,7 @@ import type {
   HxStmt,
   HxType,
   HxTypeParam,
+  HxTypePath,
   SourcePos,
 } from '../ir/types';
 import type {
@@ -47,6 +50,21 @@ import {
   stdlibKey,
   VALUE_BINDINGS,
 } from '../stdlib/bindings';
+import {
+  assignsAtTopLevel,
+  extendsClause,
+  type FieldDeclaration,
+  hasModifier,
+  isFieldDeclaration,
+  isParameterProperty,
+  isStatic,
+  mayReadFieldsBeforeInit,
+  mutablyRedeclaredFields,
+  overridesImplementation,
+  owningClass,
+  rootField,
+  superCallStatement,
+} from './classes';
 import { isNullable, nullable, TypeMapper } from './types';
 
 export interface UnsupportedReport {
@@ -120,6 +138,11 @@ const MAX_SOURCE_SNIPPET = 80;
 
 const STD = typePath([], 'Std');
 const REFLECT = typePath([], 'Reflect');
+
+/** A type declared inside a module (class or typedef): a downcast to another one is a `cast`. */
+function isModuleSubType(type: HxType): boolean {
+  return type.kind === 'path' && type.path.name !== type.path.module;
+}
 
 function isArray(
   type: HxType,
@@ -235,7 +258,42 @@ type FunctionNode =
   | ts.FunctionDeclaration
   | ts.FunctionExpression
   | ts.ArrowFunction
-  | ts.MethodDeclaration;
+  | ts.MethodDeclaration
+  | ts.ConstructorDeclaration;
+
+/** The class whose member is being converted: `this` is its instance, or the class in a static member. */
+interface ClassContext {
+  path: HxTypePath;
+  isStatic: boolean;
+}
+
+/** Field initialisers of the constructor being converted, run after `after` (its `super()` call) or first. */
+interface PendingInits {
+  after?: ts.Statement;
+  stmts: HxStmt[];
+}
+
+/** A Haxe field initialiser: a constant, evaluated before any module `__init()`. */
+function isConstantInit(expr: HxExpr): boolean {
+  return expr.kind === 'const';
+}
+
+function memberAccess(member: ts.Node): HxAccess {
+  return hasModifier(
+    member,
+    ts.ModifierFlags.Private | ts.ModifierFlags.Protected,
+  )
+    ? 'private'
+    : 'public';
+}
+
+/** Name of a class member Haxe can declare: an identifier or a string literal. */
+function memberName(member: ts.NamedDeclaration): string | undefined {
+  const name = member.name;
+  return name && (ts.isIdentifier(name) || ts.isStringLiteral(name))
+    ? escapeIdentifier(name.text)
+    : undefined;
+}
 
 /** Converts one TS source file into a Haxe IR module (ADR 0001, Frontend). */
 export class ModuleFrontend {
@@ -248,6 +306,8 @@ export class ModuleFrontend {
   private readonly hoistedLexicals = new Set<ts.Symbol>();
   /** Haxe return types of the functions being converted, innermost last. */
   private readonly returnTypes: HxType[] = [];
+  private readonly classContexts: ClassContext[] = [];
+  private pendingInits?: PendingInits;
   private tempCounter = 0;
 
   constructor(
@@ -287,6 +347,10 @@ export class ModuleFrontend {
           name: this.info.fields.get(statement)!,
           fn: this.function(statement),
         });
+      } else if (ts.isClassDeclaration(statement)) {
+        const converted = this.classDeclaration(statement);
+        if (converted.decl) decls.push(converted.decl);
+        init.push(...converted.init);
       } else if (ts.isExportAssignment(statement)) {
         init.push(...this.exportAssignment(statement, decls));
       } else {
@@ -440,6 +504,13 @@ export class ModuleFrontend {
     ) {
       return from.path.name === 'Int';
     }
+    if (
+      from.kind === 'path' &&
+      to.kind === 'path' &&
+      this.types.isSubclass(from.path, to.path)
+    ) {
+      return true;
+    }
     if (isArray(from) && isArray(to)) {
       const [fromElement, toElement] = [from.params[0], to.params[0]];
       return (
@@ -460,11 +531,19 @@ export class ModuleFrontend {
     const declared = value.type.kind === 'null' ? value.type.inner : value.type;
     if (
       value.kind === 'unsupported' ||
-      (declared.kind !== 'dynamic' && !sameType(declared, ANY))
+      (declared.kind !== 'dynamic' &&
+        !sameType(declared, ANY) &&
+        !isModuleSubType(declared))
     ) {
       return value;
     }
     const narrowed = this.hxTypeOf(node);
+    if (
+      isModuleSubType(declared) &&
+      (!isModuleSubType(narrowed) || sameType(narrowed, declared))
+    ) {
+      return value;
+    }
     if (narrowed.kind === 'dynamic' || sameType(narrowed, value.type)) {
       return value;
     }
@@ -768,7 +847,14 @@ export class ModuleFrontend {
 
   private statement(node: ts.Statement): HxStmt[] {
     if (ts.isExpressionStatement(node)) {
-      return [{ kind: 'expr', expr: this.effect(node.expression) }];
+      const converted: HxStmt = {
+        kind: 'expr',
+        expr: this.effect(node.expression),
+      };
+      const pending = this.pendingInits;
+      return pending?.after === node
+        ? [converted, ...pending.stmts]
+        : [converted];
     }
     if (
       ts.isEmptyStatement(node) ||
@@ -1137,6 +1223,431 @@ export class ModuleFrontend {
     ];
   }
 
+  // -------------------------------------------------------------- classes
+
+  private inClass<T>(context: ClassContext, convert: () => T): T {
+    this.classContexts.push(context);
+    try {
+      return convert();
+    } finally {
+      this.classContexts.pop();
+    }
+  }
+
+  /**
+   * A top-level class (ADR 0005): its Haxe class, plus the statements its non-constant
+   * static initialisers and static blocks add to the module `__init()` in TS order.
+   */
+  private classDeclaration(node: ts.ClassDeclaration): {
+    decl?: HxDecl;
+    init: HxStmt[];
+  } {
+    const symbol = node.name && this.checker.getSymbolAtLocation(node.name);
+    const path = symbol && this.types.classPath(symbol);
+    if (!symbol || !path) {
+      return {
+        init: this.unsupportedStmt(
+          node,
+          'anonymous classes are not supported yet',
+        ),
+      };
+    }
+    const heritage = extendsClause(node);
+    const base = heritage && this.types.map(this.typeOf(heritage));
+    if (heritage && base?.kind !== 'path') {
+      return {
+        init: this.unsupportedStmt(
+          heritage,
+          `extending ${heritage.expression.getText()} is not supported yet`,
+        ),
+      };
+    }
+    const instance: ClassContext = { path, isStatic: false };
+    const statics: ClassContext = { path, isStatic: true };
+    const fields: HxClassField[] = [];
+    const inits: HxStmt[] = [];
+    const init: HxStmt[] = [];
+    const ctor = node.members.find(
+      (m): m is ts.ConstructorDeclaration =>
+        ts.isConstructorDeclaration(m) && m.body !== undefined,
+    );
+    for (const parameter of ctor?.parameters.filter(isParameterProperty) ??
+      []) {
+      const name = memberName(parameter);
+      if (!name || !ts.isIdentifier(parameter.name)) {
+        inits.push(
+          ...this.unsupportedStmt(
+            parameter,
+            'destructured parameter properties are not supported',
+          ),
+        );
+        continue;
+      }
+      const type = this.instanceFieldType(parameter);
+      fields.push(...this.instanceField(parameter, name, type));
+      inits.push(
+        this.thisAssignment(
+          name,
+          type,
+          localExpr(this.localName(parameter.name.text), type),
+        ),
+      );
+    }
+    for (const member of node.members) {
+      if (
+        ts.isConstructorDeclaration(member) ||
+        ts.isSemicolonClassElement(member) ||
+        ts.isIndexSignatureDeclaration(member)
+      ) {
+        continue;
+      }
+      const name = memberName(member);
+      if (ts.isClassStaticBlockDeclaration(member)) {
+        init.push({
+          kind: 'block',
+          body: this.inClass(statics, () => this.block(member.body.statements)),
+        });
+      } else if (!name || ts.isAccessor(member)) {
+        this.unsupported(
+          member,
+          `${syntaxKindName(member.kind)} class members are not supported yet`,
+        );
+      } else if (ts.isPropertyDeclaration(member) && isStatic(member)) {
+        const type = this.staticFieldType(member);
+        const value =
+          member.initializer &&
+          this.inClass(statics, () =>
+            this.coerce(this.expression(member.initializer!), type),
+          );
+        const constant = value !== undefined && isConstantInit(value);
+        fields.push({
+          kind: 'var',
+          name,
+          access: memberAccess(member),
+          isStatic: true,
+          final: constant && hasModifier(member, ts.ModifierFlags.Readonly),
+          type,
+          init: constant ? value : undefined,
+        });
+        if (value && !constant) {
+          init.push({
+            kind: 'expr',
+            expr: {
+              kind: 'assign',
+              op: '=',
+              target: { kind: 'staticField', owner: path, name, type },
+              value,
+              type,
+            },
+          });
+        }
+      } else if (ts.isPropertyDeclaration(member)) {
+        const type = this.instanceFieldType(member);
+        fields.push(...this.instanceField(member, name, type));
+        if (member.initializer) {
+          const value = this.inClass(instance, () =>
+            this.coerce(this.expression(member.initializer!), type),
+          );
+          inits.push(this.thisAssignment(name, type, value));
+        }
+      } else if (ts.isMethodDeclaration(member)) {
+        const method = this.method(
+          member,
+          name,
+          isStatic(member) ? statics : instance,
+        );
+        if (method) fields.push(method);
+      } else {
+        this.unsupported(member);
+      }
+    }
+    const constructor = this.classConstructor(
+      node,
+      symbol,
+      ctor,
+      inits,
+      base !== undefined,
+      instance,
+    );
+    if (constructor) fields.unshift(constructor);
+    return {
+      decl: {
+        kind: 'class',
+        name: path.name,
+        typeParams: (node.typeParameters ?? []).map((p) => ({
+          name: escapeIdentifier(p.name.text),
+          constraints: [],
+        })),
+        isAbstract: hasModifier(node, ts.ModifierFlags.Abstract),
+        superClass:
+          base?.kind === 'path'
+            ? { path: base.path, params: base.params }
+            : undefined,
+        fields,
+        meta: [],
+      },
+      init,
+    };
+  }
+
+  /** `this.name = value`. */
+  private thisAssignment(name: string, type: HxType, value: HxExpr): HxStmt {
+    return {
+      kind: 'expr',
+      expr: {
+        kind: 'assign',
+        op: '=',
+        target: {
+          kind: 'field',
+          target: { kind: 'this', type: DYNAMIC },
+          name,
+          type,
+        },
+        value,
+        type,
+      },
+    };
+  }
+
+  /**
+   * The Haxe field of an instance property or parameter property; none when a
+   * superclass already declares it (Haxe forbids redeclaring, TS only re-initialises).
+   */
+  private instanceField(
+    field: FieldDeclaration,
+    name: string,
+    type: HxType,
+  ): HxClassField[] {
+    if (rootField(this.checker, field) !== field) {
+      return [];
+    }
+    return [
+      {
+        kind: 'var',
+        name,
+        access: memberAccess(field),
+        isStatic: false,
+        final: this.isFinalField(field, name),
+        type,
+      },
+    ];
+  }
+
+  /**
+   * A `readonly` field is Haxe `final` when it is assigned where Haxe can see it (an
+   * initialiser, a parameter property, a top-level constructor assignment) and no
+   * subclass redeclares it mutable.
+   */
+  private isFinalField(field: FieldDeclaration, name: string): boolean {
+    if (
+      !hasModifier(field, ts.ModifierFlags.Readonly) ||
+      mutablyRedeclaredFields(this.model.program).has(field)
+    ) {
+      return false;
+    }
+    const ctor = owningClass(field).members.find(
+      (m): m is ts.ConstructorDeclaration =>
+        ts.isConstructorDeclaration(m) && m.body !== undefined,
+    );
+    return (
+      isParameterProperty(field) ||
+      (ts.isPropertyDeclaration(field) && field.initializer !== undefined) ||
+      assignsAtTopLevel(ctor, name)
+    );
+  }
+
+  /**
+   * Haxe type of an instance field, from its topmost declaration: `Null<T>` when
+   * optional, or when superclass code may read it before it is initialised.
+   */
+  private instanceFieldType(field: FieldDeclaration): HxType {
+    const root = rootField(this.checker, field);
+    const type = this.types.map(this.typeOf(root));
+    return root.questionToken ||
+      mayReadFieldsBeforeInit(this.checker, owningClass(root))
+      ? nullable(type)
+      : type;
+  }
+
+  /** Haxe type of a static field: `Null<T>` when it starts `undefined`. */
+  private staticFieldType(field: ts.PropertyDeclaration): HxType {
+    const type = this.types.map(this.typeOf(field));
+    return field.questionToken || !field.initializer ? nullable(type) : type;
+  }
+
+  private method(
+    member: ts.MethodDeclaration,
+    name: string,
+    context: ClassContext,
+  ): HxClassField | undefined {
+    const isAbstract = hasModifier(member, ts.ModifierFlags.Abstract);
+    if (!member.body && !isAbstract) {
+      return undefined;
+    }
+    const fn = this.inClass(context, () => this.function(member));
+    return {
+      kind: 'method',
+      name,
+      access: memberAccess(member),
+      isStatic: context.isStatic,
+      isOverride:
+        !context.isStatic && overridesImplementation(this.checker, member),
+      isAbstract,
+      fn: isAbstract ? { ...fn, body: undefined } : fn,
+    };
+  }
+
+  /**
+   * `new`: the TS constructor with the field initialisers moved after its `super()`
+   * call (TS order), or a generated one. A subclass without initialisers inherits
+   * its parent's, as in Haxe.
+   */
+  private classConstructor(
+    node: ts.ClassDeclaration,
+    symbol: ts.Symbol,
+    ctor: ts.ConstructorDeclaration | undefined,
+    inits: HxStmt[],
+    hasBase: boolean,
+    context: ClassContext,
+  ): HxClassField | undefined {
+    const field = (fn: HxFunction): HxClassField => ({
+      kind: 'method',
+      name: 'new',
+      access: 'public',
+      isStatic: false,
+      isOverride: false,
+      isAbstract: false,
+      fn,
+    });
+    if (ctor) {
+      const after = hasBase ? superCallStatement(ctor) : undefined;
+      if (hasBase && !after && inits.length > 0) {
+        this.unsupported(
+          ctor,
+          'a constructor initialising fields needs a top-level super() call',
+        );
+      }
+      this.pendingInits = { after, stmts: inits };
+      try {
+        return field(this.inClass(context, () => this.function(ctor)));
+      } finally {
+        this.pendingInits = undefined;
+      }
+    }
+    if (!hasBase) {
+      return field({ typeParams: [], params: [], ret: VOID, body: inits });
+    }
+    if (inits.length === 0) {
+      return undefined;
+    }
+    const [signature] = this.checker
+      .getTypeOfSymbol(symbol)
+      .getConstructSignatures();
+    const signatureType = signature && this.types.signatureType(signature);
+    const args = signatureType?.kind === 'fn' ? signatureType.args : [];
+    const params: HxParam[] = args.map((arg, i) => ({
+      name: this.localName(arg.name ?? `arg${i}`),
+      type: arg.optional && !arg.rest ? nullable(arg.type) : arg.type,
+      optional: arg.optional,
+      rest: arg.rest,
+    }));
+    const superCall: HxStmt = {
+      kind: 'expr',
+      expr: {
+        kind: 'call',
+        callee: { kind: 'super', type: DYNAMIC },
+        args: params.map((p) => localExpr(p.name, p.type)),
+        spreadLast: params[params.length - 1]?.rest,
+        type: VOID,
+      },
+    };
+    return field({
+      typeParams: [],
+      params,
+      ret: VOID,
+      body: [superCall, ...inits],
+    });
+  }
+
+  /** The Haxe class a class reference (identifier, `ns.C`, import alias) names. */
+  private classOf(node: ts.Expression): HxTypePath | undefined {
+    const target = ts.isPropertyAccessExpression(node) ? node.name : node;
+    let symbol = this.checker.getSymbolAtLocation(target);
+    if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
+      symbol = this.checker.getAliasedSymbol(symbol);
+    }
+    return symbol && symbol.flags & ts.SymbolFlags.Class
+      ? this.types.classPath(symbol)
+      : undefined;
+  }
+
+  /**
+   * A static member read through any class of the hierarchy, or `this` in a static
+   * member: Haxe only resolves it on its declaring class.
+   */
+  private staticMember(
+    node: ts.PropertyAccessExpression,
+    pos: SourcePos,
+  ): HxExpr | undefined {
+    const symbol = this.checker.getSymbolAtLocation(node.name);
+    const declaration = symbol?.valueDeclaration;
+    if (
+      !symbol ||
+      !declaration ||
+      !(
+        ts.isPropertyDeclaration(declaration) ||
+        ts.isMethodDeclaration(declaration)
+      ) ||
+      !isStatic(declaration) ||
+      !ts.isClassDeclaration(declaration.parent) ||
+      !declaration.parent.name
+    ) {
+      return undefined;
+    }
+    const classSymbol = this.checker.getSymbolAtLocation(
+      declaration.parent.name,
+    );
+    const owner = classSymbol && this.types.classPath(classSymbol);
+    const name = memberName(declaration);
+    if (!owner || !name) {
+      return undefined;
+    }
+    const type = ts.isPropertyDeclaration(declaration)
+      ? this.staticFieldType(declaration)
+      : this.types.map(this.checker.getTypeOfSymbol(symbol));
+    return { kind: 'staticField', owner, name, type, pos };
+  }
+
+  private thisExpression(node: ts.Node, pos: SourcePos): HxExpr {
+    const context = this.classContexts[this.classContexts.length - 1];
+    if (!context) {
+      return this.unsupported(node, '`this` outside a class is not supported');
+    }
+    return context.isStatic
+      ? { kind: 'typeRef', path: context.path, type: DYNAMIC, pos }
+      : { kind: 'this', type: this.hxTypeOf(node), pos };
+  }
+
+  private newExpression(node: ts.NewExpression, pos: SourcePos): HxExpr {
+    const path = this.classOf(node.expression);
+    const args = node.arguments ?? [];
+    if (!path || args.some(ts.isSpreadElement)) {
+      return this.unsupported(node);
+    }
+    return {
+      kind: 'new',
+      path,
+      typeArgs: [],
+      args: this.arguments(
+        node,
+        args.map((a) => this.expression(a)),
+        false,
+      ),
+      type: this.hxTypeOf(node),
+      pos,
+    };
+  }
+
   // ------------------------------------------------------------ functions
 
   private function(node: FunctionNode): HxFunction {
@@ -1216,9 +1727,11 @@ export class ModuleFrontend {
       }
       return { name, type, optional };
     });
-    const ret = signature
-      ? this.types.mapReturn(signature.getReturnType())
-      : DYNAMIC;
+    const ret = ts.isConstructorDeclaration(node)
+      ? VOID
+      : signature
+        ? this.types.mapReturn(signature.getReturnType())
+        : DYNAMIC;
     this.returnTypes.push(ret);
     try {
       return {
@@ -1242,8 +1755,14 @@ export class ModuleFrontend {
         ? [{ kind: 'expr', expr: this.effect(body) }]
         : [{ kind: 'return', value: this.coerce(this.expression(body), ret) }];
     }
+    const pending = this.pendingInits;
+    const inits =
+      ts.isConstructorDeclaration(node) && pending && !pending.after
+        ? pending.stmts
+        : [];
     return [
       ...this.hoistVars(body.statements),
+      ...inits,
       ...this.block(body.statements),
       ...this.implicitReturn(node, ret),
     ];
@@ -1318,7 +1837,10 @@ export class ModuleFrontend {
     ) {
       return expr;
     }
-    if (everyConstituent(type, ts.TypeFlags.NumberLike)) {
+    if (
+      everyConstituent(type, ts.TypeFlags.NumberLike) &&
+      expr.type.kind !== 'null'
+    ) {
       return staticCall(RUNTIME.num, 'toString', [expr], STRING, expr.pos);
     }
     const converted = staticCall(
@@ -1499,6 +2021,10 @@ export class ModuleFrontend {
         return constExpr(false, pos);
       case ts.SyntaxKind.NullKeyword:
         return constExpr(null, pos);
+      case ts.SyntaxKind.ThisKeyword:
+        return this.thisExpression(node, pos);
+      case ts.SyntaxKind.SuperKeyword:
+        return { kind: 'super', type: this.hxTypeOf(node), pos };
     }
     if (ts.isNonNullExpression(node) || ts.isSatisfiesExpression(node)) {
       return this.expression(node.expression);
@@ -1555,6 +2081,9 @@ export class ModuleFrontend {
     if (ts.isCallExpression(node)) {
       return this.call(node, pos);
     }
+    if (ts.isNewExpression(node)) {
+      return this.newExpression(node, pos);
+    }
     if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
       return this.functionExpr(node, pos);
     }
@@ -1609,6 +2138,10 @@ export class ModuleFrontend {
     const key = this.libKey(node, symbol);
     if (key !== undefined) {
       return VALUE_BINDINGS.get(key)?.(pos) ?? this.unsupported(node);
+    }
+    const classPath = this.classOf(node);
+    if (classPath) {
+      return { kind: 'typeRef', path: classPath, type: DYNAMIC, pos };
     }
     const value = symbol && this.model.resolveValue(symbol);
     if (value) {
@@ -1705,6 +2238,14 @@ export class ModuleFrontend {
     if (node.questionDotToken || ts.isPrivateIdentifier(node.name)) {
       return this.unsupported(node);
     }
+    const member = this.staticMember(node, pos);
+    if (member) {
+      return member;
+    }
+    const symbol = this.checker.getSymbolAtLocation(node.name);
+    if (symbol && symbol.flags & ts.SymbolFlags.Accessor) {
+      return this.unsupported(node, 'accessors are not supported yet');
+    }
     const target = this.expression(node.expression);
     if (dictValue(target.type)) {
       return this.dictGet(target, constExpr(node.name.text, pos), pos);
@@ -1738,7 +2279,15 @@ export class ModuleFrontend {
       return this.hxTypeOf(node);
     }
     const type = this.types.map(this.checker.getTypeOfSymbol(symbol));
-    return symbol.flags & ts.SymbolFlags.Optional ? nullable(type) : type;
+    const declaration = symbol.valueDeclaration;
+    const field =
+      declaration &&
+      isFieldDeclaration(declaration) &&
+      this.instanceFieldType(declaration);
+    return symbol.flags & ts.SymbolFlags.Optional ||
+      (field && isNullable(field))
+      ? nullable(type)
+      : type;
   }
 
   private dictGet(dict: HxExpr, key: HxExpr, pos: SourcePos): HxExpr {
@@ -1864,7 +2413,9 @@ export class ModuleFrontend {
       this.libKey(node.name) === undefined
     ) {
       const target = this.propertyAccess(node, this.pos(node));
-      return target.kind === 'field' ? target : undefined;
+      return target.kind === 'field' || target.kind === 'staticField'
+        ? target
+        : undefined;
     }
     if (ts.isElementAccessExpression(node)) {
       const target = this.elementAccess(node, this.pos(node), true);
@@ -2142,21 +2693,23 @@ export class ModuleFrontend {
     return staticCall(REFLECT, 'hasField', [target, key], BOOL, pos);
   }
 
-  /** `x instanceof C` for the classes Haxe has a runtime type of (`Array`). */
+  /** `x instanceof C` for project classes and the lib classes Haxe has a runtime type of (`Array`). */
   private instanceOf(node: ts.BinaryExpression, pos: SourcePos): HxExpr {
     const key = ts.isIdentifier(node.right)
       ? this.libKey(node.right)
       : undefined;
-    if (key !== 'Array') {
+    const path =
+      key === 'Array' ? typePath([], 'Array') : this.classOf(node.right);
+    if (!path) {
       return this.unsupported(
         node,
-        'instanceof is only supported for Array yet',
+        'instanceof is only supported for project classes and Array yet',
       );
     }
     return {
       kind: 'isOfType',
       expr: this.expression(node.left),
-      path: typePath([], 'Array'),
+      path,
       type: BOOL,
       pos,
     };
@@ -2572,7 +3125,7 @@ export class ModuleFrontend {
     if (ts.isPropertyAccessExpression(callee) && callee.questionDotToken) {
       return this.unsupported(node);
     }
-    if (node.questionDotToken || callee.kind === ts.SyntaxKind.SuperKeyword) {
+    if (node.questionDotToken) {
       return this.unsupported(node);
     }
     if (spreadLast && !this.spreadsIntoRest(node, spreadIndex)) {
@@ -2585,27 +3138,36 @@ export class ModuleFrontend {
     const ret = signature
       ? this.types.mapReturn(signature.getReturnType())
       : DYNAMIC;
-    const parameterTypes = signature
-      ? (this.types.signatureType(signature) as Extract<HxType, { kind: 'fn' }>)
-          .args
-      : [];
     return {
       kind: 'call',
       callee: this.expression(callee),
-      args: args.map((arg, i) => {
-        const parameter =
-          parameterTypes[Math.min(i, parameterTypes.length - 1)];
-        return parameter && !(spreadLast && i === args.length - 1)
-          ? this.coerce(
-              arg,
-              parameter.optional ? nullable(parameter.type) : parameter.type,
-            )
-          : arg;
-      }),
+      args: this.arguments(node, args, spreadLast),
       spreadLast,
       type: ret,
       pos,
     };
+  }
+
+  /** Call or `new` arguments typed as the resolved signature's parameters. */
+  private arguments(
+    node: ts.CallLikeExpression,
+    args: HxExpr[],
+    spreadLast: boolean,
+  ): HxExpr[] {
+    const signature = this.checker.getResolvedSignature(node);
+    const parameterTypes = signature
+      ? (this.types.signatureType(signature) as Extract<HxType, { kind: 'fn' }>)
+          .args
+      : [];
+    return args.map((arg, i) => {
+      const parameter = parameterTypes[Math.min(i, parameterTypes.length - 1)];
+      return parameter && !(spreadLast && i === args.length - 1)
+        ? this.coerce(
+            arg,
+            parameter.optional ? nullable(parameter.type) : parameter.type,
+          )
+        : arg;
+    });
   }
 
   private spreadsIntoRest(
