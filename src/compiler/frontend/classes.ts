@@ -493,3 +493,47 @@ export function inheritsStructuralMember(
     (ancestor) => added.get(ancestor)?.has(name) ?? false,
   );
 }
+
+/** A class Haxe declares at module level although TS does not: a class expression or a local class. */
+export function isHoistedClass(node: ts.Node): node is ts.ClassLikeDeclaration {
+  return (
+    ts.isClassExpression(node) ||
+    (ts.isClassDeclaration(node) && !ts.isSourceFile(node.parent))
+  );
+}
+
+/** The class expression a `const` binds (`const C = class {}`), which Haxe declares as a class. */
+export function boundClassExpression(
+  declaration: ts.Node,
+): ts.ClassExpression | undefined {
+  if (
+    !ts.isVariableDeclaration(declaration) ||
+    !ts.isIdentifier(declaration.name) ||
+    !declaration.initializer ||
+    !(
+      ts.isVariableDeclarationList(declaration.parent) &&
+      declaration.parent.flags & ts.NodeFlags.Const
+    )
+  ) {
+    return undefined;
+  }
+  let value: ts.Expression = declaration.initializer;
+  while (ts.isParenthesizedExpression(value)) value = value.expression;
+  return ts.isClassExpression(value) ? value : undefined;
+}
+
+/** The TS name a hoisted class is called after: its own, its binding's, or `Class`. */
+export function hoistedClassName(node: ts.ClassLikeDeclaration): string {
+  if (node.name) {
+    return node.name.text;
+  }
+  const binding = ts.findAncestor(
+    node.parent,
+    (n) => !ts.isParenthesizedExpression(n),
+  );
+  return binding &&
+    ts.isVariableDeclaration(binding) &&
+    ts.isIdentifier(binding.name)
+    ? binding.name.text
+    : 'Class';
+}

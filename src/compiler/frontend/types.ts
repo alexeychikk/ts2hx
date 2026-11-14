@@ -12,7 +12,7 @@ import {
 } from '../ir/builders';
 import type { HxAnonField, HxDecl, HxType, HxTypePath } from '../ir/types';
 import { escapeIdentifier } from '../model/names';
-import { ancestors } from './classes';
+import { ancestors, isHoistedClass } from './classes';
 
 const NULLISH = ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void;
 /** `CheckFlags.Readonly` of a symbol synthesized by a mapped type (`Readonly<T>`). */
@@ -62,11 +62,17 @@ export function className(name: string, moduleName: string): string {
 /** Maps checker types to Haxe types: the single place doing so (ADR 0001). */
 export class TypeMapper {
   private readonly visiting = new Set<ts.Type>();
-  private readonly classDeclarations = new Map<string, ts.ClassDeclaration>();
+  private readonly classDeclarations = new Map<
+    string,
+    ts.ClassLikeDeclaration
+  >();
 
   constructor(
     private readonly checker: ts.TypeChecker,
     private readonly modulePath: ModulePathResolver = () => undefined,
+    private readonly hoistedClassPath: (
+      node: ts.ClassLikeDeclaration,
+    ) => HxTypePath | undefined = () => undefined,
   ) {}
 
   /** Haxe type of a value of TS type `type`. */
@@ -231,6 +237,12 @@ export class TypeMapper {
    */
   classPath(symbol: ts.Symbol): HxTypePath | undefined {
     const declarations = symbol.declarations ?? [];
+    const hoisted = declarations.find(isHoistedClass);
+    if (hoisted && symbol.flags & ts.SymbolFlags.Class) {
+      const path = this.hoistedClassPath(hoisted);
+      if (path) this.classDeclarations.set(pathKey(path), hoisted);
+      return path;
+    }
     const declaration = declarations.find(ts.isClassDeclaration);
     if (
       !(symbol.flags & ts.SymbolFlags.Class) ||
