@@ -76,8 +76,14 @@ import {
   ITERATOR_METHOD,
   lazyIterableArray,
   lazyIterableElement,
+  asyncGeneratorElement,
+  asyncGeneratorType,
 } from '../stdlib/iterable-bindings';
-import { newPromise } from '../stdlib/promise-bindings';
+import {
+  newPromise,
+  promiseType,
+  promiseValue,
+} from '../stdlib/promise-bindings';
 import { arrayConstructor, setArrayLength } from '../stdlib/array-bindings';
 import {
   ERROR_FIELD_NAMES,
@@ -438,6 +444,15 @@ function isVarDeclarationList(list: ts.VariableDeclarationList): boolean {
   return (list.flags & ts.NodeFlags.BlockScoped) === 0;
 }
 
+function isAsyncFunction(node: ts.Node): boolean {
+  return (
+    ts.canHaveModifiers(node) &&
+    (ts.getModifiers(node) ?? []).some(
+      (m) => m.kind === ts.SyntaxKind.AsyncKeyword,
+    )
+  );
+}
+
 function isFunctionLike(node: ts.Node): boolean {
   return (
     ts.isFunctionDeclaration(node) ||
@@ -629,6 +644,8 @@ export class ModuleFrontend {
   >();
   /** The value a setter returns, for `return;` at its `returnTypes` depth. */
   private setterResult?: { depth: number; value: HxExpr & { kind: 'local' } };
+  /** The `returnTypes` depth of the async generator body being converted, whose `yield` and `return` await. */
+  private asyncGeneratorDepth?: number;
   private tempCounter = 0;
 
   constructor(
@@ -1424,12 +1441,16 @@ export class ModuleFrontend {
   private returnStatement(node: ts.ReturnStatement): HxStmt[] {
     const ret = this.returnTypes[this.returnTypes.length - 1] ?? VOID;
     if (!sameType(ret, VOID)) {
+      const value =
+        node.expression && this.coerce(this.expression(node.expression), ret);
       return [
         {
           kind: 'return',
-          value: node.expression
-            ? this.coerce(this.expression(node.expression), ret)
-            : constExpr(null),
+          value: !value
+            ? constExpr(null)
+            : this.inAsyncGenerator()
+              ? this.awaited(value, DYNAMIC)
+              : value,
         },
       ];
     }
@@ -2042,8 +2063,10 @@ export class ModuleFrontend {
     const iterated = this.typeOf(node.expression);
     const initializer = node.initializer;
     const overString = this.isStringLike(node.expression);
+    if (node.awaitModifier) {
+      return this.forAwaitOf(node);
+    }
     if (
-      node.awaitModifier ||
       (!this.checker.isArrayType(iterated) &&
         !this.checker.isTupleType(iterated) &&
         !overString &&
@@ -2101,6 +2124,136 @@ export class ModuleFrontend {
           init: localExpr(element, type),
         };
     return [{ kind: 'forIn', name: element, iterable, body: [bind, ...body] }];
+  }
+
+  /**
+   * `for await (x of source)`: each step of the async iterator (a sync one is
+   * wrapped, awaiting its values) is awaited, and leaving the loop early awaits
+   * `iterator.return()`.
+   */
+  private forAwaitOf(node: ts.ForOfStatement): HxStmt[] {
+    const initializer = node.initializer;
+    if (
+      !ts.isVariableDeclarationList(initializer) ||
+      initializer.declarations.length !== 1 ||
+      !ts.isIdentifier(initializer.declarations[0].name)
+    ) {
+      return this.unsupportedStmt(node);
+    }
+    const declaration = initializer.declarations[0];
+    const symbol = this.checker.getSymbolAtLocation(declaration.name)!;
+    const name = this.localName(symbol.name);
+    const type = this.declaredType(declaration);
+    const body = this.body(node.statement);
+    const source = this.expression(node.expression);
+    const iteratorName = this.freshName('iterator');
+    const stepName = this.freshName('step');
+    const openName = this.freshName('open');
+    const iterator = localExpr(iteratorName, DYNAMIC);
+    const step = localExpr(stepName, DYNAMIC);
+    const open = localExpr(openName, BOOL);
+    const setOpen = (value: boolean): HxStmt => ({
+      kind: 'expr',
+      expr: {
+        kind: 'assign',
+        op: '=',
+        target: open,
+        value: constExpr(value),
+        type: BOOL,
+      },
+    });
+    const value: HxExpr = {
+      kind: 'cast',
+      expr: { kind: 'field', target: step, name: 'value', type: DYNAMIC },
+      checked: false,
+      type,
+    };
+    const declare =
+      (initializer.flags & ts.NodeFlags.Const) !== 0 ||
+      !this.hoisted.has(symbol);
+    const bind: HxStmt = declare
+      ? { kind: 'var', name, final: false, type, init: value }
+      : {
+          kind: 'expr',
+          expr: {
+            kind: 'assign',
+            op: '=',
+            target: localExpr(name, type),
+            value,
+            type,
+          },
+        };
+    const next = staticCall(RUNTIME.async, 'step', [iterator], DYNAMIC);
+    return [
+      {
+        kind: 'var',
+        name: iteratorName,
+        final: true,
+        type: DYNAMIC,
+        init: staticCall(
+          RUNTIME.async,
+          'iterator',
+          [source],
+          DYNAMIC,
+          source.pos,
+        ),
+      },
+      {
+        kind: 'var',
+        name: openName,
+        final: false,
+        type: BOOL,
+        init: constExpr(false),
+      },
+      {
+        kind: 'tryFinally',
+        body: [
+          {
+            kind: 'while',
+            cond: constExpr(true),
+            doWhile: false,
+            body: [
+              setOpen(false),
+              {
+                kind: 'var',
+                name: stepName,
+                final: true,
+                type: DYNAMIC,
+                init: staticCall(
+                  RUNTIME.async,
+                  'result',
+                  [this.awaited(next, DYNAMIC)],
+                  DYNAMIC,
+                ),
+              },
+              {
+                kind: 'if',
+                cond: staticCall(RUNTIME.iter, 'done', [step], BOOL),
+                then: [{ kind: 'break' }],
+              },
+              setOpen(true),
+              bind,
+              ...body,
+            ],
+          },
+        ],
+        finally: [
+          {
+            kind: 'if',
+            cond: open,
+            then: [
+              {
+                kind: 'expr',
+                expr: this.awaited(
+                  staticCall(RUNTIME.async, 'close', [iterator], DYNAMIC),
+                  DYNAMIC,
+                ),
+              },
+            ],
+          },
+        ],
+      },
+    ];
   }
 
   /** Whether `for…of` and spread must run the iterator protocol: generators, iterators and classes with `[Symbol.iterator]()`. */
@@ -3570,13 +3723,18 @@ export class ModuleFrontend {
       : signature
         ? this.types.mapReturn(signature.getReturnType())
         : DYNAMIC;
-    if (node.asteriskToken) {
+    const isAsync = isAsyncFunction(node);
+    if (node.asteriskToken || isAsync) {
       return {
         typeParams,
         params,
         ret,
-        body: [...prologue, this.generatorBody(node, ret)],
-        isGenerator: true,
+        body: [
+          ...prologue,
+          this.generatorBody(node, ret, !!node.asteriskToken, isAsync),
+        ],
+        isGenerator: node.asteriskToken !== undefined,
+        isAsync,
       };
     }
     this.returnTypes.push(ret);
@@ -3592,49 +3750,91 @@ export class ModuleFrontend {
     }
   }
 
-  /** `return new ts2hx.Generator<T>(function(ctx) body)`: `lowerGenerators` turns `body` into its state machine. */
-  private generatorBody(node: FunctionNode, ret: HxType): HxStmt {
-    const element = lazyIterableElement(ret) ?? DYNAMIC;
-    const generator = generatorType(element);
+  /**
+   * The body of a generator or async function: `return new ts2hx.Generator<T>(step)`,
+   * `return ts2hx.Async.run(step)` or `return new ts2hx.AsyncGenerator<T>(step)`, with
+   * `step` a `function(ctx) body` that `lowerGenerators` turns into its state machine.
+   */
+  private generatorBody(
+    node: FunctionNode,
+    ret: HxType,
+    isGenerator: boolean,
+    isAsync: boolean,
+  ): HxStmt {
     this.returnTypes.push(DYNAMIC);
-    let step: HxStmt[];
+    const savedAsyncGenerator = this.asyncGeneratorDepth;
+    this.asyncGeneratorDepth =
+      isGenerator && isAsync ? this.returnTypes.length : undefined;
+    let body: HxStmt[];
     try {
-      step = [
+      body = [
         ...this.functionBody(node, DYNAMIC),
         { kind: 'return', value: constExpr(null) },
       ];
     } finally {
       this.returnTypes.pop();
+      this.asyncGeneratorDepth = savedAsyncGenerator;
     }
-    const created: HxExpr = {
-      kind: 'new',
-      path: RUNTIME.generator,
-      typeArgs: [element],
-      args: [
-        {
-          kind: 'fn',
-          fn: {
-            typeParams: [],
-            params: [
-              {
-                name: this.freshName('gen'),
-                type: { kind: 'path', path: RUNTIME.generatorCore, params: [] },
-              },
-            ],
-            ret: DYNAMIC,
-            body: step,
+    const step: HxExpr = {
+      kind: 'fn',
+      fn: {
+        typeParams: [],
+        params: [
+          {
+            name: this.freshName('gen'),
+            type: { kind: 'path', path: RUNTIME.generatorCore, params: [] },
           },
-          type: DYNAMIC,
-        },
-      ],
-      type: generator,
+        ],
+        ret: DYNAMIC,
+        body,
+      },
+      type: DYNAMIC,
     };
+    const created = isGenerator
+      ? this.generatorCreation(ret, isAsync, step)
+      : staticCall(
+          RUNTIME.async,
+          'run',
+          [step],
+          promiseValue(ret) ? ret : promiseType(DYNAMIC),
+        );
     return {
       kind: 'return',
-      value: sameType(ret, generator)
+      value: sameType(ret, created.type)
         ? created
         : { kind: 'cast', expr: created, checked: false, type: ret },
     };
+  }
+
+  private generatorCreation(
+    ret: HxType,
+    isAsync: boolean,
+    step: HxExpr,
+  ): HxExpr {
+    const element =
+      (isAsync ? asyncGeneratorElement(ret) : lazyIterableElement(ret)) ??
+      DYNAMIC;
+    return {
+      kind: 'new',
+      path: isAsync ? RUNTIME.asyncGenerator : RUNTIME.generator,
+      typeArgs: [element],
+      args: [step],
+      type: isAsync ? asyncGeneratorType(element) : generatorType(element),
+    };
+  }
+
+  /** `await value`, or a `yield`/`return` value of an async generator, which JS awaits. */
+  private awaited(value: HxExpr, type: HxType, pos?: SourcePos): HxExpr {
+    return {
+      kind: 'await',
+      value,
+      type: sameType(type, VOID) ? DYNAMIC : type,
+      pos,
+    };
+  }
+
+  private inAsyncGenerator(): boolean {
+    return this.asyncGeneratorDepth === this.returnTypes.length;
   }
 
   /** `if (p == null) p = <default>;` */
@@ -4066,11 +4266,28 @@ export class ModuleFrontend {
     if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
       return this.functionExpr(node, pos);
     }
+    if (ts.isAwaitExpression(node)) {
+      return this.awaited(
+        this.expression(node.expression),
+        this.hxTypeOf(node),
+        pos,
+      );
+    }
     if (ts.isYieldExpression(node)) {
       const type = this.hxTypeOf(node);
+      if (node.asteriskToken && this.inAsyncGenerator()) {
+        return this.unsupported(
+          node,
+          'yield* in async generators is not supported yet',
+        );
+      }
+      const value = node.expression && this.expression(node.expression);
       return {
         kind: 'yield',
-        value: node.expression && this.expression(node.expression),
+        value:
+          value && this.inAsyncGenerator()
+            ? this.awaited(value, DYNAMIC, pos)
+            : value,
         delegate: node.asteriskToken !== undefined,
         type: sameType(type, VOID) ? DYNAMIC : type,
         pos,

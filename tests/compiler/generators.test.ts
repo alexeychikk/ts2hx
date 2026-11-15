@@ -101,15 +101,30 @@ describe('generators', () => {
     );
   });
 
-  it('reports a yield in a branch that may not run', async () => {
-    const { hx, diagnostics } = await compile([
+  it('runs a yield in a branch only when the branch is taken', async () => {
+    const hx = await moduleOf([
       'function* maybe(flag: boolean): Generator<number, void, number> {',
-      '  console.log(flag && (yield 1));',
+      '  console.log(flag && (yield 1) > 0, flag ? yield 2 : 0);',
       '}',
       'maybe(true).next();',
     ]);
+    expect(hx).toMatch(
+      /(__logical\d+) = flag;\n\t+if \(!\1\) \{\n\t+__gen_\d+\.state = \d+;/,
+    );
+    expect(hx).toMatch(/if \(!flag\) \{/);
+    expect(hx).toMatch(/__conditional\d+ = __sent\d+;/);
+  });
+
+  it('reports a yield in an increment target', async () => {
+    const { hx, diagnostics } = await compile([
+      'function* maybe(): Generator<number, void, number> {',
+      '  const xs = [1];',
+      '  xs[yield 0]++;',
+      '}',
+      'maybe().next();',
+    ]);
     expect(diagnostics.map((d) => d.message).join('\n')).toContain(
-      'a yield inside this expression',
+      'a yield inside',
     );
     expect(hx).toContain('ts2hx.Ts2hx.unsupported(');
   });

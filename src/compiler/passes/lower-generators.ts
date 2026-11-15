@@ -22,7 +22,7 @@ import type {
 } from '../ir/types';
 import { transformModule } from '../ir/walk';
 
-type Yield = Extract<HxExpr, { kind: 'yield' }>;
+type Yield = Extract<HxExpr, { kind: 'yield' | 'await' }>;
 
 /** A `try` whose body holds a resume point: its `catch` becomes a state the router jumps to. */
 interface TryRegion {
@@ -36,12 +36,12 @@ interface LoopTargets {
   continueState: number;
 }
 
-/** Whether `node` holds a `yield` outside nested functions. */
+/** Whether `node` holds a `yield` or an `await` outside nested functions. */
 export function containsYield(node: unknown): boolean {
   if (Array.isArray(node)) return node.some(containsYield);
   if (node === null || typeof node !== 'object') return false;
   const record = node as { kind?: unknown };
-  if (record.kind === 'yield') return true;
+  if (record.kind === 'yield' || record.kind === 'await') return true;
   if (record.kind === 'fn' || record.kind === 'localFunction') return false;
   return Object.values(record).some(containsYield);
 }
@@ -295,7 +295,7 @@ class StateMachine {
   }
 
   private exprStmt(expr: HxExpr): void {
-    if (expr.kind === 'yield') {
+    if (expr.kind === 'yield' || expr.kind === 'await') {
       this.yieldPoint(expr, false);
       return;
     }
@@ -310,12 +310,15 @@ class StateMachine {
     const value = node.value ? this.linearize(node.value) : constExpr(null);
     if (!value) return undefined;
     const resume = this.newState();
+    const suspend =
+      node.kind === 'await'
+        ? 'awaitTo'
+        : node.delegate
+          ? 'delegateTo'
+          : 'yieldTo';
     this.emit({
       kind: 'return',
-      value: this.ctxCall(node.delegate ? 'delegateTo' : 'yieldTo', [
-        intConst(resume),
-        value,
-      ]),
+      value: this.ctxCall(suspend, [intConst(resume), value]),
     });
     this.mark(resume);
     const sent = this.ctxCall('sent', [], node.type);
@@ -341,6 +344,7 @@ class StateMachine {
     if (!containsYield(expr)) return expr;
     switch (expr.kind) {
       case 'yield':
+      case 'await':
         return this.yieldPoint(expr);
       case 'cast':
       case 'isOfType': {
@@ -357,9 +361,12 @@ class StateMachine {
         const operand = this.linearize(expr.operand);
         return operand && { ...expr, operand };
       }
+      case 'blockExpr':
+        this.stmts(expr.stmts);
+        return this.linearize(expr.result);
       case 'binop': {
         if (['&&', '||', '??'].includes(expr.op) && containsYield(expr.right)) {
-          break;
+          return this.shortCircuit(expr);
         }
         const operands = this.operands([expr.left, expr.right]);
         return operands && { ...expr, left: operands[0], right: operands[1] };
@@ -393,13 +400,72 @@ class StateMachine {
         return value && { ...expr, value };
       }
       case 'ternary': {
-        if (containsYield(expr.then) || containsYield(expr.else)) break;
         const cond = this.linearize(expr.cond);
-        return cond && { ...expr, cond };
+        if (!cond) return undefined;
+        if (!containsYield(expr.then) && !containsYield(expr.else)) {
+          return { ...expr, cond };
+        }
+        return this.conditional(cond, expr.then, expr.else, expr.type);
       }
     }
     this.unsupported('a yield inside this expression');
     return undefined;
+  }
+
+  /** `left && right`, `left || right`, `left ?? right` whose `right` suspends: it runs only when `left` says so. */
+  private shortCircuit(
+    expr: Extract<HxExpr, { kind: 'binop' }>,
+  ): HxExpr | undefined {
+    const left = this.linearize(expr.left);
+    if (!left) return undefined;
+    const temp = this.temp('logical', expr.op === '??' ? left.type : expr.type);
+    this.emit(assign(temp, left));
+    const skip: HxExpr =
+      expr.op === '&&'
+        ? not(temp)
+        : expr.op === '||'
+          ? temp
+          : {
+              kind: 'binop',
+              op: '!=',
+              left: temp,
+              right: constExpr(null),
+              type: BOOL,
+            };
+    const end = this.newState();
+    this.emit({ kind: 'if', cond: skip, then: this.goto(end) });
+    const right = this.linearize(expr.right);
+    if (!right) return undefined;
+    this.emit(assign(temp, right));
+    this.mark(end);
+    return temp;
+  }
+
+  /** `cond ? then : otherwise` with a resume point in an arm: only the chosen arm runs. */
+  private conditional(
+    cond: HxExpr,
+    then: HxExpr,
+    otherwise: HxExpr,
+    type: HxType,
+  ): HxExpr | undefined {
+    const temp = this.temp('conditional', type);
+    const elseState = this.newState();
+    const end = this.newState();
+    this.emit({ kind: 'if', cond: not(cond), then: this.goto(elseState) });
+    const thenValue = this.linearize(then);
+    if (!thenValue) return undefined;
+    this.emit(assign(temp, thenValue));
+    this.jump(end);
+    this.mark(elseState);
+    const elseValue = this.linearize(otherwise);
+    if (!elseValue) return undefined;
+    this.emit(assign(temp, elseValue));
+    this.mark(end);
+    return temp;
+  }
+
+  private temp(hint: string, type: HxType): HxExpr {
+    return localExpr(this.hoist(this.context.freshName(hint), type), type);
   }
 
   private linearCall(
@@ -740,37 +806,44 @@ class StateMachine {
   }
 }
 
-/** The step function of a generator the frontend wrapped: `return new Generator(function(ctx) …)`. */
-type NewExpr = Extract<HxExpr, { kind: 'new' }>;
+/**
+ * The creation of a generator or async body the frontend wrapped:
+ * `return new Generator(step)`, `return new AsyncGenerator(step)` or
+ * `return Async.run(step)`, possibly behind a cast.
+ */
+type Creation = Extract<HxExpr, { kind: 'new' | 'call' }>;
 
-function generatorCreation(fn: HxFunction): NewExpr | undefined {
+function generatorCreation(fn: HxFunction): Creation | undefined {
   const last = fn.body?.[fn.body.length - 1];
   if (last?.kind !== 'return') return undefined;
   const value = last.value?.kind === 'cast' ? last.value.expr : last.value;
-  return value?.kind === 'new' ? value : undefined;
+  return value?.kind === 'new' || value?.kind === 'call' ? value : undefined;
 }
 
-function replaceCreation(value: HxExpr, created: NewExpr): HxExpr {
+function replaceCreation(value: HxExpr, created: Creation): HxExpr {
   return value.kind === 'cast' ? { ...value, expr: created } : created;
 }
 
+function stepFunction(stepArg: HxExpr, context: PassContext) {
+  const step = (stepArg as Extract<HxExpr, { kind: 'fn' }>).fn;
+  const machine = new StateMachine(context, step.params[0].name);
+  const { hoisted, step: body } = machine.build(step.body!);
+  return { hoisted, step: { ...stepArg, fn: { ...step, body } } as HxExpr };
+}
+
 function lowerGenerator(fn: HxFunction, context: PassContext): HxFunction {
-  const created = fn.isGenerator ? generatorCreation(fn) : undefined;
+  const created =
+    fn.isGenerator || fn.isAsync ? generatorCreation(fn) : undefined;
   const [stepArg] = created?.args ?? [];
   if (!created || stepArg?.kind !== 'fn' || !stepArg.fn.body || !fn.body) {
     return fn;
   }
-  const step = stepArg.fn;
-  const machine = new StateMachine(context, step.params[0].name);
-  const { hoisted, step: stepBody } = machine.build(step.body!);
+  const { hoisted, step } = stepFunction(stepArg, context);
   const wrapper = fn.body[fn.body.length - 1] as Extract<
     HxStmt,
     { kind: 'return' }
   >;
-  const lowered: NewExpr = {
-    ...created,
-    args: [{ ...stepArg, fn: { ...step, body: stepBody } }],
-  };
+  const lowered: Creation = { ...created, args: [step] };
   return {
     ...fn,
     body: [
@@ -781,9 +854,34 @@ function lowerGenerator(fn: HxFunction, context: PassContext): HxFunction {
   };
 }
 
+/** Module statements with a top-level `await`, run as the body of an async function. */
+function lowerTopLevelAwait(init: HxStmt[], context: PassContext): HxStmt[] {
+  if (!containsYield(init)) return init;
+  const stepArg: HxExpr = {
+    kind: 'fn',
+    fn: {
+      typeParams: [],
+      params: [
+        {
+          name: context.freshName('gen'),
+          type: { kind: 'path', path: RUNTIME.generatorCore, params: [] },
+        },
+      ],
+      ret: DYNAMIC,
+      body: [...init, { kind: 'return', value: constExpr(null) }],
+    },
+    type: DYNAMIC,
+  };
+  const { hoisted, step } = stepFunction(stepArg, context);
+  return [
+    ...hoisted,
+    { kind: 'expr', expr: staticCall(RUNTIME.async, 'run', [step], DYNAMIC) },
+  ];
+}
+
 /**
- * Turns generator bodies into state machines driven by `ts2hx.Generator`
- * (ADR 0005). Runs last: the bodies are free of `finally`, labels, JS
+ * Turns generator and async bodies into state machines driven by
+ * `ts2hx.Generator`, `ts2hx.Async` and `ts2hx.AsyncGenerator` (ADR 0005). Runs last: the bodies are free of `finally`, labels, JS
  * `switch` and C-style `for`, so only Haxe control flow is taken apart.
  */
 export const lowerGenerators: HxPass = (module: HxModule, context) => {
@@ -801,6 +899,7 @@ export const lowerGenerators: HxPass = (module: HxModule, context) => {
   });
   return {
     ...nested,
+    init: lowerTopLevelAwait(nested.init, context),
     decls: nested.decls.map((decl) => {
       switch (decl.kind) {
         case 'moduleFunction':

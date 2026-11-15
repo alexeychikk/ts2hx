@@ -1,14 +1,4 @@
 {
-  "async/basic": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "async/ordering-vs-node": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
   "basics/variables": {
     "js": "fail",
     "cs": "fail",
