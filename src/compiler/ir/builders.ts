@@ -61,6 +61,15 @@ export function sameType(a: HxType, b: HxType): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** Whether two type paths name the same Haxe type. */
+export function sameTypePath(a: HxTypePath, b: HxTypePath): boolean {
+  return (
+    a.name === b.name &&
+    a.module === b.module &&
+    a.pack.join('.') === b.pack.join('.')
+  );
+}
+
 export function localExpr(name: string, type: HxType, pos?: SourcePos): HxExpr {
   return { kind: 'local', name, type, pos };
 }

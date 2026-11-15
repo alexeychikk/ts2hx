@@ -33,6 +33,15 @@ class Ts2hx {
 		return value;
 	}
 
+	/** A `String` operand of `+` or a template: `undefined` that reached a `String` slot prints as in JS. */
+	public static inline function stringOperand(value:String):String {
+		#if js
+		return value;
+		#else
+		return value == null ? "undefined" : value;
+		#end
+	}
+
 	/** JS `String(value)`; `null` reads as `undefined` (ADR 0002 merges them). */
 	public static function string(value:Dynamic):String {
 		if (value == null)
@@ -80,7 +89,7 @@ class Ts2hx {
 			return "number";
 		if (Std.isOfType(value, String))
 			return "string";
-		if (Reflect.isFunction(value))
+		if (Reflect.isFunction(value) || Std.isOfType(value, Class))
 			return "function";
 		return "object";
 	}

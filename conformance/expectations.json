@@ -9,6 +9,11 @@
     "cs": "fail",
     "cpp": "fail"
   },
+  "classes/static-shadowing": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
   "collections/map-set": {
     "js": "fail",
     "cs": "fail",

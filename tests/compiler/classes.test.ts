@@ -2,7 +2,9 @@ import ts from 'typescript';
 
 import {
   hoistedClassName,
+  inheritedStaticDivergence,
   isHoistedClass,
+  isWriteTarget,
   mayReadFieldsBeforeInit,
   privateMemberName,
   structuralAccessorMembers,
@@ -11,6 +13,7 @@ import {
   redeclaredWrittenFields,
   overridesImplementation,
   rootField,
+  staticThisClass,
   superCallStatement,
 } from '@src/compiler/frontend/classes';
 
@@ -168,9 +171,9 @@ describe('classes in the frontend', () => {
   it('rewrites inherited statics to the declaring class and this in static methods', async () => {
     const code = await moduleOf(`
       class A { static n = 0; static m = [A.n]; static readonly label = 'a'; static make(): A { this.n++; return new A(); } }
-      class B extends A {}
-      B.make();
-      console.log(B.n, B.label);
+      class B extends A { static show(): string { return this.label; } }
+      A.make();
+      console.log(B.n, B.label, B.show());
     `);
     expect(code).toContain('public static var n:Float = 0.0;');
     expect(code).toContain('public static final label:String = "a";');
@@ -179,7 +182,7 @@ describe('classes in the frontend', () => {
     expect(code).toContain('public static var m:Array<Float>;');
     expect(code).toContain('Main_2.A.m = [Main_2.A.n];');
     expect(code).toContain(
-      'ts2hx.Console.inspectNumber(Main_2.A.n), Main_2.A.label',
+      'ts2hx.Console.inspectNumber(Main_2.A.n), Main_2.A.label, Main_2.B.show()',
     );
   });
 
@@ -204,7 +207,9 @@ describe('classes in the frontend', () => {
     expect(code).toContain('public var name:String;');
     expect(code).toContain('"t:" + ts2hx.Ts2hx.string(this.name)');
     expect(code).toContain('"c:" + ts2hx.Ts2hx.string(this.name)');
-    expect(code).toContain('"c:" + new Main_2.C().name');
+    expect(code).toContain(
+      '"c:" + ts2hx.Ts2hx.stringOperand(new Main_2.C().name)',
+    );
   });
 
   it('keeps a readonly root mutable when a readonly redeclaration assigns it', async () => {
@@ -476,7 +481,9 @@ describe('classes II in the frontend', () => {
       console.log(f('p').message);
     `);
     expect(code).toContain('detail = __prefix_1;');
-    expect(code).toContain('super(__prefix_1 + detail);');
+    expect(code).toContain(
+      'super(ts2hx.Ts2hx.stringOperand(__prefix_1) + ts2hx.Ts2hx.stringOperand(detail));',
+    );
   });
 
   it('reports an optional structure member clashing with a subclass method', async () => {
@@ -536,5 +543,166 @@ describe('classes II in the frontend', () => {
     `);
     expect(code).toContain('__self_1 = {n: 1.0, get: function():Float {');
     expect(code).toContain('return __self_1.n;');
+  });
+});
+
+describe('classes follow-up', () => {
+  function accessesOf(source: string) {
+    const { program, checker } = classesOf(source);
+    const sourceFile = program.getSourceFile(
+      program.getRootFileNames().find((f) => f.endsWith('main.ts'))!,
+    )!;
+    const accesses: ts.PropertyAccessExpression[] = [];
+    const visit = (n: ts.Node): void => {
+      if (ts.isPropertyAccessExpression(n)) accesses.push(n);
+      ts.forEachChild(n, visit);
+    };
+    visit(sourceFile);
+    const access = (text: string, nth = 0) =>
+      accesses.filter((a) => a.getText() === text)[nth];
+    const classType = (name: string) =>
+      checker.getTypeOfSymbol(
+        checker.getSymbolAtLocation(
+          sourceFile.statements
+            .filter(ts.isClassDeclaration)
+            .find((c) => c.name!.text === name)!.name!,
+        )!,
+      );
+    return { checker, access, classType };
+  }
+
+  it('finds write targets', () => {
+    const { access } = accessesOf(`
+      class A { static n = 0; }
+      A.n = 1; A.n++; --A.n; (A.n) += 2; A.n ??= 3; console.log(A.n === 1);
+    `);
+    expect(
+      [0, 1, 2, 3, 4, 5].map((i) => isWriteTarget(access('A.n', i))),
+    ).toEqual([true, true, true, true, true, false]);
+  });
+
+  it('finds the class this denotes in static code only', () => {
+    const { access } = accessesOf(`
+      class A {
+        static n = 0;
+        static m = this.n;
+        static f() { return this.n; }
+        static { this.n = 1; }
+        g() { return this.n; }
+      }
+    `);
+    const classOf = (i: number) =>
+      staticThisClass(access('this.n', i).expression);
+    expect([0, 1, 2].map((i) => classOf(i)?.name?.text)).toEqual([
+      'A',
+      'A',
+      'A',
+    ]);
+    expect(classOf(3)).toBeUndefined();
+  });
+
+  it('flags static accesses through a subclass that diverge from JS', () => {
+    const { checker, access, classType } = accessesOf(`
+      class A {
+        static n = 0;
+        static label = 'a';
+        static inc() { ++this.n; }
+        static read() { return this.n + this.label; }
+        static viaCall() { this.inc(); }
+        static make() { return new this(); }
+        static named() { return A.n; }
+      }
+      class B extends A { static override label = 'b'; }
+      class C extends A {}
+      B.n = 1;
+      C.inc(); C.read(); B.read(); C.viaCall(); C.make(); C.named(); console.log(C.n);
+    `);
+    const divergence = (text: string, cls: string) =>
+      inheritedStaticDivergence(checker, access(text), classType(cls));
+    expect(divergence('B.n', 'B')).toMatch(/^writing an inherited static/);
+    expect(divergence('C.inc', 'C')).toMatch(/^calling an inherited static/);
+    expect(divergence('C.read', 'C')).toBeUndefined();
+    expect(divergence('B.read', 'B')).toMatch(/^calling an inherited static/);
+    expect(divergence('C.viaCall', 'C')).toMatch(
+      /^calling an inherited static/,
+    );
+    expect(divergence('C.make', 'C')).toMatch(/^calling an inherited static/);
+    expect(divergence('C.named', 'C')).toBeUndefined();
+    expect(divergence('C.n', 'C')).toBeUndefined();
+  });
+
+  it('reports inherited static writes and this-dependent calls through a subclass', async () => {
+    const { code, diagnostics } = await compileSources({
+      'main.ts': `
+        class A { static n = 0; static inc() { ++this.n; } static get() { return this.n; } }
+        class B extends A {
+          static bump() { this.n = 5; }
+        }
+        A.inc(); B.inc(); B.n = 2; B.bump();
+        console.log(B.get(), B.n);
+      `,
+    });
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'TODO(ts2hx): writing an inherited static through a subclass is not supported: in JS it creates a separate static of the subclass',
+      'TODO(ts2hx): calling an inherited static method through a subclass is not supported when the method writes a static through `this`, reads one the subclass redeclares or uses `this` as a value',
+      'TODO(ts2hx): writing an inherited static through a subclass is not supported: in JS it creates a separate static of the subclass',
+    ]);
+    expect(code['Main_2.hx']).toContain('Main_2.A.inc();');
+    expect(code['Main_2.hx']).toContain('Main_2.A.get()');
+  });
+
+  it('converts String operands of + and templates null-safely', async () => {
+    const code = await moduleOf(`
+      function show(s: string, n: number): string {
+        const parts = [s];
+        return '[' + s + ']' + \`<\${parts[0]}>\` + 'lit' + n + s.toUpperCase();
+      }
+      console.log(show('a', 1));
+    `);
+    expect(code).toContain(
+      'return "[" + ts2hx.Ts2hx.stringOperand(s) + "]" + ("<" + ts2hx.Ts2hx.stringOperand(parts[0]) + ">") + "lit" + ts2hx.Num.toString(n)',
+    );
+  });
+
+  it('types typeof of a class value as function', async () => {
+    const code = await moduleOf(`
+      class P {}
+      const K: typeof P = P;
+      const ctor: new () => P = P;
+      console.log(typeof P, typeof K, typeof ctor);
+    `);
+    expect(code).toContain(
+      'ts2hx.Console.log("function", "function", "function");',
+    );
+  });
+
+  it('constructs class values', async () => {
+    const code = await moduleOf(`
+      class P { constructor(public a: string, public b = 1) {} }
+      function factory() { return class { hi() { return 'hi'; } }; }
+      const Made = factory();
+      const K: typeof P = P;
+      console.log(new Made().hi(), new K('x').b, new (class { v = 1 })().v);
+    `);
+    expect(code).toContain(
+      '(cast Type.createInstance(Made, []) : Main_2.Class_)',
+    );
+    expect(code).toContain(
+      '(cast Type.createInstance(K, ["x", null]) : Main_2.P)',
+    );
+    expect(code).toContain('new Main_2.Class__2().v');
+  });
+
+  it('reports new on a class value whose class captures locals', async () => {
+    const { diagnostics } = await compileSources({
+      'main.ts': `
+        function factory(p: string) { return class { hi() { return p; } }; }
+        const Made = factory('x');
+        console.log(new Made().hi());
+      `,
+    });
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'TODO(ts2hx): `new` on a class value whose class captures locals is not supported',
+    ]);
   });
 });
