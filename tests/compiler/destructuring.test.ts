@@ -67,7 +67,9 @@ describe('frontend: destructuring, spread and optional chaining', () => {
         '}',
       ].join('\n'),
     );
-    expect(hx).toContain('= {b: base.b, a: base.a, c: 3.0};');
+    expect(hx).toContain(
+      '= ts2hx.Obj.literal({b: base.b, a: base.a, c: 3.0}, ["b", "a", "c"]);',
+    );
     expect(hx).toContain('for (__key_2 in scores.keys()) {');
     expect(hx).toContain('__dict_1.set(__key_2, scores.get(__key_2));');
     expect(hx).toContain('__dict_1.set("bob", 2.0);');

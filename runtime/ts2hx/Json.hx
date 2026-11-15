@@ -178,13 +178,8 @@ private class JsonWriter {
 	static function toJson(value:Dynamic, key:String):Dynamic {
 		if (value == null || Std.isOfType(value, String) || Std.isOfType(value, Bool) || Std.isOfType(value, Float) || Std.isOfType(value, Array))
 			return value;
-		var cls = Type.getClass(value);
-		if (cls != null) {
-			if (Type.getInstanceFields(cls).indexOf("toJSON") < 0)
-				return value;
-		} else if (!Reflect.isObject(value) || Reflect.isFunction(value) || !Reflect.hasField(value, "toJSON")) {
+		if (Type.getClass(value) == null && (!Reflect.isObject(value) || Reflect.isFunction(value) || !Reflect.hasField(value, "toJSON")))
 			return value;
-		}
 		var method = Reflect.field(value, "toJSON");
 		return Reflect.isFunction(method) ? Reflect.callMethod(value, method, []) : value;
 	}

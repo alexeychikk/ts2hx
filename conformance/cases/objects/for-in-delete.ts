@@ -54,5 +54,9 @@ for (const key in item) {
 }
 console.log(Object.keys(item), Object.values(item), item.total());
 
-console.log(1 == ('1' as unknown), null == (undefined as unknown), 0 == ('' as unknown));
+console.log(
+  1 == ('1' as unknown),
+  null == (undefined as unknown),
+  0 == ('' as unknown),
+);
 console.log((true as unknown) == 1, ('2' as unknown) == 3);

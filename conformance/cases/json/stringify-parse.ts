@@ -16,7 +16,11 @@ console.log(JSON.stringify(user, null, 2));
 console.log(JSON.stringify(user, ['name', 'tags']));
 console.log(JSON.stringify([1, 'two', true, null, { x: 1.5 }], null, '--'));
 console.log(JSON.stringify({ empty: {}, list: [] }, null, 2));
-console.log(JSON.stringify('quote " and \\ and \n'), JSON.stringify(-0), JSON.stringify(1e21));
+console.log(
+  JSON.stringify('quote " and \\ and \n'),
+  JSON.stringify(-0),
+  JSON.stringify(1e21),
+);
 console.log(JSON.stringify({ n: NaN, i: Infinity, f: () => 1 }));
 console.log(JSON.stringify([undefined, () => 1]));
 

@@ -99,7 +99,7 @@ class Obj {
 		}
 		var cls = Type.getClass(object);
 		if (cls != null)
-			return classKeys(cls).indexOf(key) >= 0 || Type.getInstanceFields(cls).indexOf(key) >= 0;
+			return classKeys(cls).indexOf(key) >= 0 || Reflect.isFunction(Reflect.field(object, key));
 		return Reflect.hasField(object, key);
 	}
 
