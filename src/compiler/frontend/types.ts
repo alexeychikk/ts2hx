@@ -19,6 +19,7 @@ import type {
 } from '../ir/types';
 import { escapeIdentifier, HAXE_STD_TYPES, MAIN_CLASS } from '../model/names';
 import { libErrorClassPath } from '../stdlib/errors';
+import { libAsyncType } from '../stdlib/promise-bindings';
 import { libRegExpType } from '../stdlib/regexp-bindings';
 import { ancestors, isHoistedClass } from './classes';
 
@@ -344,7 +345,10 @@ export class TypeMapper {
       const value = this.dictValueType(type);
       return value ? dictType(this.map(value)) : DYNAMIC;
     }
-    const libInstance = this.errorInstanceType(type) ?? libRegExpType(type);
+    const libInstance =
+      this.errorInstanceType(type) ??
+      libRegExpType(type) ??
+      libAsyncType(type, this.checker, (t) => this.map(t));
     if (libInstance) {
       return libInstance;
     }

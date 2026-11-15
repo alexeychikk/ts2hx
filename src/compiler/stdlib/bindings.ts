@@ -30,6 +30,10 @@ import {
   PROCESS_VALUE_BINDINGS,
 } from './process-bindings';
 import {
+  PROMISE_CALL_BINDINGS,
+  PROMISE_PROPERTY_BINDINGS,
+} from './promise-bindings';
+import {
   REGEXP_CALL_BINDINGS,
   REGEXP_PROPERTY_BINDINGS,
 } from './regexp-bindings';
@@ -130,6 +134,7 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = firstBound([
   ...ERROR_CALL_BINDINGS,
   ...PROCESS_CALL_BINDINGS,
   ...REGEXP_CALL_BINDINGS,
+  ...PROMISE_CALL_BINDINGS,
   ['ObjectConstructor.keys', dictEnumeration('keys', () => arrayType(STRING))],
   ['ObjectConstructor.values', dictEnumeration('values', arrayType)],
   [
@@ -202,6 +207,7 @@ export const PROPERTY_BINDINGS: ReadonlyMap<string, PropertyBinding> = new Map([
   ...ITERATOR_PROPERTY_BINDINGS,
   ...ERROR_PROPERTY_BINDINGS,
   ...REGEXP_PROPERTY_BINDINGS,
+  ...PROMISE_PROPERTY_BINDINGS,
 ]);
 
 /** Lib values read as plain identifiers or properties (`NaN`, `Infinity`). */
@@ -237,6 +243,11 @@ export const VALUE_BINDINGS: ReadonlyMap<string, ValueBinding> = new Map<
 const NODE_TYPES_ALIASES: ReadonlyMap<string, string> = new Map([
   ['console.Console.log', 'Console.log'],
   ['global.console', 'console'],
+  ['global.setTimeout', 'setTimeout'],
+  ['global.setInterval', 'setInterval'],
+  ['global.clearTimeout', 'clearTimeout'],
+  ['global.clearInterval', 'clearInterval'],
+  ['global.queueMicrotask', 'queueMicrotask'],
 ]);
 
 function isLibDeclaration(program: ts.Program, decl: ts.Declaration): boolean {

@@ -104,3 +104,13 @@ class URIError extends Error {
 		named("URIError");
 	}
 }
+
+class AggregateError extends Error {
+	public var errors:Array<Dynamic>;
+
+	public function new(errors:Array<Dynamic>, ?message:String, ?options:Dynamic) {
+		super(message, options);
+		this.errors = errors.copy();
+		named("AggregateError");
+	}
+}
