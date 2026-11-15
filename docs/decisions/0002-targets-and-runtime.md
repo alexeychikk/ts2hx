@@ -132,7 +132,10 @@ reason it is not a gate.)
   rejection without handlers once the microtasks drain is reported like an
   uncaught error. It is single-threaded and does no real I/O. Node itself
   orders timers created in callbacks against a cached loop time, so cases
-  keep such timers well apart from others.
+  keep such timers well apart from others. Async functions and generators
+  (`ts2hx.Async`) drive a `GeneratorCore` step on these promises, so `await`
+  costs the spec's ticks. A self-resolution check compares typed
+  references: hxcpp's `Dynamic == object` holds for `0`.
 - **Exceptions.** `Error` and its subclasses (`TypeError`, `RangeError`, …)
   become `ts2hx.Error` and its subclasses. That is a **plain class, not a
   `haxe.Exception`**: the members of `haxe.Exception` (`message`, `stack`,

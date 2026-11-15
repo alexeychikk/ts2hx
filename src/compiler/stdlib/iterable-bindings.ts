@@ -32,6 +32,16 @@ export function generatorType(value: HxType): HxType {
   return { kind: 'path', path: RUNTIME.generator, params: [value] };
 }
 
+export function asyncGeneratorType(value: HxType): HxType {
+  return { kind: 'path', path: RUNTIME.asyncGenerator, params: [value] };
+}
+
+/** Element type of a `ts2hx.AsyncGenerator<T>`, or `undefined` for other types. */
+export function asyncGeneratorElement(type: HxType): HxType | undefined {
+  const params = pathParams(type, RUNTIME.asyncGenerator);
+  return params ? (params[0] ?? DYNAMIC) : undefined;
+}
+
 export function jsIterableType(value: HxType): HxType {
   return { kind: 'path', path: RUNTIME.jsIterable, params: [value] };
 }
@@ -51,6 +61,7 @@ export function libIterableType(
     return first ? map(first) : DYNAMIC;
   };
   if (symbol.name === 'Generator') return generatorType(value());
+  if (symbol.name === 'AsyncGenerator') return asyncGeneratorType(value());
   if (ITERABLE_NAMES.has(symbol.name)) return jsIterableType(value());
   return undefined;
 }
@@ -113,6 +124,16 @@ function generatorMethod(name: string, haxeName: string): CallBinding {
       : undefined;
 }
 
+function asyncGeneratorMethod(haxeName: string): CallBinding {
+  return ({ receiver, args, pos, spreadLast, type }) =>
+    receiver &&
+    !spreadLast &&
+    args.length <= 1 &&
+    asyncGeneratorElement(receiver.expr.type)
+      ? { ...method(receiver.expr, haxeName, args, pos), type }
+      : undefined;
+}
+
 function method(
   target: HxExpr,
   name: string,
@@ -144,5 +165,8 @@ export const ITERABLE_CALL_BINDINGS: ReadonlyArray<[string, CallBinding]> = [
   ['Generator.return', generatorMethod('return', 'doReturn')],
   ['Generator.throw', generatorMethod('throw', 'doThrow')],
   ['Iterator.next', generatorMethod('next', 'next')],
+  ['AsyncGenerator.next', asyncGeneratorMethod('next')],
+  ['AsyncGenerator.return', asyncGeneratorMethod('doReturn')],
+  ['AsyncGenerator.throw', asyncGeneratorMethod('doThrow')],
   ['ArrayConstructor.from', fromIterable],
 ];

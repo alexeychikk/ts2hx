@@ -193,7 +193,7 @@ class PromiseCore {
 	/** The spec's promise resolve function: adopts promises and thenables a microtask later. */
 	@:allow(ts2hx.Resolving)
 	function resolveWith(resolution:Dynamic):Void {
-		if (resolution == this) {
+		if (isSelf(resolution)) {
 			rejectWith(new Error.TypeError("Chaining cycle detected for promise #<Promise>"));
 			return;
 		}
@@ -217,6 +217,14 @@ class PromiseCore {
 				resolving.reject(Error.caught(error));
 			}
 		});
+	}
+
+	/** Whether `resolution` is this very promise; typed so hxcpp compares references, not `0 == object`. */
+	function isSelf(resolution:Dynamic):Bool {
+		if (!Std.isOfType(resolution, PromiseCore))
+			return false;
+		var other:PromiseCore = resolution;
+		return other == this;
 	}
 
 	@:allow(ts2hx.Resolving)

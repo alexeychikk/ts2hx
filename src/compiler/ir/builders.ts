@@ -43,6 +43,8 @@ export const RUNTIME = {
   generator: typePath(['ts2hx'], 'Generator'),
   generatorCore: typePath(['ts2hx'], 'GeneratorCore', 'Generator'),
   iter: typePath(['ts2hx'], 'Iter'),
+  async: typePath(['ts2hx'], 'Async'),
+  asyncGenerator: typePath(['ts2hx'], 'AsyncGenerator', 'Async'),
   jsIterable: typePath(['ts2hx'], 'JsIterable', 'Iter'),
 };
 

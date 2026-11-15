@@ -50,9 +50,13 @@ class GeneratorCore {
 	static inline final YIELDED = 0;
 	static inline final DELEGATED = 1;
 	static inline final FINISHED = 2;
+	static inline final AWAITED = 3;
 
 	/** The state `step` runs next. */
 	public var state:Int = 0;
+
+	/** Whether the last resumption stopped at an `await` rather than a `yield`: the async drivers read it. */
+	public var awaiting(default, null) = false;
 
 	final step:GeneratorCore->Dynamic;
 	var started = false;
@@ -104,6 +108,13 @@ class GeneratorCore {
 		return value;
 	}
 
+	/** `await value`, resuming at `next` with the settled value (async functions and generators). */
+	public function awaitTo(next:Int, value:Dynamic):Dynamic {
+		state = next;
+		outcome = AWAITED;
+		return value;
+	}
+
 	/** `yield* iterable`, resuming at `next` with the delegate's return value. */
 	public function delegateTo(next:Int, iterable:Dynamic):Dynamic {
 		delegated = Iter.iterator(iterable);
@@ -131,6 +142,7 @@ class GeneratorCore {
 		}
 		started = true;
 		running = true;
+		awaiting = false;
 		try {
 			var result = run(mode, value);
 			running = false;
@@ -170,6 +182,9 @@ class GeneratorCore {
 			var result:Dynamic = step(this);
 			switch (outcome) {
 				case YIELDED:
+					return Iter.result(result, false);
+				case AWAITED:
+					awaiting = true;
 					return Iter.result(result, false);
 				case DELEGATED:
 					mode = NEXT;
