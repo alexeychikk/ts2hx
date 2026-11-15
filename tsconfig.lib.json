@@ -11,8 +11,6 @@
     "conformance/cases",
     ".vscode",
     "dist",
-    "examples",
-    "lib",
     "node_modules"
   ]
 }

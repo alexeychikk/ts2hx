@@ -8,8 +8,7 @@ There are two test layers. CI runs both.
 
 1. **Unit tests (Jest, fast).** They live under `tests/compiler/` and cover IR
    printing, type mapping, name resolution and the individual passes.
-   Snapshots are allowed for printer output of small inputs. The legacy
-   suites (`tests/<area>/`) stay until the legacy engine is removed.
+   Snapshots are allowed for printer output of small inputs.
 2. **Conformance corpus (end to end).** These are TS programs run under
    Node, then converted, compiled and run on JS, C# and C++. A case passes on
    a target when its stdout is byte-identical to Node's (line endings and a
@@ -32,7 +31,7 @@ conformance/
 - **Node baseline:** the runner compiles the corpus with `tsc` into a temp
   directory (CommonJS) and runs each entry with `node`. Expected output is
   computed fresh each run, never committed.
-- **Conversion:** the runner calls the new engine through its API, once per
+- **Conversion:** the runner calls the compiler through its API, once per
   case, with `rootPackage = cases.<area>.<name>`. All cases therefore coexist
   in one Haxe class path and can be built into a single binary.
 - **Builds:** JS compiles one `--js` file per case, cheap and isolating.

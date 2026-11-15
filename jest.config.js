@@ -25,10 +25,8 @@ module.exports = {
   testPathIgnorePatterns: [
     '/.vscode/',
     '/dist/',
-    '/examples/',
     '/.haxelib/',
     '/.conformance/',
-    '/lib/',
     '/node_modules/',
   ],
   transform: {

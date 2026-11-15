@@ -1,6 +1,7 @@
 # 0001 — Rewrite ts2hx as a checker-driven compiler with a typed Haxe IR
 
-Status: accepted (2026-11-14)
+Status: accepted (2026-11-14). Completed (2026-11-15): the string-emitter
+engine, its `lib/` shims, its tests and the `--engine` flag are deleted.
 
 ## Context
 
@@ -38,8 +39,8 @@ first-match string emitter that falls back to source text.
 
 ## Decision
 
-Write a **new compiler next to the legacy engine** (strangler pattern), then
-delete the legacy engine once the new one supersedes it:
+Write a **new compiler next to the existing engine** (strangler pattern), then
+delete the old engine once the new one supersedes it:
 
 ```
 tsconfig ─▶ ts.Program + TypeChecker
@@ -74,11 +75,10 @@ tsconfig ─▶ ts.Program + TypeChecker
   position.
 - **The printer owns formatting.** Its output is stable and readable without
   `haxe-formatter`, so the formatter is optional.
-- **The legacy engine stays reachable, frozen.** It is selectable with
-  `--engine legacy` until the cleanup ticket removes `src/transformers/`,
-  `lib/` (once its shims are ported), the legacy snapshot tests and the
-  engine flag. Reused as is: the CLI shell, `Converter` program creation, the
-  in-memory compiler host (`src/utils`), `Logger` and the formatter call.
+- **The old engine was kept, frozen, until the new one superseded it**
+  (strangler pattern), then deleted with its `lib/` shims (ported to
+  `ts2hx.npm.*`), its snapshot tests and the `--engine` flag. Kept from it:
+  the CLI shell and `Logger`.
 
 ## Alternatives considered
 
@@ -89,20 +89,19 @@ tsconfig ─▶ ts.Program + TypeChecker
 - **Incremental refactor**, for example replacing emitters one by one. The
   two core flaws, losing the checker after re-parse and the string-based
   fallback, are in the spine. Replacing the spine is a rewrite anyway, but
-  with legacy constraints attached.
+  with the old constraints attached.
 - **Reuse TypeScript's own downlevel transforms** (ES5 `__generator`) for
   generators and async. They are internal (non-public API) and erase types.
   We write our own state-machine pass on the IR instead.
 
 ## Consequences
 
-- Features are re-implemented on the new engine, prioritised by the
+- Features are re-implemented on the new compiler, prioritised by the
   conformance corpus ([0004](0004-conformance-harness.md)). Progress is
   measured as executed programs that match Node's output.
-- Legacy snapshot tests stay green and unmodified until the cleanup ticket.
-  New-engine unit tests live under `tests/compiler/`.
-- The legacy known-issues list (`docs/CONVERSION_BACKLOG.md`) is retired.
-  Its items are folded into the new engine's tickets: spread into fixed-arity
+- Unit tests live under `tests/compiler/`.
+- The old engine's known-issues list (`docs/CONVERSION_BACKLOG.md`) is retired.
+  Its items are folded into the new compiler's tickets: spread into fixed-arity
   calls → arrays, index signatures → `ts2hx.Dict`, void unions → the type
   mapper, readonly redeclaration and field-initialiser order → classes,
   module-level statements → module init, Int/Float → ADR 0002, npm shims →

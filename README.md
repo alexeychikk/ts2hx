@@ -4,10 +4,16 @@
 
 ### Converts [TypeScript](https://www.typescriptlang.org/) into [Haxe](https://haxe.org/).
 
-This tool does not seamlessly convert TS to Haxe, but rather helps to transition your codebase.
-It covers syntax differences, basic types and some extra stuff that might come in handy.
-Constructs that cannot be converted safely are kept as-is and marked with `TODO(ts2hx)`
-comments (see `--includeTodos`), so you can finish the transition by hand.
+ts2hx compiles a TypeScript project into a Haxe project that builds and behaves
+like the original on the JS, C# and C++ targets. It reads the program through the
+TypeScript type checker, so types, narrowing and library calls are resolved from
+the checker rather than from syntax. The output ships with the `ts2hx` runtime,
+a cross-target Haxe library with JavaScript semantics (numbers, strings, arrays,
+collections, `Promise`, `RegExp`, `JSON`, `console`, …).
+
+A construct that cannot be mapped never produces broken Haxe: it becomes a
+`TODO(ts2hx)` comment plus a `ts2hx.Ts2hx.unsupported("…")` placeholder that
+throws at run time, and the CLI prints a warning with its position.
 
 ## Requirements
 
@@ -18,108 +24,74 @@ comments (see `--includeTodos`), so you can finish the transition by hand.
 1. `git clone https://github.com/alexeychikk/ts2hx.git`
 2. `cd ./ts2hx`
 3. `mise install && npm ci && npm run setup:haxe`
-4. `npm start -- ./path/to/your/tsconfig.json ./output/folder/path`
+4. `npm start -- ./path/to/your/tsconfig.json ./out --entry ./path/to/your/main.ts`
+5. Build and run the result on a target, from the output directory:
+
+```bash
+cd ./out
+haxe build-js.hxml && node out/main.js
+haxe build-cpp.hxml && ./out/cpp/Main
+haxe build-cs.hxml && dotnet build out/cs -c Release -o out/cs/bin && dotnet out/cs/bin/App.dll
+```
+
+Target details and known
+differences are in [ADR 0002](docs/decisions/0002-targets-and-runtime.md).
 
 ```console
 $ npm start -- -h
 Usage: cli [options] <ts-config-path> <output-dir-path>
 
 Arguments:
-  ts-config-path                        path to tsconfig.json of your project
-  output-dir-path                       path to directory where to output final Haxe code
+  ts-config-path           path to tsconfig.json of your project
+  output-dir-path          path to directory where to output final Haxe code
 
 Options:
-  -c, --clean [bool]                    empty output directory before converting (choices: "true",
-                                        "false", "1", "0")
-  --cfj, --copyFormatJson [bool]        copy hxformat.json file into output directory (contains
-                                        Prettier-like settings for Haxe formatter
-                                        https://github.com/HaxeCheckstyle/haxe-formatter) (choices:
-                                        "true", "false", "1", "0", default: true)
-  --clf, --copyLibFiles [bool]          copy ts2hx lib files into output directory (contains helper
-                                        functions and static extensions which improve compatibility
-                                        with TS) (choices: "true", "false", "1", "0", default:
-                                        true)
-  --cih, --copyImportHx [bool]          copy import.hx file into root folders of output (choices:
-                                        "true", "false", "1", "0", default: true)
-  --cbh, --createBuildHxml [bool]       create build.hxml file (choices: "true", "false", "1", "0")
-  -f, --format [bool]                   format final Haxe code using haxe-formatter (choices:
-                                        "true", "false", "1", "0", default: true)
-  --ife, --ignoreFormatError [bool]     prevents exit code 1 when Haxe formatter fails (choices:
-                                        "true", "false", "1", "0")
-  --ie, --ignoreErrors [bool]           prevents exit code 1 when internal ts2hx error happens
-                                        (choices: "true", "false", "1", "0")
-  --ic, --includeComments [bool]        include comments generated during transformation (choices:
-                                        "true", "false", "1", "0")
-  --it, --includeTodos [bool]           include todos generated during transformation (choices:
-                                        "true", "false", "1", "0")
-  -l, --logLevel <level>                log level (choices: "Log", "Warn", "Error", "None",
-                                        default: "Log")
-  --transformAsyncAwait [bool]          converts async-await syntax to Promise-s (choices: "true",
-                                        "false", "1", "0", default: true)
-  --transformTemplateExpression [bool]  converts (`foo ${expression} bar`) to ("foo " + expression
-                                        + " bar") (choices: "true", "false", "1", "0", default:
-                                        true)
-  -h, --help                            display help for command
+  --entry <path>           entry module of the program: generates Main.hx and
+                           build-{js,cs,cpp}.hxml
+  --rootPackage <package>  Haxe package prefix of every generated module
+  -c, --clean [bool]       empty output directory before converting (choices:
+                           "true", "false", "1", "0")
+  -l, --logLevel <level>   log level (choices: "Log", "Warn", "Error", "None",
+                           default: "Log")
+  -h, --help               display help for command
 ```
 
 ## Features
 
-- [x] keywords and syntax tokens
-- [x] basic data types
-- [x] variable declarations
-- [x] loops
-- [x] switch-case
-- [x] dynamic property access/read
-- [x] implicit to explicit boolean condition
-- [x] functions
-- [x] classes
-- [x] interfaces and type definitions
-- [x] enums
-- [x] imports
-- [x] exceptions
-- [x] async-await (see below)
-- [ ] decorators (emitted as Haxe metadata, no runtime behavior)
-- [ ] ...probably many more
+Every area below is covered by the [conformance corpus](conformance/cases): TS
+programs whose output on JS, C# and C++ must match Node's byte for byte. The
+full mapping, including degraded and out-of-scope constructs, is
+[ADR 0005](docs/decisions/0005-language-mapping.md).
 
-## Async/await
+- [x] basics: variables, operators, loops, template literals, JS truthiness
+- [x] numbers: JS number formatting, `parseInt`/`parseFloat`, `toFixed`/`toPrecision`, `Math`
+- [x] strings: all ES2022 methods with UTF-16 semantics
+- [x] expressions: optional chaining, `??`, logical assignment, loose equality, `typeof`, `in`, `delete`
+- [x] control flow: `switch` fall-through, labels, per-iteration `let`, comma and assignment expressions
+- [x] exceptions: `try`/`catch`/`finally` with exact completion semantics, custom errors, throwing non-errors
+- [x] functions: closures, default and rest parameters, local functions
+- [x] destructuring: declarations, parameters, assignments, `for…of`, `catch`
+- [x] classes: inheritance, accessors, statics, abstract classes, `#private`, parameter properties, class expressions and class values
+- [x] generics: generic classes, functions and constraints
+- [x] types: unions with flow narrowing, tuples, index signatures, `keyof`, utility types, optional fields
+- [x] enums: numeric, string and reverse mapping
+- [x] namespaces
+- [x] modules: imports, re-exports, cycles and Node's evaluation order of side effects
+- [x] arrays: `Array` methods with JS callbacks, holes and `length`, stable `sort`
+- [x] objects: literals, spread, `this` in methods, JS key order, `for…in`
+- [x] collections: `Map`, `Set`, `WeakMap`, `WeakSet`
+- [x] iterators and generators: custom iterables, spread, `yield*`, `finally`
+- [x] async: `async`/`await`, `for await`, async generators, Node's microtask order
+- [x] promises and timers: `Promise` combinators, `setTimeout`/`setInterval`, `queueMicrotask`
+- [x] regular expressions: `exec`/`test`, named groups, `matchAll`, `replace`, `split` on every target
+- [x] JSON: `JSON.stringify` and `JSON.parse` with replacers, revivers and indentation
+- [x] console: `console.log` formatting like Node's `util.inspect`
+- [x] Node: `process.argv`, `process.exit`, `process.stdout.write`
+- [x] npm packages: JS externs generated from `.d.ts`; lodash, joi, nanoid and seedrandom shims on every target
+- [ ] decorators: kept as `@:ts.decorator` metadata, not executed
+- [ ] out of scope: `eval`, `with`, `Proxy`, `bigint`, dynamic `import()`, `Intl` (see ADR 0005)
 
-By default (`--transformAsyncAwait`), `async` functions are converted into
-functions returning Promise chains — `await`s become `.then()` continuations:
+## Development
 
-```ts
-async function load(id: string) {
-  const user = await fetchUser(id);
-  return user.name;
-}
-```
-
-```haxe
-function load(id: String) {
-  return fetchUser(id).then(function(user) {
-    return Promise.resolve(user.name);
-  });
-}
-```
-
-Loops and try/catch containing `await` are expressed through the
-`ts2hx.AsyncUtils` runtime helpers (`asyncLoop`, `forEachAsync`, `whileAsync`,
-`doWhileAsync`, `tryAsync`), which are copied into the output together with the
-other lib files. `break` and `continue` inside such loops are supported, and a
-top-level `throw` inside an async function becomes `Promise.reject()` to match
-the rejection semantics of TypeScript. On the JS target `Promise` resolves to
-`js.lib.Promise` (imported via the copied `import.hx`); on other targets bring
-your own Promise implementation.
-
-Patterns that cannot be converted safely are kept as-is (their `async`/`await`
-keywords are emitted as `@:async`/`@:await` metadata) and marked with a
-`TODO(ts2hx)` comment:
-
-- `await` in a loop condition (e.g. `while (await hasNext())`)
-- conditionally evaluated `await` (in `&&`, `||`, `??`, `?:`)
-- `return` from inside a loop with `await` (the loop is not stopped)
-- `for` loops other than `for (let i = <start>; i < <end>; i++)`
-- async generators
-
-With `--transformAsyncAwait false` async functions are left untouched and
-`async`/`await` are emitted as `@:async`/`@:await` metadata, which plays well
-with macro-based async libraries (e.g. hxasync).
+See [CLAUDE.md](CLAUDE.md) for the layout, commands and rules, and
+[`docs/decisions/`](docs/decisions) for the architecture.

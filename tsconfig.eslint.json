@@ -5,5 +5,5 @@
     "types": ["jest", "node"]
   },
   "include": ["**/*.ts"],
-  "exclude": [".vscode", "dist", ".haxelib", "lib", "node_modules"]
+  "exclude": [".vscode", "dist", ".haxelib", "node_modules"]
 }

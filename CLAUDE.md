@@ -7,7 +7,7 @@ architecture, runtime semantics or tooling:
 
 | ADR | Topic |
 | --- | --- |
-| [0001](docs/decisions/0001-rewrite-as-typed-ir-compiler.md) | New engine: typed IR compiler in `src/compiler/`. The legacy engine is frozen |
+| [0001](docs/decisions/0001-rewrite-as-typed-ir-compiler.md) | Typed IR compiler in `src/compiler/` |
 | [0002](docs/decisions/0002-targets-and-runtime.md) | JS/C#/C++ targets, measured target differences, `ts2hx` runtime semantics, per-target build and run |
 | [0003](docs/decisions/0003-toolchain.md) | Pinned toolchain versions and environment gotchas |
 | [0004](docs/decisions/0004-conformance-harness.md) | Unit tests plus the conformance corpus run on all targets |
@@ -15,7 +15,7 @@ architecture, runtime semantics or tooling:
 
 ## Layout
 
-- `src/compiler/`: the **new engine**. Its pipeline is ProjectModel → Frontend → typed IR → Passes → Printer:
+- `src/compiler/`: the compiler. Its pipeline is ProjectModel → Frontend → typed IR → Passes → Printer:
   - `ir/` holds the IR types.
   - `model/` holds the module graph, init order and symbol → Haxe name table.
   - `frontend/` maps TS AST + checker to IR.
@@ -26,8 +26,8 @@ architecture, runtime semantics or tooling:
   - The public API is `compileProject` in `src/compiler/index.ts`.
 - `runtime/ts2hx/`: the Haxe runtime with JS semantics, copied into the output. It is cross-target: no `js.lib`, and target-specific code goes behind `#if js`/`#if cs`/`#if cpp`. `runtime/ts2hx/npm/` holds the cross-target ports of npm packages, and `src/compiler/stdlib/npm.ts` maps imports to them.
 - `conformance/`: the end-to-end corpus and its runner (ADR 0004). See `conformance/CLAUDE.md` for adding cases.
-- `src/transformers/`, `lib/`, `tests/<area>/`: the **legacy engine** (string emitters). It is frozen: only critical fixes, no new features. It is deleted when the new engine becomes the default.
-- `src/cli.ts`, `src/Converter.ts`: the CLI and the legacy orchestration.
+- `src/cli.ts`: the CLI, a thin wrapper around `convertProject` in `src/compiler/project.ts`.
+- `tests/compiler/`: Jest unit tests of the compiler; `tests/conformance/`: the conformance runner's self-test.
 
 ## Commands
 
@@ -40,8 +40,7 @@ npm run lint                 # eslint
 npm run prettify             # prettier
 npm test                     # jest unit tests
 npm run conformance -- --targets js,cs,cpp --filter 'classes/*' --keep
-npm start -- ./path/to/tsconfig.json ./out
-npm start -- ./path/to/tsconfig.json ./out --engine next --entry src/main.ts [--rootPackage app]
+npm start -- ./path/to/tsconfig.json ./out --entry src/main.ts [--rootPackage app]
 ```
 
 Building a converted project by hand (each target's details are in ADR 0002):
@@ -60,7 +59,7 @@ Environment gotchas:
 
 ## Rules
 
-- **Never emit broken Haxe.** A construct the engine can't map becomes an
+- **Never emit broken Haxe.** A construct the compiler can't map becomes an
   `Unsupported` IR node: a `TODO(ts2hx)` comment plus
   `ts2hx.Ts2hx.unsupported("…")`. Its row in ADR 0005 says whether that is
   allowed.
