@@ -5,7 +5,7 @@ import {
   type ModuleValue,
 } from '@src/compiler/model/project-model';
 
-import { createProject } from './helpers';
+import { compileSources, createProject } from './helpers';
 
 function pathsOf(
   files: Record<string, string>,
@@ -234,6 +234,7 @@ describe('ProjectModel', () => {
       'N_Inner',
       'N_E',
       'Point',
+      'Point',
     ]);
     expect(
       [...main.statics.values()].map(({ owner, name }) => `${owner}.${name}`),
@@ -247,6 +248,87 @@ describe('ProjectModel', () => {
       'N_E.A',
       'Point.origin',
     ]);
+  });
+
+  it('makes type names unique per package across modules, stably', () => {
+    const files = {
+      'main.ts': [
+        "import * as a from './lib/a';",
+        "import * as b from './lib/b';",
+        'a; b;',
+      ].join('\n'),
+      'lib/b.ts': [
+        'export interface Shape { b: number }',
+        'export type Pair = { b: string };',
+        'export enum Color { B }',
+        'export class Box {}',
+        'export const Make = class {};',
+        'export namespace Ns { export const v = Color.B; }',
+        'export const Shape_2 = 1;',
+        'export type Generic<T> = { t: T };',
+      ].join('\n'),
+      'lib/a.ts': [
+        'export interface Shape { a: number }',
+        'export type Pair = { a: string };',
+        'export enum Color { A }',
+        'export class Box {}',
+        'export const Make = class {};',
+        'export namespace Ns { export const v = Color.A; }',
+        'export type Generic<T> = { t: T };',
+        'export type Util = number;',
+      ].join('\n'),
+      'lib/util.ts': 'export {};',
+    };
+    const typesOf = () => {
+      const model = buildProjectModel(createProject(files).program);
+      const byModule = (module: string) =>
+        model.modules.find((m) => m.path.module === module)!;
+      const describeModule = (module: string) => {
+        const info = byModule(module);
+        return {
+          types: [...info.types.values()],
+          hoisted: [...info.hoistedClasses.values()],
+          statics: [...info.statics.values()].map(
+            ({ owner, name }) => `${owner}.${name}`,
+          ),
+        };
+      };
+      return { a: describeModule('A'), b: describeModule('B') };
+    };
+    const names = typesOf();
+    expect(names).toEqual({
+      a: {
+        types: ['Shape', 'Pair', 'Color', 'Box', 'Ns', 'Util_2'],
+        hoisted: ['Make'],
+        statics: ['Color.A', 'Ns.v'],
+      },
+      b: {
+        types: ['Shape_3', 'Pair_2', 'Color_2', 'Box_2', 'Ns_2'],
+        hoisted: ['Make_2'],
+        statics: ['Color_2.B', 'Ns_2.v'],
+      },
+    });
+    expect(typesOf()).toEqual(names);
+  });
+
+  it('references renamed types from other modules by their unique name', async () => {
+    const { code } = await compileSources({
+      'main.ts': [
+        "import { Color as A, type Shape as S } from './a';",
+        "import { Color, type Shape } from './b';",
+        'const s: S = { a: 1 };',
+        'const t: Shape = { b: 2 };',
+        'console.log(s.a, t.b, A.Red, Color.Red);',
+      ].join('\n'),
+      'a.ts': 'export interface Shape { a: number }\nexport enum Color { Red }',
+      'b.ts':
+        'export interface Shape { b: number }\nexport enum Color { Red = 5 }',
+    });
+    expect(code['B.hx']).toContain('typedef Shape_2 =');
+    expect(code['B.hx']).toContain('enum abstract Color_2(');
+    expect(code['Main_2.hx']).toContain('B.Shape_2');
+    expect(code['Main_2.hx']).toContain('B.Color_2.Red');
+    expect(code['A.hx']).toContain('typedef Shape =');
   });
 
   it('resolves imports, re-exports and namespaces to the declaring module', () => {

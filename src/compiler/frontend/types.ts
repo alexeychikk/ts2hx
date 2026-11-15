@@ -129,7 +129,9 @@ export class TypeMapper {
     private readonly hoistedClassPath: (
       node: ts.ClassLikeDeclaration,
     ) => HxTypePath | undefined = () => undefined,
-    private readonly reservedTypeNames: ReadonlySet<string> = new Set(),
+    private readonly declaredTypeName: (
+      declaration: ts.Declaration,
+    ) => string | undefined = () => undefined,
   ) {}
 
   /** Haxe type of a value of TS type `type`. */
@@ -217,7 +219,8 @@ export class TypeMapper {
     return {
       pack: module.pack,
       module: module.module,
-      name: typedefName(symbol.name, module.module, this.reservedTypeNames),
+      name:
+        this.declaredTypeName(first) ?? typedefName(symbol.name, module.module),
     };
   }
 
@@ -398,11 +401,9 @@ export class TypeMapper {
     const path = {
       pack: module.pack,
       module: module.module,
-      name: className(
-        declaration.name.text,
-        module.module,
-        this.reservedTypeNames,
-      ),
+      name:
+        this.declaredTypeName(declaration) ??
+        className(declaration.name.text, module.module),
     };
     this.classDeclarations.set(pathKey(path), declaration);
     return path;

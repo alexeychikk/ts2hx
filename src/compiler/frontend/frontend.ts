@@ -585,7 +585,8 @@ export class ModuleFrontend {
           ? { pack: module.path.pack, module: module.path.module, name }
           : undefined;
       },
-      model.reservedLocalNames,
+      (declaration) =>
+        model.moduleOf(declaration.getSourceFile())?.types.get(declaration),
     );
   }
 
