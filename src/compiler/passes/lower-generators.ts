@@ -347,6 +347,7 @@ class StateMachine {
       case 'await':
         return this.yieldPoint(expr);
       case 'cast':
+      case 'checkType':
       case 'isOfType': {
         const inner = this.linearize(expr.expr);
         return inner && { ...expr, expr: inner };

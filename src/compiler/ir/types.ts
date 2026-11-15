@@ -123,6 +123,8 @@ export type HxExpr =
     })
   | (ExprBase & { kind: 'fn'; fn: HxFunction })
   | (ExprBase & { kind: 'cast'; expr: HxExpr; checked: boolean })
+  /** `(expr : type)`: a compile-time check that also widens an `Int` to `Float` on every target. */
+  | (ExprBase & { kind: 'checkType'; expr: HxExpr })
   | (ExprBase & { kind: 'isOfType'; expr: HxExpr; path: HxTypePath })
   | (ExprBase & { kind: 'blockExpr'; stmts: HxStmt[]; result: HxExpr })
   | (ExprBase & { kind: 'unsupported'; message: string; source: string })
@@ -191,6 +193,8 @@ export type UnloweredStmt =
       body: HxStmt[];
       /** Loop-scoped `let`s captured by closures in the body — need a per-iteration copy. */
       perIterationBindings: string[];
+      /** The init declares `let`s, which no code outside the loop can see. */
+      blockScoped?: boolean;
     }
   | {
       /**

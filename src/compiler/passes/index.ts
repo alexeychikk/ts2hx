@@ -1,4 +1,5 @@
 import type { HxModule, HxPass, PassContext } from '../ir/types';
+import { inferInt } from './infer-int';
 import { lowerCFor } from './lower-c-for';
 import { lowerControlFlow } from './lower-control-flow';
 import { lowerFinally } from './lower-finally';
@@ -8,6 +9,7 @@ import { lowerGenerators } from './lower-generators';
 export const PASSES: readonly HxPass[] = [
   lowerFinally,
   lowerControlFlow,
+  inferInt,
   lowerCFor,
   lowerGenerators,
 ];

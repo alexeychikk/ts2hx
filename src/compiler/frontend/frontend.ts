@@ -2076,6 +2076,10 @@ export class ModuleFrontend {
         update,
         body: this.body(node.statement),
         perIterationBindings,
+        blockScoped:
+          initializer !== undefined &&
+          ts.isVariableDeclarationList(initializer) &&
+          !isVarDeclarationList(initializer),
       },
     ];
   }

@@ -30,7 +30,7 @@ all and must build on every target. "Runtime" means the `ts2hx` package
 
 | TS | Haxe | Notes |
 | --- | --- | --- |
-| `number` / `string` / `boolean` | `Float` / `String` / `Bool` | `Int` only at index sites (0002). |
+| `number` / `string` / `boolean` | `Float` / `String` / `Bool` | `Int` at index sites, and for loop counters and `const` indices proven integral within 32 bits (0002). |
 | `any` / `unknown` / `object` / `never` | `Dynamic` / `Any` / `Dynamic` / `Dynamic` (`Void` as a return type) | |
 | `T \| null \| undefined`, optional `?` | `Null<T>`, `@:optional var` | null and undefined are merged (0002). |
 | interface / object type alias | `typedef` anonymous structure | Methods become `function f():R;` and readonly fields `final`. When a class is used as a structure that has optional members it lacks (through `implements` or any assignment the ProjectModel finds), those members are added to the class as `Null<T> = null` fields. That is required on C# (0002), so it is never done with a bare `cast`. A member is added to the topmost class that lacks it, not repeated in subclasses. A member a subclass declares as a method or accessor is not added, because Haxe forbids that next to an inherited var: it is reported `Unsupported`, and reading it on the base class fails on C#. A structure member that some class used as that structure implements with an accessor is read through `Reflect.getProperty`, since Haxe only runs a getter on a statically known class. Writing such a member is `Unsupported`. |

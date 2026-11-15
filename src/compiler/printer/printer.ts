@@ -290,6 +290,8 @@ class Printer {
         return expr.checked
           ? `cast(${this.expr(expr.expr)}, ${printType(expr.type)})`
           : `(cast ${this.sub(expr.expr, PRECEDENCE_UNARY)} : ${printType(expr.type)})`;
+      case 'checkType':
+        return `(${this.expr(expr.expr)} : ${printType(expr.type)})`;
       case 'isOfType':
         return `Std.isOfType(${this.expr(expr.expr)}, ${printTypePath(expr.path)})`;
       case 'blockExpr': {
