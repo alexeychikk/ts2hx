@@ -76,12 +76,23 @@ reason it is not a gate.)
   They keep insertion order and use SameValueZero keys: primitives by value,
   objects by identity, `NaN` equal to itself. On JS they wrap `js.lib.Map`
   and `js.lib.Set`.
-- **Async.** `ts2hx.Promise<T>` and `ts2hx.EventLoop` use native Promise and
-  timers on JS. On C# and C++ they are pure Haxe, with a microtask queue and a
-  timer queue ordered by time and then by insertion. `Main` runs module
-  initialisation, then `EventLoop.run()` until both queues are empty. This
-  keeps the observable `then`/`await`/`setTimeout` ordering identical to
-  Node's. It is single-threaded and does no real I/O.
+- **Async.** `ts2hx.Promise<T>` and `ts2hx.EventLoop` are the same pure Haxe
+  on every target: native promises would interleave with the pure Haxe
+  timers in a different order. `Promise<T>` is an abstract over the untyped
+  `PromiseCore`, so casts between instantiations keep identity (C# would copy
+  a generic class). `PromiseCore` follows the ECMAScript algorithms step by
+  step (including the extra ticks of adopting a promise or thenable), which
+  is what makes the `then`/`await` ordering identical to Node's. The loop
+  has a microtask queue and a timer queue ordered by due time and then by
+  creation; it drains the microtasks after every timer, like Node. Time is
+  virtual: a timer runs at `now + delay` (delays outside 1 ms…2^31−1 become
+  1 ms), however long the callbacks took, and the loop waits for real until
+  then (`Sys.sleep`; a native `setTimeout` on JS). `Main` runs module
+  initialisation, then `EventLoop.run()` until both queues are empty. A
+  rejection without handlers once the microtasks drain is reported like an
+  uncaught error. It is single-threaded and does no real I/O. Node itself
+  orders timers created in callbacks against a cached loop time, so cases
+  keep such timers well apart from others.
 - **Exceptions.** `Error` and its subclasses (`TypeError`, `RangeError`, …)
   become `ts2hx.Error` and its subclasses. That is a **plain class, not a
   `haxe.Exception`**: the members of `haxe.Exception` (`message`, `stack`,

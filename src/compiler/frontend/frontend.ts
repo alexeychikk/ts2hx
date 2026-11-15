@@ -64,6 +64,7 @@ import {
   stdlibKey,
   VALUE_BINDINGS,
 } from '../stdlib/bindings';
+import { newPromise } from '../stdlib/promise-bindings';
 import { arrayConstructor, setArrayLength } from '../stdlib/array-bindings';
 import {
   ERROR_FIELD_NAMES,
@@ -3103,6 +3104,18 @@ export class ModuleFrontend {
     if (this.libKey(node.expression) === 'RegExp') {
       return this.newRegExp(node, args, pos);
     }
+    if (this.libKey(node.expression) === 'Promise') {
+      return (
+        (args.some(ts.isSpreadElement)
+          ? undefined
+          : newPromise(
+              args.map((a) => this.expression(a)),
+              this.hxTypeOf(node),
+              (hint) => this.freshName(hint),
+              pos,
+            )) ?? this.unsupported(node)
+      );
+    }
     if (args.some(ts.isSpreadElement)) {
       return this.unsupported(node);
     }
@@ -5998,7 +6011,7 @@ export class ModuleFrontend {
       ? (this.types.signatureType(signature) as Extract<HxType, { kind: 'fn' }>)
           .args
       : [];
-    return args.map((arg, i) => {
+    const converted = args.map((arg, i) => {
       const parameter = parameterTypes[Math.min(i, parameterTypes.length - 1)];
       return parameter && !(spreadLast && i === args.length - 1)
         ? this.coerce(
@@ -6007,6 +6020,31 @@ export class ModuleFrontend {
           )
         : arg;
     });
+    return spreadLast || !signature
+      ? converted
+      : [...converted, ...this.omittedVoidArguments(signature, args.length)];
+  }
+
+  /** `undefined` for trailing `void` parameters a call omits (`resolve()` of a `Promise<void>`). */
+  private omittedVoidArguments(
+    signature: ts.Signature,
+    given: number,
+  ): HxExpr[] {
+    const omitted = signature.parameters.slice(given);
+    const required = omitted.findIndex((parameter) => {
+      const declaration = parameter.valueDeclaration;
+      return (
+        !!declaration &&
+        ts.isParameter(declaration) &&
+        !declaration.questionToken &&
+        !declaration.dotDotDotToken &&
+        !declaration.initializer
+      );
+    });
+    if (required < 0) {
+      return [];
+    }
+    return omitted.slice(0, required + 1).map(() => constExpr(null));
   }
 
   /** A callback passed where a function type with more parameters is expected, padded to its arity. */

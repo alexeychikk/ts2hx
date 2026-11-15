@@ -1,6 +1,6 @@
 import ts from 'typescript';
 
-import { DYNAMIC, STRING, typePath } from '../ir/builders';
+import { arrayType, DYNAMIC, STRING, typePath } from '../ir/builders';
 import type { HxType, HxTypePath } from '../ir/types';
 import type { CallBinding, PropertyBinding } from './bindings';
 
@@ -13,6 +13,7 @@ const ERROR_CLASSES: readonly string[] = [
   'ReferenceError',
   'EvalError',
   'URIError',
+  'AggregateError',
 ];
 
 /** Runtime class of a lib error class name (`RangeError` → `ts2hx.Error.RangeError`). */
@@ -98,6 +99,14 @@ export const ERROR_PROPERTIES: ReadonlySet<string> = new Set(
 
 const NULLABLE_STRING: HxType = { kind: 'null', inner: STRING };
 
+const errorsField: PropertyBinding = (receiver, pos) => ({
+  kind: 'field',
+  target: receiver,
+  name: 'errors',
+  type: arrayType(DYNAMIC),
+  pos,
+});
+
 /** The JS error properties, plain fields of `ts2hx.Error`. */
 export const ERROR_PROPERTY_BINDINGS: ReadonlyArray<[string, PropertyBinding]> =
   (
@@ -107,7 +116,9 @@ export const ERROR_PROPERTY_BINDINGS: ReadonlyArray<[string, PropertyBinding]> =
       ['stack', NULLABLE_STRING],
       ['cause', DYNAMIC],
     ] as const
-  ).map(([name, type]) => [
-    `Error.${name}`,
-    (receiver, pos) => ({ kind: 'field', target: receiver, name, type, pos }),
-  ]);
+  )
+    .map(([name, type]): [string, PropertyBinding] => [
+      `Error.${name}`,
+      (receiver, pos) => ({ kind: 'field', target: receiver, name, type, pos }),
+    ])
+    .concat([['AggregateError.errors', errorsField]]);

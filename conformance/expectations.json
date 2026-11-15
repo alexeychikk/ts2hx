@@ -4,6 +4,11 @@
     "cs": "fail",
     "cpp": "fail"
   },
+  "async/ordering-vs-node": {
+    "js": "fail",
+    "cs": "fail",
+    "cpp": "fail"
+  },
   "basics/variables": {
     "js": "fail",
     "cs": "fail",
@@ -35,11 +40,6 @@
     "cpp": "fail"
   },
   "objects/literals": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
-  "promise/ordering": {
     "js": "fail",
     "cs": "fail",
     "cpp": "fail"

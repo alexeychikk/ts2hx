@@ -46,6 +46,13 @@ class Console {
 			return inspectObject(value, depth);
 		if (Std.isOfType(value, RegExp.MatchGroups))
 			return inspectDict(value, depth, "[Object: null prototype] ");
+		if (Std.isOfType(value, Promise.PromiseCore))
+			return (value : Promise.PromiseCore).inspect(result -> inspectValue(result, depth + 1));
+		if (Std.isOfType(value, Promise.SettledResult)) {
+			var settled:Promise.SettledResult = value;
+			return inspectFields(["status", settled.status == "fulfilled" ? "value" : "reason"],
+				[settled.status, settled.status == "fulfilled" ? settled.value : settled.reason], depth);
+		}
 		return Ts2hx.string(value);
 	}
 
@@ -139,11 +146,15 @@ class Console {
 
 	static function inspectObject(value:Dynamic, depth:Int):String {
 		var fields = Reflect.fields(value);
+		return inspectFields(fields, [for (field in fields) Reflect.field(value, field)], depth);
+	}
+
+	static function inspectFields(fields:Array<String>, fieldValues:Array<Dynamic>, depth:Int):String {
 		if (fields.length == 0)
 			return "{}";
 		if (depth > MAX_DEPTH)
 			return "[Object]";
-		var values = children(depth, [for (field in fields) Reflect.field(value, field)]);
+		var values = children(depth, fieldValues);
 		var output = [for (i in 0...fields.length) fields[i] + ": " + values[i]];
 		return reduceToSingleString(output, output.length, depth + 1, "{", "}");
 	}
