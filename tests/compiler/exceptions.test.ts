@@ -83,7 +83,7 @@ describe('lowerFinally', () => {
     );
   });
 
-  it('runs the catch body under a try of its own, so a throw from it still runs finally', () => {
+  it('nests the catch inside the recording try, so a throw from it still runs finally', () => {
     const out = lowered(
       [
         {
@@ -101,13 +101,15 @@ describe('lowerFinally', () => {
     );
     expect(out).toContain(
       lines(
-        '\t} catch (e:Dynamic) {',
+        '\ttry {',
         '\t\ttry {',
+        '\t\t\twork();',
+        '\t\t} catch (e:Dynamic) {',
         '\t\t\tthrow e;',
-        '\t\t} catch (__thrown6:Dynamic) {',
-        '\t\t\t__error3 = __thrown6;',
-        '\t\t\t__completion1 = 1;',
         '\t\t}',
+        '\t} catch (__thrown5:Dynamic) {',
+        '\t\t__error3 = __thrown5;',
+        '\t\t__completion1 = 1;',
         '\t}',
         '\tcleanup();',
       ),
