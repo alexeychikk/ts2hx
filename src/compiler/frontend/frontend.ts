@@ -2484,6 +2484,7 @@ export class ModuleFrontend {
       };
     }
     if (constructor) fields.unshift(constructor);
+    fields.push(this.classRegistration(node, path));
     return {
       decl: {
         kind: 'class',
@@ -2498,6 +2499,55 @@ export class ModuleFrontend {
         meta: this.decoratorMeta(node),
       },
       init,
+    };
+  }
+
+  /**
+   * `ts2hx.Obj.declareClass`: the class's JS name and own instance data fields in JS
+   * definition order (parameter properties, then field declarations), which
+   * enumeration and `console.log` follow on every target (ADR 0002).
+   */
+  private classRegistration(
+    node: ts.ClassLikeDeclaration,
+    path: HxTypePath,
+  ): HxClassField {
+    const ctor = node.members.find(
+      (m): m is ts.ConstructorDeclaration =>
+        ts.isConstructorDeclaration(m) && m.body !== undefined,
+    );
+    const members: ts.Node[] = [
+      ...(ctor?.parameters.filter(isParameterProperty) ?? []),
+      ...node.members.filter(
+        (m) =>
+          ts.isPropertyDeclaration(m) &&
+          !isStatic(m) &&
+          !ts.isPrivateIdentifier(m.name) &&
+          !hasModifier(m, ts.ModifierFlags.Ambient),
+      ),
+    ];
+    const keys = members.flatMap((member) => {
+      const name = memberName(member as ts.ClassElement, this.checker);
+      return name ? [constExpr(name)] : [];
+    });
+    const jsName = node.name?.text ?? path.name;
+    return {
+      kind: 'var',
+      name: '__ts2hx_class',
+      access: 'private',
+      isStatic: true,
+      meta: ['@:keep'],
+      final: true,
+      type: BOOL,
+      init: staticCall(
+        RUNTIME.obj,
+        'declareClass',
+        [
+          { kind: 'typeRef', path, type: DYNAMIC },
+          constExpr(jsName),
+          { kind: 'arrayLit', elements: keys, type: arrayType(STRING) },
+        ],
+        BOOL,
+      ),
     };
   }
 

@@ -1,6 +1,6 @@
 package ts2hx;
 
-/** `console.*` output (ADR 0002); v0 prints primitives like Node. */
+/** `console.*` output (ADR 0002): Node `util.inspect` for primitives, arrays, objects, class instances, Map and Set. */
 class Console {
 	public static function log(...args:Dynamic):Void {
 		writeLine([for (arg in args) inspect(arg)].join(" "));
@@ -46,6 +46,12 @@ class Console {
 			return inspectObject(value, depth);
 		if (Std.isOfType(value, RegExp.MatchGroups))
 			return inspectDict(value, depth, "[Object: null prototype] ");
+		if (Std.isOfType(value, Dict))
+			return inspectDict(value, depth, "");
+		if (Std.isOfType(value, JsMap))
+			return inspectMap(value, depth);
+		if (Std.isOfType(value, JsSet))
+			return inspectSet(value, depth);
 		if (Std.isOfType(value, Promise.PromiseCore))
 			return (value : Promise.PromiseCore).inspect(result -> inspectValue(result, depth + 1));
 		if (Std.isOfType(value, Promise.SettledResult)) {
@@ -53,7 +59,40 @@ class Console {
 			return inspectFields(["status", settled.status == "fulfilled" ? "value" : "reason"],
 				[settled.status, settled.status == "fulfilled" ? settled.value : settled.reason], depth);
 		}
+		var className = Obj.className(value);
+		if (className != null)
+			return inspectFields(Obj.keys(value), Obj.values(value), depth, className);
 		return Ts2hx.string(value);
+	}
+
+	/** Node `util.inspect` of a `Map`: `Map(n) { key => value, … }`. */
+	static function inspectMap(map:JsMap<Dynamic, Dynamic>, depth:Int):String {
+		var open = "Map(" + map.size + ") {";
+		if (map.size == 0)
+			return open + "}";
+		if (depth > MAX_DEPTH)
+			return "[Map]";
+		var keys = map.keys().toArray();
+		var keyOutput = children(depth, keys);
+		var valueOutput = children(depth, [for (key in keys) map.get(key)]);
+		var output = [for (i in 0...keys.length) keyOutput[i] + " => " + valueOutput[i]];
+		return reduceToSingleString(output, output.length, depth + 1, open, "}");
+	}
+
+	/** Node `util.inspect` of a `Set`: `Set(n) { value, … }`. */
+	static function inspectSet(set:JsSet<Dynamic>, depth:Int):String {
+		var open = "Set(" + set.size + ") {";
+		if (set.size == 0)
+			return open + "}";
+		if (depth > MAX_DEPTH)
+			return "[Set]";
+		var output = children(depth, set.values().toArray());
+		return reduceToSingleString(output, output.length, depth + 1, open, "}");
+	}
+
+	/** An object key as Node prints it: bare when it is an identifier, quoted otherwise. */
+	static function inspectKey(key:String):String {
+		return ~/^[a-zA-Z_][a-zA-Z_0-9]*$/.match(key) ? key : quote(key);
 	}
 
 	/**
@@ -140,23 +179,25 @@ class Console {
 		if (depth > MAX_DEPTH)
 			return prefix == "" ? "[Object]" : StringTools.trim(prefix);
 		var values = children(depth, [for (key in keys) dict.get(key)]);
-		var output = [for (i in 0...keys.length) keys[i] + ": " + values[i]];
+		var output = [for (i in 0...keys.length) inspectKey(keys[i]) + ": " + values[i]];
 		return reduceToSingleString(output, output.length, depth + 1, prefix + "{", "}");
 	}
 
 	static function inspectObject(value:Dynamic, depth:Int):String {
-		var fields = Reflect.fields(value);
+		var fields = Obj.keys(value);
 		return inspectFields(fields, [for (field in fields) Reflect.field(value, field)], depth);
 	}
 
-	static function inspectFields(fields:Array<String>, fieldValues:Array<Dynamic>, depth:Int):String {
+	/** Plain-object layout; `className` prefixes a class instance (`Point { x: 1 }`). */
+	static function inspectFields(fields:Array<String>, fieldValues:Array<Dynamic>, depth:Int, ?className:String):String {
+		var prefix = className == null ? "" : className + " ";
 		if (fields.length == 0)
-			return "{}";
+			return prefix + "{}";
 		if (depth > MAX_DEPTH)
-			return "[Object]";
+			return "[" + (className == null ? "Object" : className) + "]";
 		var values = children(depth, fieldValues);
-		var output = [for (i in 0...fields.length) fields[i] + ": " + values[i]];
-		return reduceToSingleString(output, output.length, depth + 1, "{", "}");
+		var output = [for (i in 0...fields.length) inspectKey(fields[i]) + ": " + values[i]];
+		return reduceToSingleString(output, output.length, depth + 1, prefix + "{", "}");
 	}
 
 	static function children(depth:Int, values:Array<Dynamic>):Array<String> {
