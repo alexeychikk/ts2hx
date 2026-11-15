@@ -17,5 +17,5 @@
     "**/*.spec.jsx",
     "**/*.d.ts"
   ],
-  "exclude": [".vscode", "dist", "examples", "lib", "node_modules"]
+  "exclude": [".vscode", "dist", "node_modules"]
 }

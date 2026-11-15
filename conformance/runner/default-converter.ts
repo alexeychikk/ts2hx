@@ -3,7 +3,7 @@ import ts from 'typescript';
 import { compileProject } from '../../src/compiler';
 import type { Converter } from './types';
 
-/** Converts a case with the new engine (`compileProject`). */
+/** Converts a case with `compileProject`. */
 export function compileProjectConverter(
   compilerOptions: ts.CompilerOptions,
 ): Converter {

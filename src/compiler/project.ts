@@ -45,7 +45,7 @@ export function createProgramFromTsconfig(tsconfigPath: string): ts.Program {
   });
 }
 
-/** Converts a tsconfig project with the new engine (`--engine next`). */
+/** Converts a tsconfig project into a Haxe project in `outDir`. */
 export async function convertProject(
   options: ConvertProjectOptions,
 ): Promise<CompileDiagnostic[]> {

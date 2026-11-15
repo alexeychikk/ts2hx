@@ -8,8 +8,6 @@ export default tseslint.config(
       'node_modules/',
       'dist/',
       'coverage/',
-      'examples/',
-      'lib/',
       '.haxelib/',
       '.conformance/',
       'conformance/cases/',

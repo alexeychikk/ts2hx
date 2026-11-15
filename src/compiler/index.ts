@@ -58,7 +58,7 @@ function modulePath(pack: string[], name: string): string {
   return [...pack, `${name}.hx`].join('/');
 }
 
-/** Public entry point of the new engine (ADR 0001). */
+/** Public entry point of the compiler (ADR 0001). */
 export function compileProject(
   options: CompileOptions,
 ): Promise<CompileResult> {
