@@ -97,7 +97,10 @@ export function collectionArray(expr: HxExpr): HxExpr | undefined {
     const [value = DYNAMIC] = setParams;
     return toArray(method(expr, 'values', [], jsIteratorType(value)), value);
   }
-  const iteratorParams = pathParams(expr.type, RUNTIME.jsIterator);
+  const iteratorParams =
+    pathParams(expr.type, RUNTIME.jsIterator) ??
+    pathParams(expr.type, RUNTIME.generator) ??
+    pathParams(expr.type, RUNTIME.jsIterable);
   if (iteratorParams) {
     return toArray(expr, iteratorParams[0] ?? DYNAMIC);
   }

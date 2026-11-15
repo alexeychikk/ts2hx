@@ -40,6 +40,10 @@ export const RUNTIME = {
   jsMap: typePath(['ts2hx'], 'JsMap'),
   jsSet: typePath(['ts2hx'], 'JsSet'),
   jsIterator: typePath(['ts2hx'], 'JsIterator', 'JsMap'),
+  generator: typePath(['ts2hx'], 'Generator'),
+  generatorCore: typePath(['ts2hx'], 'GeneratorCore', 'Generator'),
+  iter: typePath(['ts2hx'], 'Iter'),
+  jsIterable: typePath(['ts2hx'], 'JsIterable', 'Iter'),
 };
 
 export function arrayType(element: HxType): HxType {
