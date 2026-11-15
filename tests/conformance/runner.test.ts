@@ -1,3 +1,7 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import {
   attributeBuildErrors,
   evaluate,
@@ -8,7 +12,13 @@ import {
   type ConformanceCase,
 } from '../../conformance/runner';
 import { parseTargetsHeader } from '../../conformance/runner/cases';
-import { dispatcherSource } from '../../conformance/runner/targets';
+import {
+  batchRunner,
+  dispatcherSource,
+  MAX_REBUILDS,
+  type BatchTarget,
+  type TargetContext,
+} from '../../conformance/runner/targets';
 
 function fakeCase(id: string): ConformanceCase {
   return {
@@ -120,5 +130,58 @@ describe('batch build error attribution', () => {
       'case "basics/hello":\n        cases.basics.hello.Main.main();',
     );
     expect(source).toContain('Sys.exit(64);');
+  });
+});
+
+describe('batch rebuild budget', () => {
+  const cases = ['a/one', 'a/two', 'a/three', 'a/four', 'a/five'].map(fakeCase);
+
+  function haxeError(c: ConformanceCase): string {
+    const file = `${c.rootPackage.split('.').join('/')}/Main.hx`;
+    return `/w/hx/${c.id}/src/${file}:3: characters 5-9 : String should be Int`;
+  }
+
+  it('fails the cases the last errors name with those errors and the rest as unbuilt', async () => {
+    const builds: string[][] = [];
+    const alwaysBreaksOnFirstCase: BatchTarget = {
+      name: 'cpp',
+      build(_ctx, remaining) {
+        builds.push(remaining.map((c) => c.id));
+        return Promise.resolve({ ok: false, log: haxeError(remaining[0]) });
+      },
+      command: () => ({ file: 'unused', args: [] }),
+    };
+    const ctx: TargetContext = {
+      repoRoot: '/',
+      classPaths: new Map(),
+      targetDir: fs.mkdtempSync(path.join(os.tmpdir(), 'ts2hx-batch-')),
+      env: process.env,
+      buildTimeoutMs: 1000,
+      runTimeoutMs: 1000,
+      concurrency: 1,
+    };
+
+    const runs = await batchRunner(alwaysBreaksOnFirstCase)(cases, ctx);
+
+    expect(builds).toHaveLength(MAX_REBUILDS + 1);
+    const reasons = Object.fromEntries(
+      [...runs].map(([id, run]) => [
+        id,
+        run.kind === 'build-failed' ? run.reason : run.kind,
+      ]),
+    );
+    expect(reasons['a/one']).toBe(
+      `cpp compile error (batch attempt 1):\n${haxeError(cases[0])}`,
+    );
+    const lastCulprit = cases[MAX_REBUILDS];
+    expect(reasons[lastCulprit.id]).toBe(
+      `cpp compile error (batch attempt ${MAX_REBUILDS + 1}):\n${haxeError(lastCulprit)}`,
+    );
+    for (const c of cases.slice(MAX_REBUILDS + 1)) {
+      expect(reasons[c.id]).toMatch(/^batch cpp rebuild budget exhausted/);
+    }
+    expect(Object.values(reasons).join('\n')).not.toContain(
+      'without errors attributable',
+    );
   });
 });

@@ -1,5 +1,5 @@
-// Node starts the script's timers from a cached loop time that a slow start leaves
-// behind, so timers created in callbacks are kept 100 ms away from any other.
+// Node starts each timer from the loop time when it is created, which a slow start or a
+// busy host pushes later, so timers that could swap places are kept 50 ms or more apart.
 console.log('start');
 
 setTimeout(() => console.log('t 0 is 1'), 0);
@@ -16,9 +16,12 @@ setTimeout(() => {
   queueMicrotask(() => console.log('queued inside timer'));
   setTimeout(() => console.log('nested 0 after outer 100'), 0);
 }, 100);
-setTimeout(() => console.log('second 100 runs after micro'), 100);
+setTimeout(() => console.log('t 300 runs after nested 0'), 300);
 
-setTimeout(() => console.log('t 500 a'), 500);
+setTimeout(() => {
+  console.log('t 500 a');
+  Promise.resolve().then(() => console.log('micro between 500 a and b'));
+}, 500);
 setTimeout(() => console.log('t 500 b'), 500);
 setTimeout(() => console.log('t 1400'), 1400);
 
@@ -52,6 +55,6 @@ Promise.resolve().then(() => {
 const self = setTimeout(() => {
   console.log('clearing itself');
   clearTimeout(self);
-}, 5);
+}, 50);
 
 console.log('end');
