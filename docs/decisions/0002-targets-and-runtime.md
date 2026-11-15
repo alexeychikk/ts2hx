@@ -191,6 +191,12 @@ reason it is not a gate.)
 - **Array holes.** Writing past the end grows the array on all targets.
   Holes read as `undefined` on JS but `0` on C# and C++ for `Array<Float>`.
   Degraded: holes are documented, not emulated.
+- **Generic runtime calls on `Array<Dynamic>`.** On C#, passing an
+  `Array<Dynamic>` where the runtime binds `T` to another type (e.g. `Float`
+  inferred from the call's expected type) passes a converted copy, so a
+  mutation such as `pop` is lost. Element reads (`pop`, `shift`, `at`,
+  `find`, `findLast`) on such an array are wrapped in `(cast … : Dynamic)`,
+  which types the call without its context so `T` binds to `Dynamic`.
 - **Output.** `console.log`, `console.error` and `process.stdout.write` go
   to `ts2hx.Console`. It uses Node `util.inspect` formatting for primitives,
   arrays, plain objects, Map and Set (the subset the corpus uses), with
