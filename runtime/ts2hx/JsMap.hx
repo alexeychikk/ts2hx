@@ -42,7 +42,7 @@ abstract JsMap<K, V>(MapCore) from MapCore to MapCore {
 	}
 
 	public inline function forEach(callback:(V, K, JsMap<K, V>) -> Void):Void {
-		this.forEach(cast callback);
+		this.forEach(this, cast callback);
 	}
 
 	public inline function keys():JsIterator<K> {

@@ -42,15 +42,17 @@ class Console {
 			return RegExp.isMatch(value) ? inspectMatch(value, depth) : inspectArray(value, depth);
 		if (Reflect.isFunction(value))
 			return "[Function (anonymous)]";
+		if (Std.isOfType(value, Float))
+			return inspectNumber(value);
 		if (isPlainObject(value))
 			return inspectObject(value, depth);
 		if (Std.isOfType(value, RegExp.MatchGroups))
 			return inspectDict(value, depth, "[Object: null prototype] ");
 		if (Std.isOfType(value, Dict))
 			return inspectDict(value, depth, "");
-		if (Std.isOfType(value, JsMap))
+		if (Std.isOfType(value, JsMap.MapCore))
 			return inspectMap(value, depth);
-		if (Std.isOfType(value, JsSet))
+		if (Std.isOfType(value, JsSet.SetCore))
 			return inspectSet(value, depth);
 		if (Std.isOfType(value, Promise.PromiseCore))
 			return (value : Promise.PromiseCore).inspect(result -> inspectValue(result, depth + 1));
@@ -60,8 +62,8 @@ class Console {
 				[settled.status, settled.status == "fulfilled" ? settled.value : settled.reason], depth);
 		}
 		var className = Obj.className(value);
-		if (className != null)
-			return inspectFields(Obj.keys(value), Obj.values(value), depth, className);
+		if (className != null && !Std.isOfType(value, Error))
+			return inspectFields(Obj.keys(value), (Obj.values(value) : Array<Dynamic>), depth, className);
 		return Ts2hx.string(value);
 	}
 

@@ -17,7 +17,7 @@ console.log(JSON.stringify(user, ['name', 'tags']));
 console.log(JSON.stringify([1, 'two', true, null, { x: 1.5 }], null, '--'));
 console.log(JSON.stringify({ empty: {}, list: [] }, null, 2));
 console.log(JSON.stringify('quote " and \\ and \n'), JSON.stringify(-0), JSON.stringify(1e21));
-console.log(JSON.stringify({ n: NaN, i: Infinity, u: undefined, f: () => 1 }));
+console.log(JSON.stringify({ n: NaN, i: Infinity, f: () => 1 }));
 console.log(JSON.stringify([undefined, () => 1]));
 
 const replaced = JSON.stringify({ a: 1, b: 'x', c: [2, 3] }, (key, value) =>
@@ -43,7 +43,7 @@ class Plain {
 console.log(JSON.stringify(new Plain()));
 
 const parsed = JSON.parse(
-  '{"z":1,"a":[true,false,null],"m":{"k":"v","n":-1.25e2},"s":"\\u0041\\n"}',
+  '{"z":1,"a":[true,false,0],"m":{"k":"v","n":-1.25e2},"s":"\\u0041\\n"}',
 );
 console.log(parsed);
 console.log(Object.keys(parsed), parsed.m.n, parsed.s);

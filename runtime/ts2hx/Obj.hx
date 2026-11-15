@@ -57,7 +57,7 @@ class Obj {
 	}
 
 	/** JS `Object.values(o)`. */
-	public static function values(object:Dynamic):Array<Dynamic> {
+	public static function values<V>(object:Dynamic):Array<V> {
 		return [for (key in keys(object)) get(object, key)];
 	}
 
@@ -112,7 +112,7 @@ class Obj {
 	}
 
 	/** JS `Object.assign(target, ...sources)`: copies own keys in order and returns `target`. */
-	public static function assign<T>(target:T, sources:Array<Dynamic>):T {
+	public static function assign(target:Dynamic, sources:Array<Dynamic>):Dynamic {
 		for (source in sources) {
 			if (source == null)
 				continue;

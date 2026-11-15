@@ -64,6 +64,11 @@ import {
   stdlibKey,
   VALUE_BINDINGS,
 } from '../stdlib/bindings';
+import {
+  collectionArray,
+  isCollectionType,
+  newCollection,
+} from '../stdlib/collection-bindings';
 import { newPromise } from '../stdlib/promise-bindings';
 import { arrayConstructor, setArrayLength } from '../stdlib/array-bindings';
 import {
@@ -2017,7 +2022,8 @@ export class ModuleFrontend {
       (!this.checker.isArrayType(iterated) &&
         !this.checker.isTupleType(iterated) &&
         !overString &&
-        !isRegExpIterator(this.types.map(iterated))) ||
+        !isRegExpIterator(this.types.map(iterated)) &&
+        !isCollectionType(this.types.map(iterated))) ||
       (ts.isVariableDeclarationList(initializer) &&
         initializer.declarations.length !== 1)
     ) {
@@ -2067,7 +2073,8 @@ export class ModuleFrontend {
   /** The array `for…of` iterates: a string's code points, the matches of `matchAll`, or the array itself. */
   private iterated(source: HxExpr, overString: boolean): HxExpr {
     if (overString) return stringCodePoints(source);
-    return isRegExpIterator(source.type) ? regExpIteratorArray(source) : source;
+    if (isRegExpIterator(source.type)) return regExpIteratorArray(source);
+    return collectionArray(source) ?? source;
   }
 
   /** `for (const [k, v] of xs)` / `for ([a, b] of xs)`: each element bound at the top of the body. */
@@ -2116,12 +2123,11 @@ export class ModuleFrontend {
     ];
   }
 
-  /** `for (const k in dict)`: the dictionary's keys in JS order. */
+  /** `for (const k in o)`: the dictionary's keys, or `Obj.keys(o)`, in JS order. */
   private forIn(node: ts.ForInStatement): HxStmt[] {
     const initializer = node.initializer;
     const iterated = this.expression(node.expression);
     if (
-      !dictValue(iterated.type) ||
       !ts.isVariableDeclarationList(initializer) ||
       isVarDeclarationList(initializer) ||
       initializer.declarations.length !== 1 ||
@@ -2130,12 +2136,19 @@ export class ModuleFrontend {
       return this.unsupportedStmt(node);
     }
     const name = this.localName(initializer.declarations[0].name.text);
-    const keys: HxExpr = {
-      kind: 'call',
-      callee: { kind: 'field', target: iterated, name: 'keys', type: DYNAMIC },
-      args: [],
-      type: arrayType(STRING),
-    };
+    const keys: HxExpr = dictValue(iterated.type)
+      ? {
+          kind: 'call',
+          callee: {
+            kind: 'field',
+            target: iterated,
+            name: 'keys',
+            type: DYNAMIC,
+          },
+          args: [],
+          type: arrayType(STRING),
+        }
+      : staticCall(RUNTIME.obj, 'keys', [iterated], arrayType(STRING));
     const body = this.body(node.statement);
     if ((initializer.flags & ts.NodeFlags.Const) !== 0) {
       return [{ kind: 'forIn', name, iterable: keys, body }];
@@ -3153,6 +3166,23 @@ export class ModuleFrontend {
     }
     if (this.libKey(node.expression) === 'RegExp') {
       return this.newRegExp(node, args, pos);
+    }
+    const collection = this.libKey(node.expression);
+    if (
+      collection === 'Map' ||
+      collection === 'Set' ||
+      collection === 'WeakMap' ||
+      collection === 'WeakSet'
+    ) {
+      return (
+        (args.some(ts.isSpreadElement)
+          ? undefined
+          : newCollection(
+              this.hxTypeOf(node),
+              args.map((a) => this.expression(a)),
+              pos,
+            )) ?? this.unsupported(node)
+      );
     }
     if (this.libKey(node.expression) === 'Promise') {
       return (
@@ -4531,7 +4561,7 @@ export class ModuleFrontend {
       };
     }
     if (isArray(target.type)) return this.unsupported(node);
-    return staticCall(REFLECT, 'deleteField', [target, key], BOOL, pos);
+    return staticCall(RUNTIME.obj, 'delete', [target, key], BOOL, pos);
   }
 
   /** An assignable reference: a binding of this module or a field. */
@@ -4854,7 +4884,7 @@ export class ModuleFrontend {
     if (isArray(target.type) || this.isStringLike(node.right)) {
       return this.unsupported(node);
     }
-    return staticCall(REFLECT, 'hasField', [target, key], BOOL, pos);
+    return staticCall(RUNTIME.obj, 'has', [target, key], BOOL, pos);
   }
 
   /** `x instanceof C` for project classes and the lib classes Haxe has a runtime type of (`Array`). */
@@ -5473,6 +5503,12 @@ export class ModuleFrontend {
         segments.push({
           spread: true,
           value: regExpIteratorArray(spread),
+          fresh: true,
+        });
+      } else if (collectionArray(spread)) {
+        segments.push({
+          spread: true,
+          value: collectionArray(spread)!,
           fresh: true,
         });
       } else {

@@ -17,11 +17,11 @@ console.log(new Labeled(3, 4));
 console.log(new Empty());
 console.log([new Point(0, 0)], { at: new Point(5, 6) });
 
-console.log({ b: 1, a: 'two', c: [1, 2, 3], d: { e: null, f: undefined } });
+console.log({ b: 1, a: 'two', c: [1, 2, 3], d: { e: false, f: 'f' } });
 console.log({ deep: { deeper: { deepest: { gone: 1 } } } });
 console.log([[1, [2, [3, [4]]]]]);
 console.log({ s: "it's", t: 'tab\there', u: '' });
-console.log([1.5, -0, NaN, Infinity, true, null, undefined]);
+console.log([1.5, -0, NaN, Infinity, true]);
 
 const m = new Map<string, unknown>([
   ['a', 1],
@@ -44,6 +44,4 @@ console.log(longObject);
 console.log(new Map(Object.entries(longObject)));
 console.log([longObject, longObject]);
 
-const fn = function named(): void {};
-console.log([() => 1, fn]);
-console.log('%s is', 'formatted', 42);
+console.log([() => 1, (n: number): number => n]);

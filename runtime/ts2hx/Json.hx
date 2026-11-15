@@ -153,7 +153,7 @@ private class JsonWriter {
 	}
 
 	function writeObject(object:Dynamic, indent:String):String {
-		var keys = Std.isOfType(object, JsMap) || Std.isOfType(object, JsSet) ? [] : Obj.keys(object);
+		var keys = Obj.keys(object);
 		if (allowed != null)
 			keys = allowed.filter(key -> keys.indexOf(key) >= 0);
 		var inner = indent + gap;

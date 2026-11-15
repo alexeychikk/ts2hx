@@ -23,7 +23,12 @@ import {
   ITERATOR_CALL_BINDINGS,
   ITERATOR_PROPERTY_BINDINGS,
 } from './array-bindings';
+import {
+  COLLECTION_CALL_BINDINGS,
+  COLLECTION_PROPERTY_BINDINGS,
+} from './collection-bindings';
 import { ERROR_CALL_BINDINGS, ERROR_PROPERTY_BINDINGS } from './errors';
+import { JSON_CALL_BINDINGS, OBJECT_CALL_BINDINGS } from './object-bindings';
 import { NUMBER_CALL_BINDINGS, NUMBER_VALUE_BINDINGS } from './number-bindings';
 import {
   PROCESS_CALL_BINDINGS,
@@ -135,12 +140,15 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = firstBound([
   ...PROCESS_CALL_BINDINGS,
   ...REGEXP_CALL_BINDINGS,
   ...PROMISE_CALL_BINDINGS,
+  ...COLLECTION_CALL_BINDINGS,
   ['ObjectConstructor.keys', dictEnumeration('keys', () => arrayType(STRING))],
   ['ObjectConstructor.values', dictEnumeration('values', arrayType)],
   [
     'ObjectConstructor.entries',
     dictEnumeration('entries', () => arrayType(arrayType(DYNAMIC))),
   ],
+  ...OBJECT_CALL_BINDINGS,
+  ...JSON_CALL_BINDINGS,
   [
     'ArrayConstructor.isArray',
     ({ args, pos }) =>
@@ -208,6 +216,7 @@ export const PROPERTY_BINDINGS: ReadonlyMap<string, PropertyBinding> = new Map([
   ...ERROR_PROPERTY_BINDINGS,
   ...REGEXP_PROPERTY_BINDINGS,
   ...PROMISE_PROPERTY_BINDINGS,
+  ...COLLECTION_PROPERTY_BINDINGS,
 ]);
 
 /** Lib values read as plain identifiers or properties (`NaN`, `Infinity`). */
