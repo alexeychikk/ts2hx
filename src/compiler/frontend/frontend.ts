@@ -1,5 +1,6 @@
 import ts from 'typescript';
 
+import { printType } from '../printer/printer';
 import { padCallback } from '../stdlib/callbacks';
 import {
   ANY,
@@ -68,6 +69,7 @@ import {
   ERROR_PROPERTIES,
   libErrorClassPath,
 } from '../stdlib/errors';
+import { ExternRegistry, NPM_SHIMS, npmImportOf } from '../stdlib/npm';
 import { stringCodePoints, stringIndex } from '../stdlib/string-bindings';
 import {
   accessorPair,
@@ -100,7 +102,19 @@ import { explicitlyNullable, isNullable, nullable, TypeMapper } from './types';
 export interface UnsupportedReport {
   message: string;
   pos?: SourcePos;
+  /** The lib or npm member without a binding, for the per-run summary. */
+  member?: string;
 }
+
+/** An npm package, or one of its members, named by an import of this module. */
+interface NpmReference {
+  pkg: string;
+  member?: string;
+  /** The node whose symbol declares the member, for its extern. */
+  memberNode?: ts.Node;
+}
+
+const EXTERN_PRIMITIVES = new Set(['Float', 'Int', 'Bool', 'String', 'Void']);
 
 const FLOAT_OPERATORS: ReadonlyMap<ts.SyntaxKind, HxBinop> = new Map([
   [ts.SyntaxKind.PlusToken, '+'],
@@ -547,6 +561,7 @@ export class ModuleFrontend {
     private readonly model: ProjectModel,
     private readonly info: ModuleInfo,
     private readonly report: (unsupported: UnsupportedReport) => void,
+    private readonly externs = new ExternRegistry(),
   ) {
     this.checker = model.checker;
     this.sourceFile = info.sourceFile;
@@ -697,10 +712,14 @@ export class ModuleFrontend {
     };
   }
 
-  private unsupported(node: ts.Node, message?: string): HxExpr {
+  private unsupported(
+    node: ts.Node,
+    message?: string,
+    member?: string,
+  ): HxExpr {
     const text = message ?? `${syntaxKindName(node.kind)} is not supported yet`;
     const pos = this.pos(node);
-    this.report({ message: text, pos });
+    this.report({ message: text, pos, member });
     return unsupportedExpr(text, sourceSnippet(node), pos);
   }
 
@@ -2299,6 +2318,7 @@ export class ModuleFrontend {
       ) {
         continue;
       }
+      const firstField = fields.length;
       const name = memberName(member, this.checker);
       if (ts.isClassStaticBlockDeclaration(member)) {
         init.push({
@@ -2367,6 +2387,11 @@ export class ModuleFrontend {
       } else {
         this.unsupported(member);
       }
+      const decorated = fields[firstField];
+      const meta = this.decoratorMeta(member);
+      if (decorated && meta.length > 0) {
+        decorated.meta = [...(decorated.meta ?? []), ...meta];
+      }
     }
     for (const [added, property] of structuralOptionalMembers(
       this.model.program,
@@ -2414,10 +2439,30 @@ export class ModuleFrontend {
             ? { path: base.path, params: base.params }
             : undefined,
         fields,
-        meta: [],
+        meta: this.decoratorMeta(node),
       },
       init,
     };
+  }
+
+  /** Decorators are not executed (ADR 0005): a `TODO(ts2hx)` comment plus `@:ts.decorator` metadata each. */
+  private decoratorMeta(node: ts.Node): string[] {
+    const decorators = ts.canHaveDecorators(node)
+      ? (ts.getDecorators(node) ?? [])
+      : [];
+    return decorators.flatMap((decorator) => {
+      const text = decorator.expression
+        .getText(this.sourceFile)
+        .replace(/\s+/g, ' ');
+      this.report({
+        message: `decorator @${text} is not executed`,
+        pos: this.pos(decorator),
+      });
+      return [
+        `// TODO(ts2hx): decorator @${text} is not executed`,
+        `@:ts.decorator(${JSON.stringify(text)})`,
+      ];
+    });
   }
 
   /**
@@ -3595,7 +3640,13 @@ export class ModuleFrontend {
     }
     const key = this.libKey(node, symbol);
     if (key !== undefined) {
-      return VALUE_BINDINGS.get(key)?.(pos) ?? this.unsupported(node);
+      return (
+        VALUE_BINDINGS.get(key)?.(pos) ?? this.unsupported(node, undefined, key)
+      );
+    }
+    const npm = this.npmReference(node);
+    if (npm) {
+      return this.npmValue(node, npm, pos);
     }
     const classPath = this.classOf(node);
     if (classPath) {
@@ -3862,7 +3913,17 @@ export class ModuleFrontend {
     node: ts.PropertyAccessExpression,
     pos: SourcePos,
   ): HxExpr {
+    const npm = this.npmReference(node);
+    if (npm) {
+      return this.npmValue(node, npm, pos);
+    }
     const memberSymbol = this.checker.getSymbolAtLocation(node.name);
+    if (memberSymbol && memberSymbol.flags & ts.SymbolFlags.Prototype) {
+      return this.unsupported(
+        node,
+        'class prototypes are out of scope (ADR 0005)',
+      );
+    }
     const staticMember = memberSymbol && this.model.resolveValue(memberSymbol);
     if (staticMember?.kind === 'static') {
       return this.staticValue(node, staticMember, pos);
@@ -3880,7 +3941,9 @@ export class ModuleFrontend {
       if (property) {
         return property(this.expression(node.expression), pos);
       }
-      return VALUE_BINDINGS.get(key)?.(pos) ?? this.unsupported(node);
+      return (
+        VALUE_BINDINGS.get(key)?.(pos) ?? this.unsupported(node, undefined, key)
+      );
     }
     if (node.questionDotToken && !this.chainValues.has(node.expression)) {
       return this.unsupported(node);
@@ -5651,6 +5714,10 @@ export class ModuleFrontend {
     const args = node.arguments.map((a) =>
       this.expression(ts.isSpreadElement(a) ? a.expression : a),
     );
+    const npm = this.npmReference(callee);
+    if (npm) {
+      return this.npmCall(node, npm, args, spreadLast, pos);
+    }
     const nameNode = ts.isPropertyAccessExpression(callee)
       ? callee.name
       : ts.isIdentifier(callee)
@@ -5674,7 +5741,7 @@ export class ModuleFrontend {
           return resultType();
         },
       });
-      return bound ?? this.unsupported(node);
+      return bound ?? this.unsupported(node, undefined, key);
     }
     const unguarded = node.questionDotToken
       ? !this.chainValues.has(callee)
@@ -5763,6 +5830,170 @@ export class ModuleFrontend {
       last?.dotDotDotToken !== undefined &&
       declaration.parameters.length - 1 === spreadIndex
     );
+  }
+
+  /** The npm package or member an identifier or `namespace.member` access names. */
+  private npmReference(node: ts.Expression): NpmReference | undefined {
+    if (ts.isIdentifier(node)) {
+      const imported = npmImportOf(
+        this.checker,
+        this.checker.getSymbolAtLocation(node),
+      );
+      if (!imported) {
+        return undefined;
+      }
+      const { pkg, name } = imported;
+      if (name === '*') {
+        return { pkg };
+      }
+      if (name === 'default') {
+        const member = NPM_SHIMS.get(pkg)?.defaultMember;
+        return member ? { pkg, member } : { pkg };
+      }
+      return { pkg, member: name, memberNode: node };
+    }
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression)
+    ) {
+      const target = this.npmReference(node.expression);
+      return target && target.member === undefined
+        ? { pkg: target.pkg, member: node.name.text, memberNode: node.name }
+        : undefined;
+    }
+    return undefined;
+  }
+
+  private npmValue(
+    node: ts.Expression,
+    npm: NpmReference,
+    pos: SourcePos,
+  ): HxExpr {
+    const owner = this.npmOwner(node, npm);
+    if (!owner) {
+      return this.npmUnsupported(node, npm);
+    }
+    return {
+      kind: 'staticField',
+      owner,
+      name: escapeIdentifier(npm.member!),
+      type: this.hxTypeOf(node),
+      pos,
+    };
+  }
+
+  private npmCall(
+    node: ts.CallExpression,
+    npm: NpmReference,
+    args: HxExpr[],
+    spreadLast: boolean,
+    pos: SourcePos,
+  ): HxExpr {
+    const owner = this.npmOwner(node.expression, npm);
+    if (!owner) {
+      return this.npmUnsupported(node, npm);
+    }
+    if (spreadLast) {
+      return this.unsupported(
+        node,
+        'spread arguments to an npm package are not supported yet',
+      );
+    }
+    const arity = NPM_SHIMS.get(npm.pkg)?.members.get(npm.member!);
+    const converted =
+      arity === undefined
+        ? this.arguments(node, args, false)
+        : args.map((arg) =>
+            arity > 0
+              ? (padCallback(
+                  arg,
+                  DYNAMIC,
+                  Array.from({ length: arity - 1 }, () => DYNAMIC),
+                  (hint) => this.freshName(hint),
+                ) ?? arg)
+              : arg,
+          );
+    return staticCall(
+      owner,
+      escapeIdentifier(npm.member!),
+      converted,
+      this.hxTypeOf(node),
+      pos,
+    );
+  }
+
+  /** The shim or extern class an npm member lives on, or `undefined` when it has none. */
+  private npmOwner(
+    node: ts.Expression,
+    npm: NpmReference,
+  ): HxTypePath | undefined {
+    if (npm.member === undefined) {
+      return undefined;
+    }
+    const shim = NPM_SHIMS.get(npm.pkg);
+    if (shim) {
+      return shim.members.has(npm.member) ? shim.owner : undefined;
+    }
+    this.externs.add(
+      npm.pkg,
+      npm.member,
+      this.externDeclaration(npm.member, npm.memberNode ?? node),
+    );
+    return ExternRegistry.path(this.model.rootPackage, npm.pkg);
+  }
+
+  private npmUnsupported(node: ts.Node, npm: NpmReference): HxExpr {
+    if (npm.member === undefined) {
+      return this.unsupported(
+        node,
+        `npm package "${npm.pkg}" used as a value is not supported yet`,
+      );
+    }
+    const member = `${npm.pkg}.${npm.member}`;
+    return this.unsupported(
+      node,
+      `${member} has no ts2hx shim (ADR 0005)`,
+      member,
+    );
+  }
+
+  /** The extern field of an npm member: a typed function for a single signature, else `Dynamic`. */
+  private externDeclaration(member: string, node: ts.Node): string {
+    const name = escapeIdentifier(member);
+    const native =
+      name === member ? '' : `@:native(${JSON.stringify(member)}) `;
+    let symbol = this.checker.getSymbolAtLocation(node);
+    if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
+      symbol = this.checker.getAliasedSymbol(symbol);
+    }
+    const declarations = symbol?.declarations ?? [];
+    const declaration = declarations[0];
+    if (declarations.length !== 1 || !ts.isFunctionDeclaration(declaration)) {
+      return `${native}static var ${name}:Dynamic;`;
+    }
+    const signature = this.checker.getSignatureFromDeclaration(declaration)!;
+    const params = declaration.parameters.map((parameter, i) => {
+      const paramName = ts.isIdentifier(parameter.name)
+        ? escapeIdentifier(parameter.name.text)
+        : `arg${i}`;
+      if (parameter.dotDotDotToken) {
+        return `${paramName}:haxe.extern.Rest<Dynamic>`;
+      }
+      const optional = parameter.questionToken || parameter.initializer;
+      const type = this.externType(
+        optional
+          ? this.checker.getNonNullableType(this.typeOf(parameter))
+          : this.typeOf(parameter),
+      );
+      return `${optional ? '?' : ''}${paramName}:${type}`;
+    });
+    const ret = this.externType(signature.getReturnType());
+    return `${native}static function ${name}(${params.join(', ')}):${ret};`;
+  }
+
+  private externType(type: ts.Type): string {
+    const printed = printType(this.types.map(type));
+    return EXTERN_PRIMITIVES.has(printed) ? printed : 'Dynamic';
   }
 
   private receiver(expression: ts.Expression): BoundReceiver {

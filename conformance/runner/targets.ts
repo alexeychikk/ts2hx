@@ -103,6 +103,7 @@ export function dispatcherSource(cases: readonly ConformanceCase[]): string {
     'class ConformanceMain {',
     '  static function main() {',
     '    var args = Sys.args();',
+    '    ts2hx.Process.argv.splice(2, 1);',
     '    switch (args.length > 0 ? args[0] : "") {',
     ...branches,
     '      default:',

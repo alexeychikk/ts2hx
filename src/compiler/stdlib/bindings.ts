@@ -25,6 +25,10 @@ import {
 } from './array-bindings';
 import { ERROR_CALL_BINDINGS, ERROR_PROPERTY_BINDINGS } from './errors';
 import { NUMBER_CALL_BINDINGS, NUMBER_VALUE_BINDINGS } from './number-bindings';
+import {
+  PROCESS_CALL_BINDINGS,
+  PROCESS_VALUE_BINDINGS,
+} from './process-bindings';
 import { STRING_CALL_BINDINGS } from './string-bindings';
 
 /** The object a method is called on (`console` in `console.log(x)`). */
@@ -120,6 +124,7 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
   ...ARRAY_CALL_BINDINGS,
   ...ITERATOR_CALL_BINDINGS,
   ...ERROR_CALL_BINDINGS,
+  ...PROCESS_CALL_BINDINGS,
   ['ObjectConstructor.keys', dictEnumeration('keys', () => arrayType(STRING))],
   ['ObjectConstructor.values', dictEnumeration('values', arrayType)],
   [
@@ -204,6 +209,7 @@ export const VALUE_BINDINGS: ReadonlyMap<string, ValueBinding> = new Map<
     }),
   ],
   ...NUMBER_VALUE_BINDINGS,
+  ...PROCESS_VALUE_BINDINGS,
 ]);
 
 /** `@types/node` declares the same globals inside namespaces: map them to the lib name. */
