@@ -109,6 +109,17 @@ const fixed =
     type;
 const maybeElement: ResultType = (_, element) => nullableOf(element);
 
+/**
+ * An element read off an `Array<Dynamic>`, cast so Haxe types the call without an
+ * expected type: `JsArray.pop(a) ?? 5.0` would otherwise bind `T=Float` from its
+ * context, and C# would pop from an `Array<Float>` copy of `a`.
+ */
+function pinnedElement(call: HxExpr, element: HxType): HxExpr {
+  return element.kind === 'dynamic'
+    ? { kind: 'cast', expr: call, checked: false, type: DYNAMIC, pos: call.pos }
+    : call;
+}
+
 /** `a.name(args)` → `JsArray.name(a, args)` with at most `maxArgs` plain arguments. */
 function arrayMethod(
   name: string,
@@ -121,13 +132,16 @@ function arrayMethod(
     if (!receiver || call.spreadLast || call.args.length > maxArgs) {
       return undefined;
     }
-    return staticCall(
+    const bound = staticCall(
       RUNTIME.jsArray,
       name,
       [receiver.expr, ...elementArgs(call.args, receiver.element, elementArg)],
       result(receiver.type, receiver.element, call),
       call.pos,
     );
+    return result === maybeElement
+      ? pinnedElement(bound, receiver.element)
+      : bound;
   };
 }
 
@@ -175,13 +189,16 @@ function callbackMethod(
       call.freshName,
     );
     if (!padded) return undefined;
-    return staticCall(
+    const bound = staticCall(
       RUNTIME.jsArray,
       name,
       [receiver.expr, predicate ? predicateCallback(padded) : padded],
       result(receiver.type, receiver.element, call),
       call.pos,
     );
+    return result === maybeElement
+      ? pinnedElement(bound, receiver.element)
+      : bound;
   };
 }
 
