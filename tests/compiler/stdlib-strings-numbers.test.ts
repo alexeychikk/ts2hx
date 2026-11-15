@@ -172,7 +172,7 @@ describe('stdlib: numbers and Math', () => {
 
   it('keeps fixed parameters before the folded rest of a user function', async () => {
     const hx = await moduleOf([
-      'function sum(first: number, ...rest: number[]): number { return first + rest.length; }',
+      'function sum(this: void, first: number, ...rest: number[]): number { return first + rest.length; }',
       'const a = [1]; const b = [2];',
       'console.log(sum(1, 2, ...a, ...b), sum(1, ...a));',
     ]);

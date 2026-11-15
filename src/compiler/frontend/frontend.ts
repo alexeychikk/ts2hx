@@ -5905,14 +5905,13 @@ export class ModuleFrontend {
   private restParameter(
     node: ts.CallExpression,
   ): { index: number; type: ts.Type } | undefined {
-    const signature = this.checker.getResolvedSignature(node);
-    const declaration = signature?.declaration;
-    if (!signature || !declaration || ts.isJSDocSignature(declaration)) {
-      return undefined;
-    }
-    const index = declaration.parameters.length - 1;
-    const parameter = signature.parameters[index];
-    return declaration.parameters[index]?.dotDotDotToken && parameter
+    const parameters = this.checker.getResolvedSignature(node)?.parameters;
+    const index = (parameters?.length ?? 0) - 1;
+    const parameter = parameters?.[index];
+    const declaration = parameter?.valueDeclaration;
+    return declaration &&
+      ts.isParameter(declaration) &&
+      declaration.dotDotDotToken
       ? { index, type: this.checker.getTypeOfSymbol(parameter) }
       : undefined;
   }
