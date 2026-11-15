@@ -140,7 +140,7 @@ function fly(a: { fly(): void } | { swim(): void }): void { if ('fly' in a) a.fl
     expect(body).toContain('if (ts2hx.Ts2hx.typeOf(v) == "string") {');
     expect(body).toContain('return ((cast v : String)).length;');
     expect(body).toContain('return (cast v : Float);');
-    expect(body).toContain('if (Reflect.hasField(a, "fly")) {');
+    expect(body).toContain('if (ts2hx.Obj.has(a, "fly")) {');
     expect(body).toContain('((cast a : { function fly():Void; })).fly();');
   });
 

@@ -151,7 +151,9 @@ describe('classes in the frontend', () => {
     expect(code).toMatch(
       /class B extends Main_2\.A \{\n\tpublic function new\(a:Float, \.\.\.rest:String\) \{\n\t\tsuper\(a, \.\.\.rest\);\n\t\tthis\.b = 2\.0;/,
     );
-    expect(code).toMatch(/class C extends Main_2\.A \{\}/);
+    expect(code).toMatch(
+      /class C extends Main_2\.A \{\n\t@:keep\n\tprivate static final __ts2hx_class:Bool = ts2hx\.Obj\.declareClass\(Main_2\.C, "C", \[\]\);\n\}/,
+    );
   });
 
   it('marks overrides, abstract members and declares redeclared fields once', async () => {
@@ -541,7 +543,9 @@ describe('classes II in the frontend', () => {
       const o = { n: 1, get() { return this.n; } };
       console.log(o.get());
     `);
-    expect(code).toContain('__self_1 = {n: 1.0, get: function():Float {');
+    expect(code).toContain(
+      '__self_1 = ts2hx.Obj.literal({n: 1.0, get: function():Float {',
+    );
     expect(code).toContain('return __self_1.n;');
   });
 });

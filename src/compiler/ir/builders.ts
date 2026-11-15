@@ -35,6 +35,11 @@ export const RUNTIME = {
   error: typePath(['ts2hx'], 'Error'),
   process: typePath(['ts2hx'], 'Process'),
   regExp: typePath(['ts2hx'], 'RegExp'),
+  obj: typePath(['ts2hx'], 'Obj'),
+  json: typePath(['ts2hx'], 'Json'),
+  jsMap: typePath(['ts2hx'], 'JsMap'),
+  jsSet: typePath(['ts2hx'], 'JsSet'),
+  jsIterator: typePath(['ts2hx'], 'JsIterator', 'JsMap'),
 };
 
 export function arrayType(element: HxType): HxType {

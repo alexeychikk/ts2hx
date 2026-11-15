@@ -14,8 +14,8 @@ Status: accepted (2026-11-14)
 - **The runtime lib is `runtime/ts2hx/`**, a Haxe package `ts2hx`. It is
   copied into the output's `ts2hx/` directory and replaces today's `lib/`.
   Its API implements **JS semantics**. Each target uses its native
-  implementation where it matches exactly: on JS, `js.lib.Map`, the native
-  Promise, `RegExp` and `Number.prototype.toString`. Otherwise it uses a pure
+  implementation where it matches exactly: on JS, `RegExp`,
+  `Number.prototype.toString` and `JSON.parse`. Otherwise it uses a pure
   Haxe implementation. The `js.lib` imports in `lib/import.hx` go away.
 
 ## Measured target differences (Haxe 4.3.7, all on the same program)
@@ -62,20 +62,48 @@ reason it is not a gate.)
   and `a && b` keep the operand type, and are lowered with a temporary when
   the operand is not a plain local.
 - **Objects and key order.** Object literals with a static shape become
-  anonymous structures, and C# and C++ do not keep key order for those.
-  Enumeration sites (`Object.keys/values/entries`, `for…in`, `JSON.stringify`,
-  object spread) therefore pass the key order of the static type to the
-  runtime (`Obj.keys(o, ["b", "a"])`), with any extra runtime fields after
-  it. Dictionaries (index signatures, `Record<string, T>`, objects used as
+  anonymous structures, and C# and C++ do not keep key order for those
+  (`Reflect.fields` is sorted by length, then code unit, even for fields set
+  later). Class instances are not in JS order on any target, Haxe JS
+  included. So the order is recorded where objects are made, not passed at
+  enumeration sites:
+  - A literal with two or more fields is printed as
+    `ts2hx.Obj.literal({b: 1, a: 2}, ["b", "a"])`. Off JS, that records the
+    keys in a weak side table (`ConditionalWeakTable` on C#,
+    `haxe.ds.WeakMap` on C++). `Obj.set`, `Obj.assign` and `Json.parse`
+    append to it.
+  - Every project class has a `@:keep private static final __ts2hx_class`
+    initialised by `Obj.declareClass(Cls, "JsName", ["param", "field"])`:
+    its JS name and own data fields in JS definition order (parameter
+    properties, then field declarations). Base-class fields come first.
+  - Every enumeration (`Object.keys/values/entries/assign`, `for…in`,
+    `JSON.stringify`, `console.log`) goes through `Obj.keys`. Fields the
+    record does not list follow in `Reflect.fields` order (degraded).
+  Dictionaries (index signatures, `Record<string, T>`, objects used as
   maps) become `ts2hx.Dict<T>`, an insertion-ordered map class. The
   frontend lowers `d.k`, `d[k]`, `in`, `delete` and `for…in` on it to
   `get`/`set`/`exists`/`remove`/`keys()`, and its keys follow JS order
-  (array-index keys ascending, then insertion order). Enumerating a value typed `any` follows the target's
-  `Reflect.fields` order (documented as degraded).
+  (array-index keys ascending, then insertion order). A plain object cast to
+  a dictionary type (`JSON.parse(s) as Record<string, T>`) is copied into
+  one by `Dict.from`. Enumerating a value from outside the project (an
+  extern, `any` built by reflection) follows the target's `Reflect.fields`
+  order (documented as degraded).
 - **Collections.** `Map` and `Set` become `ts2hx.JsMap` and `ts2hx.JsSet`.
   They keep insertion order and use SameValueZero keys: primitives by value,
-  objects by identity, `NaN` equal to itself. On JS they wrap `js.lib.Map`
-  and `js.lib.Set`.
+  objects by identity, `NaN` equal to itself, `-0` equal to `0`. They are
+  the same pure Haxe on every target, abstracts over the untyped `MapCore`
+  (like `Promise<T>`, so casts between instantiations keep identity on C#).
+  Iterators see entries added while they run. `WeakMap` and `WeakSet` are
+  the same strong collections (degraded). `for…of` and spreads walk
+  `toArray()` of their iterators.
+- **JSON and console.** `ts2hx.Json` uses native `JSON.parse` on JS and a
+  pure Haxe parser elsewhere; `stringify` is pure Haxe everywhere so that
+  key order and number formatting match. `null` and `undefined` are one
+  value in Haxe, so a field holding `undefined` is printed as `null` by
+  `stringify` and as `undefined` by `console.log`. `console.log` prints
+  class instances as `Name { … }` from the `declareClass` record and
+  `Map(n) {…}`/`Set(n) {…}` like Node. A `-0` stored in a `Dynamic`
+  becomes `0` on C++ (hxcpp boxes integral doubles as ints).
 - **Async.** `ts2hx.Promise<T>` and `ts2hx.EventLoop` are the same pure Haxe
   on every target: native promises would interleave with the pure Haxe
   timers in a different order. `Promise<T>` is an abstract over the untyped

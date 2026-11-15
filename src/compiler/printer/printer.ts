@@ -271,13 +271,19 @@ class Printer {
         )} : ${this.sub(expr.else, PRECEDENCE_TERNARY)}`;
       case 'arrayLit':
         return `[${expr.elements.map((e) => this.expr(e)).join(', ')}]`;
-      case 'objectLit':
-        return `{${expr.fields
+      case 'objectLit': {
+        const literal = `{${expr.fields
           .map(
             (f) =>
               `${/^[A-Za-z_][A-Za-z0-9_]*$/.test(f.name) ? f.name : printString(f.name)}: ${this.expr(f.value)}`,
           )
           .join(', ')}}`;
+        return expr.fields.length < 2
+          ? literal
+          : `${printTypePath(RUNTIME.obj)}.literal(${literal}, [${expr.fields
+              .map((f) => printString(f.name))
+              .join(', ')}])`;
+      }
       case 'fn':
         return `function${this.signature(expr.fn)} ${this.body(expr.fn)}`;
       case 'cast':
