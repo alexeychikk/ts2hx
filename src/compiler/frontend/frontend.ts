@@ -5466,12 +5466,7 @@ export class ModuleFrontend {
     if (!this.isNumberLike(leftNode) || !this.isNumberLike(rightNode)) {
       return undefined;
     }
-    return this.numericOperation(
-      kind,
-      left,
-      this.expression(rightNode),
-      pos,
-    );
+    return this.numericOperation(kind, left, this.expression(rightNode), pos);
   }
 
   /** `operation` with an `any` operand. */
