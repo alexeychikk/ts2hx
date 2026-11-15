@@ -1,3 +1,5 @@
+// Node starts the script's timers from a cached loop time that a slow start leaves
+// behind, so timers created in callbacks are kept 100 ms away from any other.
 console.log('start');
 
 setTimeout(() => console.log('t 0 is 1'), 0);
@@ -9,16 +11,16 @@ clearTimeout(cancelled);
 clearTimeout(undefined);
 
 setTimeout(() => {
-  console.log('outer 20');
+  console.log('outer 100');
   Promise.resolve().then(() => console.log('micro inside timer'));
   queueMicrotask(() => console.log('queued inside timer'));
-  setTimeout(() => console.log('nested 0 after outer 20'), 0);
-}, 20);
-setTimeout(() => console.log('second 20 runs after micro'), 20);
+  setTimeout(() => console.log('nested 0 after outer 100'), 0);
+}, 100);
+setTimeout(() => console.log('second 100 runs after micro'), 100);
 
-setTimeout(() => console.log('t 100 a'), 100);
-setTimeout(() => console.log('t 100 b'), 100);
-setTimeout(() => console.log('t 240'), 240);
+setTimeout(() => console.log('t 500 a'), 500);
+setTimeout(() => console.log('t 500 b'), 500);
+setTimeout(() => console.log('t 1400'), 1400);
 
 let ticks = 0;
 const interval = setInterval(() => {
@@ -28,9 +30,9 @@ const interval = setInterval(() => {
     clearInterval(interval);
     console.log('interval cleared');
   }
-}, 70);
+}, 350);
 
-setTimeout((a: string, b: number) => console.log('args', a, b), 170, 'x', 2);
+setTimeout((a: string, b: number) => console.log('args', a, b), 850, 'x', 2);
 
 function countdown(n: number): void {
   if (n === 0) {
@@ -38,7 +40,7 @@ function countdown(n: number): void {
     return;
   }
   console.log('count', n);
-  setTimeout(() => countdown(n - 1), 40);
+  setTimeout(() => countdown(n - 1), 200);
 }
 countdown(3);
 

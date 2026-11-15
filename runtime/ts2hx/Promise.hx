@@ -212,7 +212,7 @@ class PromiseCore {
 		EventLoop.queueMicrotask(function() {
 			var resolving = new Resolving(promise);
 			try {
-				Reflect.callMethod(resolution, then, [resolving.resolve, resolving.reject]);
+				Reflect.callMethod(resolution, then, thenArguments(then, resolving));
 			} catch (error:Dynamic) {
 				resolving.reject(Error.caught(error));
 			}
@@ -234,6 +234,17 @@ class PromiseCore {
 			return null;
 		var then:Dynamic = Reflect.field(value, "then");
 		return Reflect.isFunction(then) ? then : null;
+	}
+
+	/** `[resolve, reject]`, cut to the parameters a thenable's `then` declares where a target rejects extra arguments. */
+	static function thenArguments(then:Dynamic, resolving:Resolving):Array<Dynamic> {
+		var args:Array<Dynamic> = [resolving.resolve, resolving.reject];
+		#if cs
+		var arity:Int = cs.Syntax.code("({0} is haxe.lang.Function) ? ((haxe.lang.Function){0}).__hx_arity : -1", then);
+		if (arity >= 0 && arity < args.length)
+			args.resize(arity);
+		#end
+		return args;
 	}
 
 	function thenFunction(onFulfilled:Dynamic, onRejected:Dynamic):PromiseCore {

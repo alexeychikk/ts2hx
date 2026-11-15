@@ -83,7 +83,7 @@ export function libAsyncType(
   }
   if (
     symbol.name === 'Timeout' &&
-    checker.getFullyQualifiedName(symbol) === 'NodeJS.Timeout' &&
+    /(^|\.)NodeJS\.Timeout$/.test(checker.getFullyQualifiedName(symbol)) &&
     symbol.flags & (ts.SymbolFlags.Interface | ts.SymbolFlags.Class)
   ) {
     return TIMEOUT_TYPE;
