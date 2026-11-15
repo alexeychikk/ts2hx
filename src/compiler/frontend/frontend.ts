@@ -237,6 +237,8 @@ function arrayElement(type: HxType): HxType {
 /** `{}` (what `unknown` narrows to after a nullish check): primitives are assignable to it too. */
 function isEmptyObjectType(checker: ts.TypeChecker, type: ts.Type): boolean {
   return (
+    !!(type.flags & ts.TypeFlags.Object) &&
+    !((type as ts.ObjectType).objectFlags & ts.ObjectFlags.ObjectLiteral) &&
     checker.getPropertiesOfType(type).length === 0 &&
     type.getCallSignatures().length === 0 &&
     type.getConstructSignatures().length === 0 &&
