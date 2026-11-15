@@ -14,6 +14,7 @@ import {
   FLOAT,
   INT,
   isBoolType,
+  isIntType,
   isStringType,
   localExpr,
   RUNTIME,
@@ -101,6 +102,7 @@ import { stringCodePoints, stringIndex } from '../stdlib/string-bindings';
 import {
   accessorPair,
   assignsAtTopLevel,
+  accessorImplementedFields,
   inheritedAccessors,
   inheritedStaticDivergence,
   overridesAccessor,
@@ -230,6 +232,25 @@ function isArray(
 
 function arrayElement(type: HxType): HxType {
   return isArray(type) ? type.params[0] : DYNAMIC;
+}
+
+/** `{}` (what `unknown` narrows to after a nullish check): primitives are assignable to it too. */
+function isEmptyObjectType(checker: ts.TypeChecker, type: ts.Type): boolean {
+  return (
+    !!(type.flags & ts.TypeFlags.Object) &&
+    !((type as ts.ObjectType).objectFlags & ts.ObjectFlags.ObjectLiteral) &&
+    checker.getPropertiesOfType(type).length === 0 &&
+    type.getCallSignatures().length === 0 &&
+    type.getConstructSignatures().length === 0 &&
+    !checker.getIndexInfosOfType(type).length
+  );
+}
+
+/** An `Int` value (a `length`, an index) as `Float`: anonymous structure fields do not unify `Int` with `Float`. */
+function widenInt(value: HxExpr): HxExpr {
+  return isIntType(value.type)
+    ? { kind: 'cast', expr: value, checked: false, type: FLOAT, pos: value.pos }
+    : value;
 }
 
 /**
@@ -2931,7 +2952,7 @@ export class ModuleFrontend {
       );
       return [];
     }
-    if (inherited && !inherited.pair[kind]) {
+    if (inherited && !inherited.field && !inherited.pair[kind]) {
       this.unsupported(
         member,
         `a ${kind} accessor its base class lacks is not supported`,
@@ -2939,7 +2960,7 @@ export class ModuleFrontend {
       return [];
     }
     const root = inherited
-      ? (inherited.pair.get ?? inherited.pair.set)!
+      ? (inherited.field ?? inherited.pair.get ?? inherited.pair.set)!
       : member;
     const type = this.types.map(
       this.checker.getTypeOfSymbol(
@@ -2977,7 +2998,9 @@ export class ModuleFrontend {
       access: 'public',
       isStatic: context.isStatic,
       isOverride:
-        !!inherited && overridesAccessor(this.checker, node, sourceName, kind),
+        !!inherited &&
+        (!!inherited.field ||
+          overridesAccessor(this.checker, node, sourceName, kind)),
       isAbstract,
       fn: isAbstract ? { ...fn, body: undefined } : fn,
     });
@@ -3048,6 +3071,9 @@ export class ModuleFrontend {
     ) {
       return [];
     }
+    if (accessorImplementedFields(this.model.program).has(field)) {
+      return this.virtualField(field, name, type);
+    }
     return [
       {
         kind: 'var',
@@ -3057,6 +3083,62 @@ export class ModuleFrontend {
         final: this.isFinalField(field, name),
         type,
       },
+    ];
+  }
+
+  /**
+   * An `abstract` property a subclass implements with accessors: a property with
+   * storage, whose `get_`/`set_` the accessors override and other subclasses inherit.
+   */
+  private virtualField(
+    field: FieldDeclaration,
+    name: string,
+    type: HxType,
+  ): HxClassField[] {
+    const self: HxExpr = {
+      kind: 'field',
+      target: { kind: 'this', type: DYNAMIC },
+      name,
+      type,
+    };
+    const value = localExpr('value', type);
+    const method = (
+      prefix: string,
+      params: HxParam[],
+      result: HxExpr,
+    ): HxClassField => ({
+      kind: 'method',
+      name: `${prefix}_${name}`,
+      access: 'public',
+      isStatic: false,
+      isOverride: false,
+      isAbstract: false,
+      fn: {
+        typeParams: [],
+        params,
+        ret: type,
+        body: [{ kind: 'return', value: result }],
+      },
+    });
+    return [
+      {
+        kind: 'property',
+        name,
+        access: memberAccess(field),
+        isStatic: false,
+        get: 'get',
+        set: 'set',
+        isVar: true,
+        type,
+      },
+      method('get', [], self),
+      method('set', [{ name: 'value', type }], {
+        kind: 'assign',
+        op: '=',
+        target: self,
+        value,
+        type,
+      }),
     ];
   }
 
@@ -3951,6 +4033,7 @@ export class ModuleFrontend {
       );
     }
     const fn = this.function(node);
+    fn.params.push(...this.contextualPadding(node, fn.params));
     return {
       kind: 'fn',
       fn,
@@ -3966,6 +4049,56 @@ export class ModuleFrontend {
       },
       pos,
     };
+  }
+
+  /**
+   * The parameters a function literal declares fewer of than the user-declared
+   * function type it is passed as: Haxe calls it with all of them.
+   */
+  private contextualPadding(
+    node: FunctionNode,
+    params: readonly HxParam[],
+  ): HxParam[] {
+    if (!ts.isArrowFunction(node) && !ts.isFunctionExpression(node)) {
+      return [];
+    }
+    const contextual = this.checker.getContextualType(node);
+    const signatures = contextual
+      ? this.checker.getNonNullableType(contextual).getCallSignatures()
+      : [];
+    const declaration = signatures.length === 1 && signatures[0].declaration;
+    if (
+      !declaration ||
+      declaration.getSourceFile().isDeclarationFile ||
+      params.some((p) => p.rest)
+    ) {
+      return [];
+    }
+    return signatures[0].parameters
+      .slice(params.length)
+      .flatMap((symbol): HxParam[] => {
+        const parameter = symbol.valueDeclaration;
+        if (
+          !parameter ||
+          !ts.isParameter(parameter) ||
+          parameter.dotDotDotToken
+        ) {
+          return [];
+        }
+        const type = this.types.map(
+          this.checker.getTypeOfSymbolAtLocation(symbol, node),
+        );
+        const optional =
+          parameter.questionToken !== undefined ||
+          parameter.initializer !== undefined;
+        return [
+          {
+            name: this.freshName('unused'),
+            type: optional ? nullable(type) : type,
+            optional,
+          },
+        ];
+      });
   }
 
   // ---------------------------------------------------------- expressions
@@ -4202,7 +4335,10 @@ export class ModuleFrontend {
     if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
       const value = this.expression(node.expression);
       const type = this.hxTypeOf(node);
-      if (value.type.kind === 'dynamic' && dictValue(type) !== undefined) {
+      if (
+        (value.type.kind === 'dynamic' || sameType(value.type, ANY)) &&
+        dictValue(type) !== undefined
+      ) {
         return staticCall(RUNTIME.dict, 'from', [value], type, pos);
       }
       return sameType(value.type, type) || type.kind === 'dynamic'
@@ -5760,7 +5896,7 @@ export class ModuleFrontend {
 
   private nullish(node: ts.BinaryExpression, pos: SourcePos): HxExpr {
     const left = this.expression(node.left);
-    if (!isNullable(left.type)) {
+    if (!isNullable(left.type) || this.isNullishLiteral(node.right)) {
       return left;
     }
     const right = this.expression(node.right);
@@ -5867,6 +6003,7 @@ export class ModuleFrontend {
       return 'undefined';
     if (everyConstituent(type, ts.TypeFlags.Null)) return 'object';
     if (type.isUnion() || !(type.flags & ts.TypeFlags.Object)) return undefined;
+    if (isEmptyObjectType(this.checker, type)) return undefined;
     return type.getCallSignatures().length > 0 ||
       type.getConstructSignatures().length > 0
       ? 'function'
@@ -6095,7 +6232,7 @@ export class ModuleFrontend {
       if (ts.isPropertyAssignment(property)) {
         fields.push({
           name: escapeIdentifier(name),
-          value: this.expression(property.initializer),
+          value: widenInt(this.expression(property.initializer)),
         });
       } else if (
         ts.isShorthandPropertyAssignment(property) &&
@@ -6103,7 +6240,7 @@ export class ModuleFrontend {
       ) {
         fields.push({
           name: escapeIdentifier(name),
-          value: this.expression(property.name),
+          value: widenInt(this.expression(property.name)),
         });
       } else if (ts.isMethodDeclaration(property) && !property.asteriskToken) {
         fields.push({
@@ -6177,13 +6314,13 @@ export class ModuleFrontend {
       return undefined;
     }
     if (ts.isPropertyAssignment(property)) {
-      return { name, value: this.expression(property.initializer) };
+      return { name, value: widenInt(this.expression(property.initializer)) };
     }
     if (
       ts.isShorthandPropertyAssignment(property) &&
       !property.objectAssignmentInitializer
     ) {
-      return { name, value: this.expression(property.name) };
+      return { name, value: widenInt(this.expression(property.name)) };
     }
     if (ts.isMethodDeclaration(property) && !property.asteriskToken) {
       return { name, value: this.functionExpr(property, this.pos(property)) };
