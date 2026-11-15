@@ -18,6 +18,69 @@ describe('frontend: expressions, statements and functions', () => {
     expect(hx).toContain('ts2hx.Num.shl(a, b)');
   });
 
+  it('lowers operators with an any operand to runtime conversions', async () => {
+    const operations: [string, string][] = [
+      ['x + n', 'Dynamic = ts2hx.Ts2hx.add(x, n)'],
+      ['n + x', 'Dynamic = ts2hx.Ts2hx.add(n, x)'],
+      [
+        't + x',
+        'String = ts2hx.Ts2hx.stringOperand(t) + ts2hx.Ts2hx.string(x)',
+      ],
+      ['x - y', 'Float = ts2hx.Ts2hx.toNumber(x) - ts2hx.Ts2hx.toNumber(y)'],
+      ['10 * x', 'Float = 10.0 * ts2hx.Ts2hx.toNumber(x)'],
+      ['x ** 2', 'Float = ts2hx.Num.pow(ts2hx.Ts2hx.toNumber(x), 2.0)'],
+      [
+        'x | 1',
+        'Float = ts2hx.Num.toInt32(ts2hx.Ts2hx.toNumber(x)) | ts2hx.Num.toInt32(1.0)',
+      ],
+      ['-x', 'Float = -ts2hx.Ts2hx.toNumber(x)'],
+      ['x > 5', 'Bool = ts2hx.Ts2hx.greaterThan(x, 5.0)'],
+      ['n <= y', 'Bool = ts2hx.Ts2hx.lessEquals(n, y)'],
+      ['y < t', 'Bool = ts2hx.Ts2hx.lessThan(y, t)'],
+      ['x >= y', 'Bool = ts2hx.Ts2hx.greaterEquals(x, y)'],
+    ];
+    const hx = await moduleOf(
+      [
+        'function f(x: any, y: any, n: number, t: string): void {',
+        ...operations.map(([ts], i) => `  const r${i} = ${ts};`),
+        '  console.log(' + operations.map((_, i) => `r${i}`).join(', ') + ');',
+        '}',
+      ].join('\n'),
+    );
+    operations.forEach(([, haxe], i) => {
+      expect(hx).toContain(`final r${i}:${haxe};`);
+    });
+  });
+
+  it('keeps typed operators when no operand is any', async () => {
+    const hx = await moduleOf(
+      'function f(n: number, m: number, s: string): void { const a = n + m; const b = n < m; const c = s < s; console.log(a, b, c); }',
+    );
+    expect(hx).toContain('final a:Float = n + m;');
+    expect(hx).toContain('final b:Bool = n < m;');
+    expect(hx).toContain('final c:Bool = s < s;');
+  });
+
+  it('reads and writes compound assignments with an any operand once', async () => {
+    const hx = await moduleOf(
+      [
+        'function f(o: { v: any; n: number }, xs: any[], i: number, a: any): void {',
+        '  let s: any = "ab";',
+        '  s += 1;',
+        '  o.n += a;',
+        '  o.v -= 2;',
+        '  xs[i++] += a;',
+        '}',
+      ].join('\n'),
+    );
+    expect(hx).toContain('s = ts2hx.Ts2hx.add(s, 1.0);');
+    expect(hx).toContain('o.n = ts2hx.Ts2hx.add(o.n, a);');
+    expect(hx).toContain('o.v = ts2hx.Ts2hx.toNumber(o.v) - 2.0;');
+    expect(hx).toMatch(
+      /final (__\w+):Int = Std\.int\(i\+\+\);\s*xs\[\1\] = ts2hx\.Ts2hx\.add\(xs\[\1\], a\);/,
+    );
+  });
+
   it('makes truthiness explicit from the static type', async () => {
     const hx = await moduleOf(
       [
