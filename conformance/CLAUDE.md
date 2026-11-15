@@ -17,6 +17,8 @@ The design is in [ADR 0004](../docs/decisions/0004-conformance-harness.md).
   baseline is CommonJS) and nothing nondeterministic or out of scope in ADR 0005
   (`Intl`, `Date.now`, `Math.random`).
 - `// @targets: js` in the first lines restricts a case to some targets.
+- A case importing an npm package needs it (and its types) in `devDependencies`: the
+  Node baseline resolves it from the repository root.
 - A case that does not pass yet is listed in `expectations.json`:
   `npm run conformance -- --filter '<area>/<name>' --update-expectations` records it.
   A ticket that makes a case pass removes its entries in the same change; an unexpected

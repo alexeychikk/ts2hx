@@ -431,6 +431,11 @@ class Printer {
   }
 
   private classField(field: HxClassField): string {
+    const meta = (field.meta ?? []).map((m) => `${this.indent()}${m}\n`);
+    return meta.join('') + this.classFieldBody(field);
+  }
+
+  private classFieldBody(field: HxClassField): string {
     const ind = this.indent();
     const modifiers: string[] = [field.access];
     if (field.isStatic) modifiers.push('static');

@@ -9,6 +9,7 @@ import {
   type EmittedFile,
 } from './emit/project-emit';
 import { ModuleFrontend } from './frontend/frontend';
+import { ExternRegistry } from './stdlib/npm';
 import {
   buildProjectModel,
   MAIN_CLASS,
@@ -81,11 +82,21 @@ function compile(options: CompileOptions): CompileResult {
     });
   };
   const passContext = createPassContext(reportUnsupported);
+  const externs = new ExternRegistry();
+  const unsupportedMembers = new Set<string>();
   const emitted = new Set<ModuleInfo>();
   const modules: EmittedModule[] = [];
   for (const info of model.modules) {
-    const ir = new ModuleFrontend(model, info, ({ message, pos }) =>
-      reportUnsupported(message, pos),
+    const ir = new ModuleFrontend(
+      model,
+      info,
+      ({ message, pos, member }) => {
+        reportUnsupported(message, pos);
+        if (member !== undefined) {
+          unsupportedMembers.add(member);
+        }
+      },
+      externs,
     ).convert();
     const lowered = runPasses(ir, passContext);
     if (lowered.decls.length === 0 && lowered.init.length === 0) {
@@ -96,6 +107,17 @@ function compile(options: CompileOptions): CompileResult {
       path: modulePath(lowered.pack, lowered.name),
       code: printModule(lowered),
     });
+  }
+  for (const { path: externPath, code } of externs.modules(model.rootPackage)) {
+    modules.push({
+      path: modulePath(externPath.pack, externPath.module),
+      code,
+    });
+  }
+  if (unsupportedMembers.size > 0) {
+    reportUnsupported(
+      `unsupported members in this run: ${[...unsupportedMembers].sort().join(', ')}`,
+    );
   }
   if (model.entry) {
     modules.push({

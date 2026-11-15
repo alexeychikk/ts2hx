@@ -212,6 +212,8 @@ export type HxClassField =
       name: string;
       access: HxAccess;
       isStatic: boolean;
+      /** Lines printed above the field: metadata and `TODO(ts2hx)` comments. */
+      meta?: string[];
       final: boolean;
       type: HxType;
       init?: HxExpr;
@@ -221,6 +223,8 @@ export type HxClassField =
       name: string;
       access: HxAccess;
       isStatic: boolean;
+      /** Lines printed above the field: metadata and `TODO(ts2hx)` comments. */
+      meta?: string[];
       get: 'get' | 'null' | 'never' | 'default';
       set: 'set' | 'null' | 'never' | 'default';
       isVar: boolean;
@@ -231,6 +235,8 @@ export type HxClassField =
       name: string;
       access: HxAccess;
       isStatic: boolean;
+      /** Lines printed above the field: metadata and `TODO(ts2hx)` comments. */
+      meta?: string[];
       isOverride: boolean;
       isAbstract: boolean;
       fn: HxFunction;
@@ -244,6 +250,7 @@ export type HxDecl =
       isAbstract: boolean;
       superClass?: { path: HxTypePath; params: HxType[] };
       fields: HxClassField[];
+      /** Lines printed above the class: metadata and `TODO(ts2hx)` comments. */
       meta: string[];
     }
   | { kind: 'typedef'; name: string; typeParams: HxTypeParam[]; type: HxType }

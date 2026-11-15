@@ -7,7 +7,8 @@ conformance cases on JS, C# and C++. **Degraded** constructs compile and run
 but differ in documented edge cases, and print a `TODO(ts2hx)` comment.
 **Out of scope** constructs become an `Unsupported` placeholder (a TODO
 comment plus `Ts2hx.unsupported("…")`, which throws at run time). They never
-produce broken Haxe. "Runtime" means the `ts2hx` package
+produce broken Haxe: the conformance case `unsupported/compiles` feeds them
+all and must build on every target. "Runtime" means the `ts2hx` package
 ([0002](0002-targets-and-runtime.md)).
 
 ## Modules and names
@@ -22,8 +23,8 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 | dynamic `import()` | Out of scope | |
 | `namespace N {}`, `namespace A.B {}` | class `N` with `public static` members, nested namespaces and enums as `N_M` | Statements run in the module's `__init()`. Namespace blocks with the same name merge into one class; merging with a top-level class adds statics to that class. Merges with a function, an enum or a type are `Unsupported`; ambient namespaces emit nothing. Type names (interfaces, aliases, enums, namespaces) get `_` when they would shadow a module of the empty package or the generated `Main`. |
 | `declare global`, ambient declarations in the project | JS: externs. C#/C++: `#error` | |
-| npm packages | JS: externs generated from `.d.ts` (`@:jsRequire`). C#/C++: `#error` naming the package | The legacy shims (lodash, joi, nanoid, seedrandom) are ported to `ts2hx.npm.*` and work on all targets. |
-| Node built-ins | `process.argv`, `process.exit` and `process.stdout.write` through the runtime | Everything else (fs, path, …) is out of scope. |
+| npm packages | JS: externs generated from `.d.ts` (`@:jsRequire`). C#/C++: `#error` naming the package | One extern class per package, `<rootPackage>.externs.<Package>`, with the members the project reads: a function with one signature is typed (primitives; everything else `Dynamic`), anything else is a `static var` of type `Dynamic`. Types a package declares map to `Dynamic` (or a `Dict`). A package is a module resolved to a `.d.ts` under `node_modules` other than `@types/node`; a default import is used as the namespace (`pkg.member`), so calling it or reading a namespace as a value is `Unsupported`. The legacy shims are ported to `ts2hx.npm.*` and work on all targets (degraded): lodash (the common array/object/function helpers, without `debounce`/`transform`; an unported member is `Unsupported`), joi (`object`/`string`/`number`/`boolean`/`array`/`any` with `required`/`min`/`max`/`integer`/`valid`/`items`, joi's messages; object keys are checked in `Reflect.fields` order, alphabetical on C#/C++), nanoid (ids from `Math.random`), seedrandom (exact ARC4 sequence; only the call form, no `int32`/`quick`/`state`). |
+| Node built-ins | `process.argv`, `process.exit` and `process.stdout`/`stderr.write` through `ts2hx.Process` | Native targets build `argv` as `[program, program, ...Sys.args()]`. Everything else (fs, path, …) is out of scope. |
 
 ## Types
 
@@ -66,7 +67,7 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 | `function` expressions using a dynamic `this`, `call`/`apply`/`bind` with a foreign `this`, `arguments` | Degraded (`bind` keeps the receiver) / out of scope | |
 | default parameters | Haxe constant defaults, otherwise `if (p == null) p = …` | Explicit `null` triggers the default (degraded, see 0002). |
 | rest parameters, spread arguments | `...rest:T` (`haxe.Rest`). Spread into a fixed-arity call goes through `Reflect.callMethod` or an inlined unpack | |
-| decorators (legacy and TC39) | Out of scope: a TODO plus `@:ts.decorator("…")` metadata. The decorator call is not executed | |
+| decorators (legacy and TC39) | Out of scope: a TODO plus `@:ts.decorator("…")` metadata on the class or member. The decorator call is not executed | A warning per decorator. |
 
 ## Statements and expressions
 
@@ -106,4 +107,4 @@ produce broken Haxe. "Runtime" means the `ts2hx` package
 | `JSON.parse`/`stringify` (indent, replacer array) | `ts2hx.Json` | The key order comes from the static type. Replacer functions and `toJSON` are supported. |
 | `Promise.*`, `setTimeout`/`setInterval`/`queueMicrotask` | `ts2hx.Promise`, `ts2hx.EventLoop` | |
 | `Error` family, `Date` (UTC only), `Intl`, typed arrays | `ts2hx.Error` family / `ts2hx.JsDate` degraded (no local time zones) / out of scope / `Uint8Array` family degraded to `Array<Float>` | |
-| any other lib member | `Unsupported` with the member name | A warning lists them per run. |
+| any other lib member | `Unsupported` with the member name | One warning per run lists them, with the npm members no shim covers. |

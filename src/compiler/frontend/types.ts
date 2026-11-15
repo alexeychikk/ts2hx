@@ -47,6 +47,27 @@ export function explicitlyNullable(type: HxType): HxType {
     : { kind: 'null', inner: type };
 }
 
+/** Whether a file is an npm package's declaration, not the TS lib or `@types/node`. */
+export function isExternalFile(fileName: string): boolean {
+  return (
+    /[\\/]node_modules[\\/]/.test(fileName) &&
+    !/[\\/]node_modules[\\/]@types[\\/]node[\\/]/.test(fileName) &&
+    !/[\\/]node_modules[\\/]typescript[\\/]lib[\\/]lib\.[^\\/]*\.d\.ts$/.test(
+      fileName,
+    )
+  );
+}
+
+/** A type an npm package declares: `Dynamic` (or a `Dict`), never a mapped structure. */
+function isExternalType(type: ts.Type): boolean {
+  const symbol = type.aliasSymbol ?? type.getSymbol();
+  const declarations = symbol?.declarations ?? [];
+  return (
+    declarations.length > 0 &&
+    declarations.every((d) => isExternalFile(d.getSourceFile().fileName))
+  );
+}
+
 /** Haxe module path of a project source file, or `undefined` for lib and external files. */
 export type ModulePathResolver = (
   sourceFile: ts.SourceFile,
@@ -314,6 +335,10 @@ export class TypeMapper {
     if (this.checker.isArrayType(type)) {
       const [element] = this.checker.getTypeArguments(type as ts.TypeReference);
       return arrayType(element ? this.map(element) : DYNAMIC);
+    }
+    if (isExternalType(type)) {
+      const value = this.dictValueType(type);
+      return value ? dictType(this.map(value)) : DYNAMIC;
     }
     const error = this.errorInstanceType(type);
     if (error) {
