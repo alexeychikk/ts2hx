@@ -115,6 +115,10 @@ reason it is not a gate.)
   - Match results are plain `Array<String>`. Their `index`, `input` and
     `groups` sit in a weak side table (`ConditionalWeakTable` on C#,
     `WeakMap` on C++), read by `RegExp.matchIndex`/`matchInput`/`matchGroups`.
+    Look them up from the value as `Dynamic`. On C++, typing an
+    `Array<String>` as `Array<Dynamic>` copies it, so the copy is not found in
+    the table. Casting an `Array<Dynamic>` to `Array<String>` converts its
+    elements in place.
   - `y` is exact. `u` only affects how an empty match advances. Off JS
     under `i`, case-insensitive matching follows the target engine for
     non-ASCII letters (degraded).

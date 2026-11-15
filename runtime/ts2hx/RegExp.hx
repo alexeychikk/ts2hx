@@ -142,7 +142,7 @@ class RegExp {
 	}
 
 	/** Whether an array is an `exec`/`match` result carrying `index`, `input` and `groups`. */
-	public static function isMatch(array:Array<Dynamic>):Bool {
+	public static function isMatch(array:Dynamic):Bool {
 		return js.Syntax.code("Object.prototype.hasOwnProperty.call({0}, 'index')", array);
 	}
 	#else
@@ -409,8 +409,8 @@ class RegExp {
 	}
 
 	/** Whether an array is an `exec`/`match` result carrying `index`, `input` and `groups`. */
-	public static function isMatch(array:Array<Dynamic>):Bool {
-		return MatchInfo.of(array) != null;
+	public static function isMatch(value:Dynamic):Bool {
+		return MatchInfo.of(value) != null;
 	}
 
 	static function canonicalFlags(flags:String):String {
@@ -552,7 +552,7 @@ class MatchInfo {
 		untyped __cs__("((global::System.Runtime.CompilerServices.ConditionalWeakTable<object, object>){0}).AddOrUpdate({1}, {2})", table, match, info);
 	}
 
-	public static function of(match:{}):Null<MatchInfo> {
+	public static function of(match:Dynamic):Null<MatchInfo> {
 		var info:Dynamic = untyped __cs__("(((global::System.Runtime.CompilerServices.ConditionalWeakTable<object, object>){0}).TryGetValue({1}, out var ts2hxInfo) ? ts2hxInfo : null)",
 			table, match);
 		return cast info;

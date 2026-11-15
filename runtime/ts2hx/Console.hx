@@ -35,7 +35,7 @@ class Console {
 		if (Std.isOfType(value, String))
 			return "'" + value + "'";
 		if (Std.isOfType(value, Array))
-			return inspectArray(value, depth);
+			return RegExp.isMatch(value) ? inspectMatch(value, depth) : inspectArray(value, depth);
 		if (Reflect.isFunction(value))
 			return "[Function (anonymous)]";
 		if (isPlainObject(value))
@@ -50,20 +50,26 @@ class Console {
 	}
 
 	static function inspectArray(array:Array<Dynamic>, depth:Int):String {
-		var isMatch = RegExp.isMatch(array);
-		if (array.length == 0 && !isMatch)
+		if (array.length == 0)
 			return "[]";
 		if (depth > MAX_DEPTH)
 			return "[Array]";
 		var output = children(depth, [for (element in array) element]);
-		var values = array;
-		if (isMatch) {
-			currentDepth = depth + 1;
-			indentation += 2;
-			output = output.concat(RegExp.inspectExtras(cast array, value -> inspectValue(value, depth + 1)));
-			indentation -= 2;
-			values = array.concat([""]);
-		}
+		var grouped = output.length > 6 ? groupElements(output, array) : output;
+		return reduceToSingleString(grouped, output.length, depth + 1, "[", "]");
+	}
+
+	/** An `exec`/`match` result: its elements, then `index`, `input` and `groups` as Node prints them. */
+	static function inspectMatch(match:Array<String>, depth:Int):String {
+		if (depth > MAX_DEPTH)
+			return "[Array]";
+		var output = children(depth, [for (element in match) element]);
+		currentDepth = depth + 1;
+		indentation += 2;
+		output = output.concat(RegExp.inspectExtras(match, value -> inspectValue(value, depth + 1)));
+		indentation -= 2;
+		var values:Array<Dynamic> = [for (element in match) element];
+		values.push("");
 		var grouped = output.length > 6 ? groupElements(output, values) : output;
 		return reduceToSingleString(grouped, output.length, depth + 1, "[", "]");
 	}
