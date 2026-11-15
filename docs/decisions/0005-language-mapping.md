@@ -88,7 +88,7 @@ all and must build on every target. "Runtime" means the `ts2hx` package
 | `in`, `delete` | `Reflect.hasField`/`Dict` / `Reflect.deleteField` | |
 | comma, `void`, assignment as an expression | block expressions; Haxe assignments are expressions | A `void` call used as a value becomes `{ f(); null; }`; `return f();` in a `void` function becomes `f(); return;`. `void x` is `null`, or `{ x; null; }` when `x` has effects. A compound assignment to a module var whose value is used is spelled `m = m * v`: Haxe 4.3.7's JS generator references an elided `_Fields_` class for `m *= v` as a value. |
 | template literals, tagged templates | `+` chains through `Num.toString` or `Ts2hx.string` (`null`/`undefined` literals print as constants) / a call with a strings array and the values | |
-| regex literals and methods | `ts2hx.RegExp` | 0002. |
+| regex literals and methods | `ts2hx.RegExp` | `exec`/`test`/`lastIndex`/flags, and `String` `match`/`matchAll`/`replace`/`replaceAll` (string or function replacer)/`split`/`search`. Match arrays are `Array<String>` with `index`/`input`/`groups` read through `RegExp` statics. `matchAll` gives a `RegExpStringIterator` that for-of, spread and `Array.from` consume. A function replacer is wrapped into an argument-array callback. 0002. |
 | generators, iterators, `yield*` | state-machine pass plus `ts2hx.Generator` | |
 | `async`/`await`, `for await`, async generators | the same state machine driven by `ts2hx.Promise` | Microtask ordering matches Node (0002). |
 | `eval`, `with`, `new Function`, `Proxy`, `Reflect.*` (ES), `WeakRef`, `FinalizationRegistry` | Out of scope (`WeakMap`/`WeakSet` are degraded to strong maps) | |

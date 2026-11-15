@@ -19,6 +19,7 @@ import type {
 } from '../ir/types';
 import { escapeIdentifier, HAXE_STD_TYPES, MAIN_CLASS } from '../model/names';
 import { libErrorClassPath } from '../stdlib/errors';
+import { libRegExpType } from '../stdlib/regexp-bindings';
 import { ancestors, isHoistedClass } from './classes';
 
 const NULLISH = ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void;
@@ -340,9 +341,9 @@ export class TypeMapper {
       const value = this.dictValueType(type);
       return value ? dictType(this.map(value)) : DYNAMIC;
     }
-    const error = this.errorInstanceType(type);
-    if (error) {
-      return error;
+    const libInstance = this.errorInstanceType(type) ?? libRegExpType(type);
+    if (libInstance) {
+      return libInstance;
     }
     const instance = this.classInstanceType(type);
     if (instance) {

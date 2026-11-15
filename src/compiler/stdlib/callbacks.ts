@@ -2,7 +2,7 @@ import { BOOL, isBoolType, RUNTIME, staticCall } from '../ir/builders';
 import type { HxExpr, HxParam, HxType } from '../ir/types';
 
 /** Callback references a wrapper may evaluate on every call without changing behaviour. */
-function isStableReference(expr: HxExpr): boolean {
+export function isStableReference(expr: HxExpr): boolean {
   switch (expr.kind) {
     case 'local':
     case 'staticField':

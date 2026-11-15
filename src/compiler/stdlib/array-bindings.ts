@@ -315,7 +315,7 @@ function spliceAll(array: HxExpr): HxExpr {
 }
 
 /** `Array.from(iterable, mapFn?)` on arrays, strings and array-like objects. */
-const from: CallBinding = (call) => {
+export const arrayFrom: CallBinding = (call) => {
   const { args, argTypes } = call;
   if (call.spreadLast || args.length < 1 || args.length > 2) return undefined;
   const isString = (argTypes[0].flags & ts.TypeFlags.StringLike) !== 0;
@@ -437,7 +437,7 @@ export const ARRAY_CALL_BINDINGS: Array<[string, CallBinding]> = [
     [`Array.${name}`, binding],
     [`ReadonlyArray.${name}`, binding],
   ]),
-  ['ArrayConstructor.from', from],
+  ['ArrayConstructor.from', arrayFrom],
   ['ArrayConstructor.of', (call) => arrayOf(call, call.type)],
   [
     'Array',

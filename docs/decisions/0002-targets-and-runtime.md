@@ -104,6 +104,24 @@ reason it is not a gate.)
   the month on C#, but the year on JS and C++. The runtime therefore rewrites
   named groups into plain groups plus a name→index table before building the
   `EReg`. Unicode property escapes and the `v` flag are out of scope.
+  - JS uses the native RegExp. Off JS, `RegExpPattern` translates the JS
+    source so .NET and PCRE2 agree with it. `.`, `^`/`$` (with or without `m`),
+    `\d`/`\w`/`\s`/`\b` (ASCII, JS whitespace), `[]`/`[^]`, `\cX`/`\u{…}`
+    and legacy octal escapes become explicit classes or lookarounds. A
+    backreference to a group that did not take part matches empty, as in JS.
+    Only `i` reaches `EReg` as an option, and non-ASCII pattern characters
+    are escaped, because hxcpp passes the pattern length in characters to
+    PCRE2.
+  - Match results are plain `Array<String>`. Their `index`, `input` and
+    `groups` sit in a weak side table (`ConditionalWeakTable` on C#,
+    `WeakMap` on C++), read by `RegExp.matchIndex`/`matchInput`/`matchGroups`.
+    Look them up from the value as `Dynamic`. On C++, typing an
+    `Array<String>` as `Array<Dynamic>` copies it, so the copy is not found in
+    the table. Casting an `Array<Dynamic>` to `Array<String>` converts its
+    elements in place.
+  - `y` is exact. `u` only affects how an empty match advances. Off JS
+    under `i`, case-insensitive matching follows the target engine for
+    non-ASCII letters (degraded).
 - **Reflection and dynamic access.** Reading a missing field through
   `Dynamic` gives `null` on anonymous structures on all three targets. On a
   **class instance it throws on C#** (`MemberAccessException: Field not

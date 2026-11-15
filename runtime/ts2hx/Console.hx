@@ -35,11 +35,13 @@ class Console {
 		if (Std.isOfType(value, String))
 			return "'" + value + "'";
 		if (Std.isOfType(value, Array))
-			return inspectArray(value, depth);
+			return RegExp.isMatch(value) ? inspectMatch(value, depth) : inspectArray(value, depth);
 		if (Reflect.isFunction(value))
 			return "[Function (anonymous)]";
 		if (isPlainObject(value))
 			return inspectObject(value, depth);
+		if (Std.isOfType(value, RegExp.MatchGroups))
+			return inspectDict(value, depth, "[Object: null prototype] ");
 		return Ts2hx.string(value);
 	}
 
@@ -55,6 +57,33 @@ class Console {
 		var output = children(depth, [for (element in array) element]);
 		var grouped = output.length > 6 ? groupElements(output, array) : output;
 		return reduceToSingleString(grouped, output.length, depth + 1, "[", "]");
+	}
+
+	/** An `exec`/`match` result: its elements, then `index`, `input` and `groups` as Node prints them. */
+	static function inspectMatch(match:Array<String>, depth:Int):String {
+		if (depth > MAX_DEPTH)
+			return "[Array]";
+		var output = children(depth, [for (element in match) element]);
+		currentDepth = depth + 1;
+		indentation += 2;
+		output = output.concat(RegExp.inspectExtras(match, value -> inspectValue(value, depth + 1)));
+		indentation -= 2;
+		var values:Array<Dynamic> = [for (element in match) element];
+		values.push("");
+		var grouped = output.length > 6 ? groupElements(output, values) : output;
+		return reduceToSingleString(grouped, output.length, depth + 1, "[", "]");
+	}
+
+	/** A dictionary printed like the plain object holding its keys, after `prefix`. */
+	static function inspectDict(dict:Dict<Dynamic>, depth:Int, prefix:String):String {
+		var keys = dict.keys();
+		if (keys.length == 0)
+			return prefix + "{}";
+		if (depth > MAX_DEPTH)
+			return prefix == "" ? "[Object]" : StringTools.trim(prefix);
+		var values = children(depth, [for (key in keys) dict.get(key)]);
+		var output = [for (i in 0...keys.length) keys[i] + ": " + values[i]];
+		return reduceToSingleString(output, output.length, depth + 1, prefix + "{", "}");
 	}
 
 	static function inspectObject(value:Dynamic, depth:Int):String {

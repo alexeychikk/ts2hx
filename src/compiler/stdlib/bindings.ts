@@ -29,6 +29,10 @@ import {
   PROCESS_CALL_BINDINGS,
   PROCESS_VALUE_BINDINGS,
 } from './process-bindings';
+import {
+  REGEXP_CALL_BINDINGS,
+  REGEXP_PROPERTY_BINDINGS,
+} from './regexp-bindings';
 import { STRING_CALL_BINDINGS } from './string-bindings';
 
 /** The object a method is called on (`console` in `console.log(x)`). */
@@ -69,10 +73,7 @@ export type ValueBinding = (pos?: SourcePos) => HxExpr;
  * Calls to TS lib functions, keyed by the checker's fully qualified name of the
  * callee's symbol (only symbols declared in a lib file are looked up).
  */
-export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
-  string,
-  CallBinding
->([
+export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = firstBound([
   [
     'Console.log',
     ({ receiver, args, argTypes, pos }) =>
@@ -125,6 +126,7 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
   ...ITERATOR_CALL_BINDINGS,
   ...ERROR_CALL_BINDINGS,
   ...PROCESS_CALL_BINDINGS,
+  ...REGEXP_CALL_BINDINGS,
   ['ObjectConstructor.keys', dictEnumeration('keys', () => arrayType(STRING))],
   ['ObjectConstructor.values', dictEnumeration('values', arrayType)],
   [
@@ -145,6 +147,21 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = new Map<
         : undefined,
   ],
 ]);
+
+/** Bindings by key; several bindings under one key are tried in order until one binds the call. */
+function firstBound(
+  entries: ReadonlyArray<readonly [string, CallBinding]>,
+): Map<string, CallBinding> {
+  const map = new Map<string, CallBinding>();
+  for (const [key, binding] of entries) {
+    const previous = map.get(key);
+    map.set(
+      key,
+      previous ? (call) => previous(call) ?? binding(call) : binding,
+    );
+  }
+  return map;
+}
 
 /** `Object.keys`/`values`/`entries` of a `ts2hx.Dict`: its own ordered enumeration. */
 function dictEnumeration(
@@ -181,6 +198,7 @@ export const PROPERTY_BINDINGS: ReadonlyMap<string, PropertyBinding> = new Map([
   ['String.length', lengthField],
   ...ITERATOR_PROPERTY_BINDINGS,
   ...ERROR_PROPERTY_BINDINGS,
+  ...REGEXP_PROPERTY_BINDINGS,
 ]);
 
 /** Lib values read as plain identifiers or properties (`NaN`, `Infinity`). */
