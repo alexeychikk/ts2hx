@@ -197,6 +197,7 @@ const MAX_SOURCE_SNIPPET = 80;
 
 const STD = typePath([], 'Std');
 const REFLECT = typePath([], 'Reflect');
+const COLLECTION_CONSTRUCTORS = new Set(['Map', 'Set', 'WeakMap', 'WeakSet']);
 
 /** A type declared inside a module (class or typedef): a downcast to another one is a `cast`. */
 function isModuleSubType(type: HxType): boolean {
@@ -2515,11 +2516,7 @@ export class ModuleFrontend {
     };
   }
 
-  /**
-   * `ts2hx.Obj.declareClass`: the class's JS name and own instance data fields in JS
-   * definition order (parameter properties, then field declarations), which
-   * enumeration and `console.log` follow on every target (ADR 0002).
-   */
+  /** `Obj.declareClass` with the JS name and own data fields in JS definition order (ADR 0002). */
   private classRegistration(
     node: ts.ClassLikeDeclaration,
     path: HxTypePath,
@@ -3167,13 +3164,7 @@ export class ModuleFrontend {
     if (this.libKey(node.expression) === 'RegExp') {
       return this.newRegExp(node, args, pos);
     }
-    const collection = this.libKey(node.expression);
-    if (
-      collection === 'Map' ||
-      collection === 'Set' ||
-      collection === 'WeakMap' ||
-      collection === 'WeakSet'
-    ) {
+    if (COLLECTION_CONSTRUCTORS.has(this.libKey(node.expression) ?? '')) {
       return (
         (args.some(ts.isSpreadElement)
           ? undefined
