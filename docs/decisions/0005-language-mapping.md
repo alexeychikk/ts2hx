@@ -106,6 +106,6 @@ all and must build on every target. "Runtime" means the `ts2hx` package
 | `Map`, `Set`, `WeakMap`, `WeakSet` | `ts2hx.JsMap` / `ts2hx.JsSet` | |
 | `Object.keys`/`values`/`entries`/`assign`/`fromEntries`/`freeze` (no-op) | `ts2hx.Obj` | |
 | `JSON.parse`/`stringify` (indent, replacer array) | `ts2hx.Json` | The key order comes from the static type. Replacer functions and `toJSON` are supported. |
-| `Promise.*`, `setTimeout`/`setInterval`/`queueMicrotask` | `ts2hx.Promise`, `ts2hx.EventLoop` | |
+| `Promise.*`, `setTimeout`/`setInterval`/`clearTimeout`/`clearInterval`/`queueMicrotask` | `ts2hx.Promise`, `ts2hx.EventLoop` | `then`/`catch`/`finally`, `resolve`/`reject`/`all`/`allSettled`/`race`/`any` (array arguments; other iterables are `Unsupported`), promise and thenable adoption, `AggregateError`. Callbacks are padded to the arity the runtime calls them with (0002). `setImmediate` and `process.nextTick` are not bound. |
 | `Error` family, `Date` (UTC only), `Intl`, typed arrays | `ts2hx.Error` family / `ts2hx.JsDate` degraded (no local time zones) / out of scope / `Uint8Array` family degraded to `Array<Float>` | |
 | any other lib member | `Unsupported` with the member name | One warning per run lists them, with the npm members no shim covers. |

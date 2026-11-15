@@ -73,6 +73,14 @@ Promise.reject<number>(new Error('reason'))
   )
   .then((n) => console.log('two-arg then', n));
 
+Promise.all([1, 2, 3]).then((ns) => console.log('plain values', ns));
+
+Promise.allSettled([Promise.resolve(1), Promise.reject('no')]).then((rs) =>
+  console.log(rs),
+);
+
+console.log(Promise.resolve([1, 'a']), new Promise<number>(() => {}));
+
 const resolved = Promise.resolve('same');
 console.log('resolve returns same', Promise.resolve(resolved) === resolved);
 

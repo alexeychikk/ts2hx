@@ -91,18 +91,14 @@ export function libAsyncType(
   return undefined;
 }
 
-function isUndefinedLiteral(expr: HxExpr): boolean {
-  return expr.kind === 'const' && expr.value === null;
-}
-
 /** A callback the runtime calls with exactly `params` arguments, or `undefined` when it cannot be adapted. */
 function callback(
   expr: HxExpr,
   params: HxType[],
   freshName: (hint: string) => string,
 ): HxExpr | undefined {
-  if (isUndefinedLiteral(expr) || expr.type.kind !== 'fn') {
-    return expr.kind === 'fn' ? undefined : expr;
+  if (expr.type.kind !== 'fn') {
+    return expr;
   }
   if (params.length === 0) {
     return expr.type.args.length === 0 ? expr : undefined;

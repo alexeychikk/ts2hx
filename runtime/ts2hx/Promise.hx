@@ -32,20 +32,20 @@ abstract Promise<T>(PromiseCore) from PromiseCore to PromiseCore {
 		return PromiseCore.reject(reason);
 	}
 
-	public static inline function all(values:Array<Dynamic>):Promise<Array<Dynamic>> {
-		return PromiseCore.all(values);
+	public static inline function all<E>(values:Array<E>):Promise<Array<Dynamic>> {
+		return PromiseCore.all([for (value in values) (value : Dynamic)]);
 	}
 
-	public static inline function allSettled(values:Array<Dynamic>):Promise<Array<Dynamic>> {
-		return PromiseCore.allSettled(values);
+	public static inline function allSettled<E>(values:Array<E>):Promise<Array<Dynamic>> {
+		return PromiseCore.allSettled([for (value in values) (value : Dynamic)]);
 	}
 
-	public static inline function race<T>(values:Array<Dynamic>):Promise<T> {
-		return PromiseCore.race(values);
+	public static inline function race<E>(values:Array<E>):Promise<Dynamic> {
+		return PromiseCore.race([for (value in values) (value : Dynamic)]);
 	}
 
-	public static inline function any<T>(values:Array<Dynamic>):Promise<T> {
-		return PromiseCore.any(values);
+	public static inline function any<E>(values:Array<E>):Promise<Dynamic> {
+		return PromiseCore.any([for (value in values) (value : Dynamic)]);
 	}
 }
 
