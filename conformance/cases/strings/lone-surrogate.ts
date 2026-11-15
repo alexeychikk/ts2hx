@@ -1,0 +1,10 @@
+const high = String.fromCharCode(0xd83d);
+const low = String.fromCharCode(0xdc00);
+console.log('[' + high + ']', '[' + low + ']');
+console.log(high + low, (high + low).length);
+console.log('😀'.slice(0, 1).length, '😀'.charCodeAt(1));
+console.log([high]);
+console.log([high, 'x' + low + 'y', '😀']);
+console.log({ a: high, b: high + low });
+console.log(["it's", 'say "hi"', 'a\nb\tc', 'back\\slash', '\u0001\u007f']);
+console.log([`it's "both"`, 'é中']);

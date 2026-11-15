@@ -152,6 +152,60 @@ describe('stdlib: numbers and Math', () => {
     expect(hx).toContain('ts2hx.Num.pow(n, 2.0)');
   });
 
+  it('folds fixed and spread arguments of a rest parameter into one spread array', async () => {
+    const hx = await moduleOf([
+      'const nums = [3, 7]; const a = [1]; const b = [2];',
+      'console.log(Math.min(0, ...nums), Math.max(...nums, 10), Math.min(1, ...a, 2, ...b), Math.hypot(...nums));',
+      'console.log(String.fromCharCode(72, ...nums), String.fromCodePoint(...nums, 33));',
+    ]);
+    expect(hx).toContain('ts2hx.JsMath.min(...[0.0].concat(nums))');
+    expect(hx).toContain('ts2hx.JsMath.max(...nums.concat([10.0]))');
+    expect(hx).toContain(
+      'ts2hx.JsMath.min(...[1.0].concat(a).concat([2.0]).concat(b))',
+    );
+    expect(hx).toContain('ts2hx.JsMath.hypot(...nums)');
+    expect(hx).toContain('ts2hx.JsString.fromCharCode(...[72.0].concat(nums))');
+    expect(hx).toContain(
+      'ts2hx.JsString.fromCodePoint(...nums.concat([33.0]))',
+    );
+  });
+
+  it('keeps fixed parameters before the folded rest of a user function', async () => {
+    const hx = await moduleOf([
+      'function sum(first: number, ...rest: number[]): number { return first + rest.length; }',
+      'const a = [1]; const b = [2];',
+      'console.log(sum(1, 2, ...a, ...b), sum(1, ...a));',
+    ]);
+    expect(hx).toContain('sum(1.0, ...[2.0].concat(a).concat(b))');
+    expect(hx).toContain('sum(1.0, ...a)');
+  });
+
+  it('spreads console.log arguments, copying them into the Dynamic rest', async () => {
+    const hx = await moduleOf([
+      'const nums = [3, 7]; const values: any[] = ["x"];',
+      "console.log(...values); console.log('n:', ...nums);",
+    ]);
+    expect(hx).toContain('ts2hx.Console.log(...values)');
+    expect(hx).toMatch(
+      /ts2hx\.Console\.log\(\.\.\.\(\{\s*final (__spread_\d+):Array<Dynamic> = \[\(cast "n:" : Dynamic\)\];\s*for \((__item_\d+) in nums\) \{\s*\1\.push\(\(cast \2 : Dynamic\)\);/,
+    );
+  });
+
+  it('reports a spread into a parameter before the rest as unsupported', async () => {
+    const { hx, diagnostics } = await compile([
+      'function f(x: number, ...rest: number[]): number { return x; }',
+      'const xs: [number, number] = [1, 2];',
+      'console.log(f(...xs), Math.pow(...xs));',
+    ]);
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      'TODO(ts2hx): spread into a non-rest parameter is not supported yet',
+      'TODO(ts2hx): spread into a non-rest parameter is not supported yet',
+    ]);
+    expect(hx).toContain(
+      'ts2hx.Console.log(/* TODO(ts2hx): spread into a non-rest parameter is not supported yet: f(...xs) */',
+    );
+  });
+
   it('inlines Math and Number constants', async () => {
     const hx = await moduleOf([
       'console.log(Math.PI, Number.MAX_SAFE_INTEGER, Number.EPSILON);',

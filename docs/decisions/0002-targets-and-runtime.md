@@ -139,8 +139,10 @@ reason it is not a gate.)
   Degraded: holes are documented, not emulated.
 - **Output.** `console.log`, `console.error` and `process.stdout.write` go
   to `ts2hx.Console`. It uses Node `util.inspect` formatting for primitives,
-  arrays, plain objects, Map and Set (the subset the corpus uses), and
-  `Sys.println` on C# and C++.
+  arrays, plain objects, Map and Set (the subset the corpus uses), with
+  Node's string quoting and escapes (lone surrogates as `\ud83d`), and
+  `Sys.println` on C# and C++. C++ drops a lone surrogate when it writes
+  UTF-8, so its output first replaces them with U+FFFD like Node.
 
 ## Build and test per target
 

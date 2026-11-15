@@ -39,6 +39,9 @@ class Process {
 		#if js
 		return stream.write(text);
 		#else
+		#if cpp
+		text = JsString.toWellFormed(text);
+		#end
 		if (stream == 2)
 			Sys.stderr().writeString(text);
 		else
