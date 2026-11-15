@@ -142,6 +142,21 @@ describe('stdlib: arrays', () => {
     expect(hx).toContain('ts2hx.JsArray.unshift(u, ...more)');
   });
 
+  it('types an element read off a Dynamic-element array without its context', async () => {
+    const hx = await moduleOf([
+      'function popOr(list: any[], fallback: number): number {',
+      '  return list.pop() ?? fallback;',
+      '}',
+      'const xs: any[] = [1]; const n: number = xs.shift() ?? 0;',
+      'const ys: number[] = [2]; console.log(popOr(xs, 0), n, ys.pop() ?? 0);',
+    ]);
+    expect(hx).toContain(
+      'return ((cast ts2hx.JsArray.pop(list) : Dynamic)) ?? ((cast fallback : Dynamic));',
+    );
+    expect(hx).toContain('((cast ts2hx.JsArray.shift(xs) : Dynamic)) ?? ');
+    expect(hx).toContain('ts2hx.JsArray.pop(ys) ?? 0.0');
+  });
+
   it('fixes the type of an inline array literal receiver', async () => {
     const hx = await moduleOf([
       "console.log([1, 'a'].join('-'), [1, 2].indexOf(2));",
