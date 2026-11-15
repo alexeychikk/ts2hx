@@ -160,6 +160,8 @@ function isSideEffectFree(expr: HxExpr): boolean {
       );
     case 'cast':
       return !expr.checked && isSideEffectFree(expr.expr);
+    case 'checkType':
+      return isSideEffectFree(expr.expr);
     default:
       return false;
   }

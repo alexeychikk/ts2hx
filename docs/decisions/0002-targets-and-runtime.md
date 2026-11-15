@@ -42,8 +42,19 @@ reason it is not a gate.)
 
 - **Numbers.** TS `number` is Haxe `Float` everywhere. `Int` appears only
   where Haxe requires it: the frontend converts with `ts2hx.Num.toIndex(x)` at
-  array, string and `Int`-parameter sites. A later optimisation pass may
-  demote provably small integer locals to `Int`. Bitwise operators go through
+  array, string and `Int`-parameter sites. The `inferInt` pass demotes
+  locals to `Int` when an interval analysis proves their JS value is always
+  an integer within 32 bits (never `-0` or fractional). That covers `for (let
+  …)` counters with an integral init, one `±step` update and a condition
+  that bounds them by `.length`, an integral constant or another demoted
+  local, plus `const` locals with such an init that index or bound a loop.
+  A counter bounded by an unproven `number` (`i < n` for a parameter `n`)
+  stays `Float`. A demoted local is read as `(i : Float)` everywhere except
+  comparisons and index arithmetic, where `Std.int(e)` of a proven `e`
+  becomes plain `Int` arithmetic. On `perf/loops` this makes C++ about 2.8×
+  faster (0.160 s → 0.057 s) and leaves C# unchanged: there hxcs boxes every
+  `Array<Float>` element read (`Array.__get` goes through
+  `Runtime.genericCast`), which dominates such loops. Bitwise operators go through
   `Num.toInt32`/`toUint32` and give a Float back. Number→string conversion
   always uses `Num.toString`, a JS `Number::toString` (shortest round-trip)
   implementation, on C# and C++. This covers string concatenation, template

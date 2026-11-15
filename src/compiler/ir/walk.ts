@@ -224,6 +224,7 @@ export function transformExpr(expr: HxExpr, transform: IrTransform): HxExpr {
       result = { ...expr, fn: transformFunction(expr.fn, transform) };
       break;
     case 'cast':
+    case 'checkType':
     case 'isOfType':
       result = { ...expr, expr: e(expr.expr) };
       break;
