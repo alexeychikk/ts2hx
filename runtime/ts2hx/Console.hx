@@ -40,6 +40,8 @@ class Console {
 			return "[Function (anonymous)]";
 		if (isPlainObject(value))
 			return inspectObject(value, depth);
+		if (Std.isOfType(value, RegExp.MatchGroups))
+			return inspectDict(value, depth, "[Object: null prototype] ");
 		return Ts2hx.string(value);
 	}
 
@@ -48,13 +50,34 @@ class Console {
 	}
 
 	static function inspectArray(array:Array<Dynamic>, depth:Int):String {
-		if (array.length == 0)
+		var isMatch = RegExp.isMatch(array);
+		if (array.length == 0 && !isMatch)
 			return "[]";
 		if (depth > MAX_DEPTH)
 			return "[Array]";
 		var output = children(depth, [for (element in array) element]);
-		var grouped = output.length > 6 ? groupElements(output, array) : output;
+		var values = array;
+		if (isMatch) {
+			currentDepth = depth + 1;
+			indentation += 2;
+			output = output.concat(RegExp.inspectExtras(cast array, value -> inspectValue(value, depth + 1)));
+			indentation -= 2;
+			values = array.concat([""]);
+		}
+		var grouped = output.length > 6 ? groupElements(output, values) : output;
 		return reduceToSingleString(grouped, output.length, depth + 1, "[", "]");
+	}
+
+	/** A dictionary printed like the plain object holding its keys, after `prefix`. */
+	static function inspectDict(dict:Dict<Dynamic>, depth:Int, prefix:String):String {
+		var keys = dict.keys();
+		if (keys.length == 0)
+			return prefix + "{}";
+		if (depth > MAX_DEPTH)
+			return prefix == "" ? "[Object]" : StringTools.trim(prefix);
+		var values = children(depth, [for (key in keys) dict.get(key)]);
+		var output = [for (i in 0...keys.length) keys[i] + ": " + values[i]];
+		return reduceToSingleString(output, output.length, depth + 1, prefix + "{", "}");
 	}
 
 	static function inspectObject(value:Dynamic, depth:Int):String {

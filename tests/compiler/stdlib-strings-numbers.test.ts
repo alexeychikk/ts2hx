@@ -47,13 +47,12 @@ describe('stdlib: strings', () => {
   });
 
   it('leaves RegExp arguments to the RegExp binding', async () => {
-    const { hx, diagnostics } = await compile([
+    const hx = await moduleOf([
       "const s: string = 'a-b';",
       "console.log(s.split('-'), s.split(/-/));",
     ]);
     expect(hx).toContain('ts2hx.JsString.split(s, "-")');
-    expect(diagnostics.length).toBeGreaterThan(0);
-    expect(hx).toContain('ts2hx.Ts2hx.unsupported(');
+    expect(hx).toContain('ts2hx.RegExp.split(s, new ts2hx.RegExp("-", ""))');
   });
 
   it('converts concat arguments with String()', async () => {

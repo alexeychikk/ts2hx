@@ -34,6 +34,7 @@ export const RUNTIME = {
   dict: typePath(['ts2hx'], 'Dict'),
   error: typePath(['ts2hx'], 'Error'),
   process: typePath(['ts2hx'], 'Process'),
+  regExp: typePath(['ts2hx'], 'RegExp'),
 };
 
 export function arrayType(element: HxType): HxType {

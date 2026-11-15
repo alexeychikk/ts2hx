@@ -70,6 +70,12 @@ import {
   libErrorClassPath,
 } from '../stdlib/errors';
 import { ExternRegistry, NPM_SHIMS, npmImportOf } from '../stdlib/npm';
+import {
+  isRegExpIterator,
+  REGEXP_WRITABLE_PROPERTIES,
+  regExpIteratorArray,
+  regExpLiteral,
+} from '../stdlib/regexp-bindings';
 import { stringCodePoints, stringIndex } from '../stdlib/string-bindings';
 import {
   accessorPair,
@@ -339,7 +345,11 @@ function isValueUsed(node: ts.Expression): boolean {
 
 /** Whether `key` is a project property (`undefined`) or a lib property Haxe can assign. */
 function isWritableLibProperty(key: string | undefined): boolean {
-  return key === undefined || ERROR_PROPERTIES.has(key);
+  return (
+    key === undefined ||
+    ERROR_PROPERTIES.has(key) ||
+    REGEXP_WRITABLE_PROPERTIES.has(key)
+  );
 }
 
 /** A declaration binding one name: a variable or an element of a destructuring pattern. */
@@ -1971,7 +1981,8 @@ export class ModuleFrontend {
       node.awaitModifier ||
       (!this.checker.isArrayType(iterated) &&
         !this.checker.isTupleType(iterated) &&
-        !overString) ||
+        !overString &&
+        !isRegExpIterator(this.types.map(iterated))) ||
       (ts.isVariableDeclarationList(initializer) &&
         initializer.declarations.length !== 1)
     ) {
@@ -1988,8 +1999,10 @@ export class ModuleFrontend {
     const name = this.localName(symbol.name);
     const isConst = (initializer.flags & ts.NodeFlags.Const) !== 0;
     const body = this.body(node.statement);
-    const source = this.expression(node.expression);
-    const iterable = overString ? stringCodePoints(source) : source;
+    const iterable = this.iterated(
+      this.expression(node.expression),
+      overString,
+    );
     if (isConst) {
       return [{ kind: 'forIn', name, iterable, body }];
     }
@@ -2016,17 +2029,25 @@ export class ModuleFrontend {
     return [{ kind: 'forIn', name: element, iterable, body: [bind, ...body] }];
   }
 
+  /** The array `for…of` iterates: a string's code points, the matches of `matchAll`, or the array itself. */
+  private iterated(source: HxExpr, overString: boolean): HxExpr {
+    if (overString) return stringCodePoints(source);
+    return isRegExpIterator(source.type) ? regExpIteratorArray(source) : source;
+  }
+
   /** `for (const [k, v] of xs)` / `for ([a, b] of xs)`: each element bound at the top of the body. */
   private forOfPattern(
     node: ts.ForOfStatement,
     initializer: ts.ForInitializer,
     overString: boolean,
   ): HxStmt[] {
-    const source = this.expression(node.expression);
-    const iterable = overString ? stringCodePoints(source) : source;
+    const iterable = this.iterated(
+      this.expression(node.expression),
+      overString,
+    );
     const element = localExpr(
       this.freshName('item'),
-      overString ? STRING : arrayElement(source.type),
+      overString ? STRING : arrayElement(iterable.type),
     );
     let bind: HxStmt[];
     if (ts.isVariableDeclarationList(initializer)) {
@@ -3020,6 +3041,9 @@ export class ModuleFrontend {
     if (this.libKey(node.expression) === 'Array') {
       return this.newArray(node, args, pos);
     }
+    if (this.libKey(node.expression) === 'RegExp') {
+      return this.newRegExp(node, args, pos);
+    }
     const path = this.classOf(node.expression);
     if (!path || args.some(ts.isSpreadElement)) {
       return this.unsupported(node);
@@ -3043,6 +3067,25 @@ export class ModuleFrontend {
       type: this.hxTypeOf(node),
       pos,
     };
+  }
+
+  /** `new RegExp(pattern, flags?)`, bound like the call `RegExp(…)`. */
+  private newRegExp(
+    node: ts.NewExpression,
+    args: readonly ts.Expression[],
+    pos: SourcePos,
+  ): HxExpr {
+    const bound = args.some(ts.isSpreadElement)
+      ? undefined
+      : CALL_BINDINGS.get('RegExp')?.({
+          args: args.map((a) => this.expression(a)),
+          argTypes: args.map((a) => this.typeOf(a)),
+          pos,
+          toJsString: this.toJsString,
+          freshName: (hint) => this.freshName(hint),
+          type: this.hxTypeOf(node),
+        });
+    return bound ?? this.unsupported(node);
   }
 
   /** `new Array(n)` / `new Array(a, b)`. */
@@ -3500,6 +3543,9 @@ export class ModuleFrontend {
     }
     if (ts.isTemplateExpression(node)) {
       return this.template(node, pos);
+    }
+    if (ts.isRegularExpressionLiteral(node)) {
+      return regExpLiteral(node.text, pos);
     }
     if (ts.isTaggedTemplateExpression(node)) {
       return this.taggedTemplate(node, pos);
@@ -5194,6 +5240,12 @@ export class ModuleFrontend {
       } else if (this.checker.isArrayLikeType(this.typeOf(e.expression))) {
         if (!isArray(spread.type)) return this.unsupported(node);
         segments.push({ spread: true, value: spread, fresh: false });
+      } else if (isRegExpIterator(spread.type)) {
+        segments.push({
+          spread: true,
+          value: regExpIteratorArray(spread),
+          fresh: true,
+        });
       } else {
         return this.unsupported(
           node,
