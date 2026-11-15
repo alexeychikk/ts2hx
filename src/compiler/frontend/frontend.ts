@@ -176,6 +176,14 @@ const COMPARISON_OPERATORS: ReadonlyMap<ts.SyntaxKind, HxBinop> = new Map([
   [ts.SyntaxKind.GreaterThanEqualsToken, '>='],
 ]);
 
+/** The `ts2hx.Ts2hx` function comparing operands whose types are not known statically. */
+const DYNAMIC_COMPARISONS: ReadonlyMap<HxBinop, string> = new Map([
+  ['<', 'lessThan'],
+  ['<=', 'lessEquals'],
+  ['>', 'greaterThan'],
+  ['>=', 'greaterEquals'],
+]);
+
 /** Compound assignments and the binary operator they apply. */
 const COMPOUND_ASSIGNMENTS: ReadonlyMap<ts.SyntaxKind, ts.BinaryOperator> =
   new Map([
@@ -877,6 +885,10 @@ export class ModuleFrontend {
 
   private isBooleanLike(node: ts.Expression): boolean {
     return everyConstituent(this.typeOf(node), ts.TypeFlags.BooleanLike);
+  }
+
+  private isAny(node: ts.Expression): boolean {
+    return (this.typeOf(node).flags & ts.TypeFlags.Any) !== 0;
   }
 
   /** `value` typed as `type`, through `Dynamic` when Haxe would not unify them. */
@@ -5277,10 +5289,17 @@ export class ModuleFrontend {
     }
   }
 
-  /** JS `ToNumber` of a number, string or boolean operand. */
+  /** JS `ToNumber` of a number, string, boolean or `any` operand. */
   private toNumber(node: ts.Expression): HxExpr | undefined {
-    const value = this.expression(node);
+    return this.numberOf(this.expression(node), node);
+  }
+
+  /** JS `ToNumber` of `value`, the converted `node`; `undefined` for types it does not handle. */
+  private numberOf(value: HxExpr, node: ts.Expression): HxExpr | undefined {
     if (this.isNumberLike(node)) return value;
+    if (this.isAny(node)) {
+      return staticCall(RUNTIME.ts2hx, 'toNumber', [value], FLOAT, value.pos);
+    }
     if (this.isStringLike(node)) {
       return staticCall(RUNTIME.num, 'fromString', [value], FLOAT, value.pos);
     }
@@ -5386,15 +5405,24 @@ export class ModuleFrontend {
       const comparable =
         (this.isNumberLike(node.left) && this.isNumberLike(node.right)) ||
         (this.isStringLike(node.left) && this.isStringLike(node.right));
-      return comparable
-        ? {
-            kind: 'binop',
-            op: comparison,
-            left: this.expression(node.left),
-            right: this.expression(node.right),
-            type: BOOL,
+      if (comparable) {
+        return {
+          kind: 'binop',
+          op: comparison,
+          left: this.expression(node.left),
+          right: this.expression(node.right),
+          type: BOOL,
+          pos,
+        };
+      }
+      return this.isAny(node.left) || this.isAny(node.right)
+        ? staticCall(
+            RUNTIME.ts2hx,
+            DYNAMIC_COMPARISONS.get(comparison)!,
+            [this.expression(node.left), this.expression(node.right)],
+            BOOL,
             pos,
-          }
+          )
         : this.unsupported(node);
     }
     return (
@@ -5402,7 +5430,10 @@ export class ModuleFrontend {
     );
   }
 
-  /** Arithmetic, string `+` and bitwise operators; `undefined` for operand types it does not handle. */
+  /**
+   * Arithmetic, string `+` and bitwise operators; `undefined` for operand types it does not handle.
+   * An `any` operand converts at run time: `Ts2hx.add` for `+`, `Ts2hx.toNumber` otherwise.
+   */
   private operation(
     kind: ts.SyntaxKind,
     leftNode: ts.Expression,
@@ -5410,6 +5441,16 @@ export class ModuleFrontend {
     pos: SourcePos,
     left: HxExpr = this.expression(leftNode),
   ): HxExpr | undefined {
+    if (
+      (this.isAny(leftNode) || this.isAny(rightNode)) &&
+      !(this.isNumberLike(leftNode) && this.isNumberLike(rightNode)) &&
+      !(
+        kind === ts.SyntaxKind.PlusToken &&
+        (this.isStringLike(leftNode) || this.isStringLike(rightNode))
+      )
+    ) {
+      return this.dynamicOperation(kind, leftNode, rightNode, pos, left);
+    }
     if (
       kind === ts.SyntaxKind.PlusToken &&
       (this.isStringLike(leftNode) || this.isStringLike(rightNode))
@@ -5425,7 +5466,36 @@ export class ModuleFrontend {
     if (!this.isNumberLike(leftNode) || !this.isNumberLike(rightNode)) {
       return undefined;
     }
+    return this.numericOperation(kind, left, this.expression(rightNode), pos);
+  }
+
+  /** `operation` with an `any` operand. */
+  private dynamicOperation(
+    kind: ts.SyntaxKind,
+    leftNode: ts.Expression,
+    rightNode: ts.Expression,
+    pos: SourcePos,
+    left: HxExpr,
+  ): HxExpr | undefined {
     const right = this.expression(rightNode);
+    if (kind === ts.SyntaxKind.PlusToken) {
+      return staticCall(RUNTIME.ts2hx, 'add', [left, right], DYNAMIC, pos);
+    }
+    const leftNumber = this.numberOf(left, leftNode);
+    const rightNumber = this.numberOf(right, rightNode);
+    if (!leftNumber || !rightNumber) {
+      return undefined;
+    }
+    return this.numericOperation(kind, leftNumber, rightNumber, pos);
+  }
+
+  /** `kind` on two Haxe `Float` operands, with JS results. */
+  private numericOperation(
+    kind: ts.SyntaxKind,
+    left: HxExpr,
+    right: HxExpr,
+    pos: SourcePos,
+  ): HxExpr | undefined {
     const floatOp = FLOAT_OPERATORS.get(kind);
     if (floatOp) {
       return { kind: 'binop', op: floatOp, left, right, type: FLOAT, pos };
@@ -5649,20 +5719,9 @@ export class ModuleFrontend {
         this.isModuleVar(node.left) && isValueUsed(node),
       );
     }
-    if (target.kind !== 'local') {
-      return this.unsupported(node);
-    }
-    const value = this.operation(operator, node.left, node.right, pos, target);
-    return value
-      ? {
-          kind: 'assign',
-          op: '=',
-          target,
-          value: this.coerce(value, target.type),
-          type: target.type,
-          pos,
-        }
-      : this.unsupported(node);
+    const { read, write, stmts } = this.readWrite(target, pos);
+    const value = this.operation(operator, node.left, node.right, pos, read);
+    return value ? this.withStmts(stmts, write(value)) : this.unsupported(node);
   }
 
   /** Whether `node` names a variable declared outside every function: a Haxe module var. */
@@ -5793,6 +5852,14 @@ export class ModuleFrontend {
     if (!target || target.kind === 'unsupported') {
       return undefined;
     }
+    return this.readWrite(target, pos);
+  }
+
+  /** Reads and writes of an lvalue, its object and index evaluated once. */
+  private readWrite(
+    target: HxExpr,
+    pos: SourcePos,
+  ): { read: HxExpr; write: (value: HxExpr) => HxExpr; stmts: HxStmt[] } {
     const assign =
       (to: HxExpr) =>
       (value: HxExpr): HxExpr => ({

@@ -94,6 +94,66 @@ class Ts2hx {
 		return "object";
 	}
 
+	/** JS `ToPrimitive` of a value whose static type is not known: an object becomes its string. */
+	public static function toPrimitive(value:Dynamic):Dynamic {
+		if (value == null || Std.isOfType(value, Bool) || Std.isOfType(value, Float) || Std.isOfType(value, String))
+			return value;
+		return string(value);
+	}
+
+	/** JS `Number(value)` of a value whose static type is not known; `null` reads as `undefined` (`NaN`). */
+	public static function toNumber(value:Dynamic):Float {
+		if (value == null)
+			return Math.NaN;
+		if (Std.isOfType(value, Bool))
+			return value ? 1.0 : 0.0;
+		if (Std.isOfType(value, Float))
+			return (value : Float);
+		return Num.fromString(string(value));
+	}
+
+	/** JS `a + b` when an operand's static type is not known: concatenation if either primitive is a string. */
+	public static function add(a:Dynamic, b:Dynamic):Dynamic {
+		var left:Dynamic = toPrimitive(a);
+		var right:Dynamic = toPrimitive(b);
+		if (Std.isOfType(left, String) || Std.isOfType(right, String))
+			return string(left) + string(right);
+		return toNumber(left) + toNumber(right);
+	}
+
+	/** JS `a < b` when an operand's static type is not known. */
+	public static function lessThan(a:Dynamic, b:Dynamic):Bool {
+		return less(a, b, false);
+	}
+
+	/** JS `a <= b` when an operand's static type is not known. */
+	public static function lessEquals(a:Dynamic, b:Dynamic):Bool {
+		return less(a, b, true);
+	}
+
+	/** JS `a > b` when an operand's static type is not known. */
+	public static function greaterThan(a:Dynamic, b:Dynamic):Bool {
+		return less(b, a, false);
+	}
+
+	/** JS `a >= b` when an operand's static type is not known. */
+	public static function greaterEquals(a:Dynamic, b:Dynamic):Bool {
+		return less(b, a, true);
+	}
+
+	static function less(a:Dynamic, b:Dynamic, orEqual:Bool):Bool {
+		var left:Dynamic = toPrimitive(a);
+		var right:Dynamic = toPrimitive(b);
+		if (Std.isOfType(left, String) && Std.isOfType(right, String)) {
+			var x:String = left;
+			var y:String = right;
+			return orEqual ? x <= y : x < y;
+		}
+		var x = toNumber(left);
+		var y = toNumber(right);
+		return orEqual ? x <= y : x < y;
+	}
+
 	/** JS loose equality `a == b` for primitives; objects compare by identity. */
 	public static function looseEq(a:Dynamic, b:Dynamic):Bool {
 		if (a == null || b == null)
