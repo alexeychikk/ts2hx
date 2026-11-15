@@ -3788,6 +3788,9 @@ export class ModuleFrontend {
     if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
       const value = this.expression(node.expression);
       const type = this.hxTypeOf(node);
+      if (value.type.kind === 'dynamic' && dictValue(type) !== undefined) {
+        return staticCall(RUNTIME.dict, 'from', [value], type, pos);
+      }
       return sameType(value.type, type) || type.kind === 'dynamic'
         ? value
         : { kind: 'cast', expr: value, checked: false, type, pos };

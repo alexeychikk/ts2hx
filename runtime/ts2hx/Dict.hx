@@ -10,6 +10,13 @@ class Dict<V> {
 
 	public function new() {}
 
+	/** A value typed as a dictionary only by a cast (`JSON.parse(s) as Record<string, V>`): a dictionary of its own keys. */
+	public static function from<V>(value:Dynamic):Dict<V> {
+		if (value == null || Std.isOfType(value, Dict))
+			return value;
+		return of(Obj.keys(value), Obj.values(value));
+	}
+
 	/** A dictionary holding `values[i]` under `keys[i]`, in that order. */
 	public static function of<V>(keys:Array<String>, values:Array<V>):Dict<V> {
 		var dict = new Dict<V>();

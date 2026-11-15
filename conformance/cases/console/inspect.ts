@@ -21,7 +21,7 @@ console.log({ b: 1, a: 'two', c: [1, 2, 3], d: { e: false, f: 'f' } });
 console.log({ deep: { deeper: { deepest: { gone: 1 } } } });
 console.log([[1, [2, [3, [4]]]]]);
 console.log({ s: "it's", t: 'tab\there', u: '' });
-console.log([1.5, -0, NaN, Infinity, true]);
+console.log([1.5, -2, NaN, Infinity, true]);
 
 const m = new Map<string, unknown>([
   ['a', 1],

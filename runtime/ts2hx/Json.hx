@@ -30,7 +30,7 @@ class Json {
 	}
 
 	static function revive(reviver:(String, Dynamic) -> Dynamic, holder:Dynamic, key:String):Dynamic {
-		var value = Obj.get(holder, key);
+		var value:Dynamic = Obj.get(holder, key);
 		if (Std.isOfType(value, Array)) {
 			var array:Array<Dynamic> = value;
 			for (i in 0...array.length)
