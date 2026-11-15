@@ -13,7 +13,7 @@ import {
 } from '../ir/builders';
 import type { HxExpr, HxType, HxTypePath, SourcePos } from '../ir/types';
 import type { BoundCall, CallBinding, PropertyBinding } from './bindings';
-import { padCallback } from './callbacks';
+import { nullaryCallback, padCallback } from './callbacks';
 
 /** `ts2hx.Promise<T>`: an abstract over the untyped `PromiseCore` (ADR 0002). */
 export const PROMISE_PATH: HxTypePath = typePath(['ts2hx'], 'Promise');
@@ -101,7 +101,7 @@ function callback(
     return expr;
   }
   if (params.length === 0) {
-    return expr.type.args.length === 0 ? expr : undefined;
+    return expr.type.args.length === 0 ? expr : nullaryCallback(expr);
   }
   return padCallback(expr, params[0], params.slice(1), freshName);
 }

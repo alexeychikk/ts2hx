@@ -1,4 +1,10 @@
-import { BOOL, isBoolType, RUNTIME, staticCall } from '../ir/builders';
+import {
+  BOOL,
+  constExpr,
+  isBoolType,
+  RUNTIME,
+  staticCall,
+} from '../ir/builders';
 import type { HxExpr, HxParam, HxType } from '../ir/types';
 
 /** Callback references a wrapper may evaluate on every call without changing behaviour. */
@@ -87,6 +93,47 @@ export function padCallback(
     },
     pos: callback.pos,
   };
+}
+
+/**
+ * A reference to a function called with no arguments, as JS calls a timer or
+ * microtask callback: its parameters must take `null` (JS passes `undefined`),
+ * and it is wrapped in a function passing `null` for each.
+ */
+export function nullaryCallback(callback: HxExpr): HxExpr | undefined {
+  const type = callback.type;
+  if (
+    type.kind !== 'fn' ||
+    !isStableReference(callback) ||
+    !type.args.every((a) => !a.rest && acceptsNull(a.type))
+  ) {
+    return undefined;
+  }
+  const call: HxExpr = {
+    kind: 'call',
+    callee: callback,
+    args: type.args.map(() => constExpr(null)),
+    type: type.ret,
+  };
+  return {
+    kind: 'fn',
+    fn: {
+      typeParams: [],
+      params: [],
+      ret: type.ret,
+      body: [
+        isVoid(type.ret)
+          ? { kind: 'expr', expr: call }
+          : { kind: 'return', value: call },
+      ],
+    },
+    type: { kind: 'fn', args: [], ret: type.ret },
+    pos: callback.pos,
+  };
+}
+
+function acceptsNull(type: HxType): boolean {
+  return type.kind === 'null' || type.kind === 'dynamic';
 }
 
 function isVoid(type: HxType): boolean {

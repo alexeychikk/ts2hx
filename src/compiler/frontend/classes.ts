@@ -357,21 +357,74 @@ export function accessorPair(
 }
 
 /**
- * The nearest ancestor's accessors overridden by an accessor named `name`: the
- * accessor pair, or `conflict` when an ancestor declares a field or method of that name.
+ * The topmost ancestor declaring what an accessor overrides: its accessor pair, or
+ * `field` when it is an `abstract` property, which Haxe declares as a property with
+ * storage whose `get_`/`set_` the accessors override.
+ */
+export interface InheritedAccessors {
+  root: ts.ClassLikeDeclaration;
+  pair: AccessorPair;
+  field?: ts.PropertyDeclaration;
+}
+
+/** An `abstract` property: JS gives it no own property, so a subclass may implement it with accessors. */
+export function isAbstractProperty(
+  member: ts.Node,
+): member is ts.PropertyDeclaration {
+  return (
+    ts.isPropertyDeclaration(member) &&
+    hasModifier(member, ts.ModifierFlags.Abstract)
+  );
+}
+
+const accessorImplementedCache = new WeakMap<ts.Program, Set<ts.Node>>();
+
+/** `abstract` properties some subclass in the program implements with an accessor. */
+export function accessorImplementedFields(program: ts.Program): Set<ts.Node> {
+  const cached = accessorImplementedCache.get(program);
+  if (cached) {
+    return cached;
+  }
+  const checker = program.getTypeChecker();
+  const result = new Set<ts.Node>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isAccessor(node) && ts.isClassLike(node.parent) && !isStatic(node)) {
+      const name = memberName(node);
+      const inherited =
+        name === undefined
+          ? undefined
+          : inheritedAccessors(checker, node.parent, name);
+      if (inherited && inherited !== 'conflict' && inherited.field) {
+        result.add(inherited.field);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  program
+    .getSourceFiles()
+    .filter((sf) => !sf.isDeclarationFile)
+    .forEach(visit);
+  accessorImplementedCache.set(program, result);
+  return result;
+}
+
+/**
+ * The accessors (or `abstract` property) of ancestors overridden by an accessor named
+ * `name`, or `conflict` when an ancestor declares another field or a method of that name.
  */
 export function inheritedAccessors(
   checker: ts.TypeChecker,
   node: ts.ClassLikeDeclaration,
   name: string,
-):
-  | { root: ts.ClassLikeDeclaration; pair: AccessorPair }
-  | 'conflict'
-  | undefined {
-  let found: { root: ts.ClassLikeDeclaration; pair: AccessorPair } | undefined;
+): InheritedAccessors | 'conflict' | undefined {
+  let found: InheritedAccessors | undefined;
   for (const ancestor of ancestors(checker, node)) {
     const members = instanceMembers(ancestor, name);
     if (members.length === 0) continue;
+    if (members.length === 1 && isAbstractProperty(members[0])) {
+      found = { root: ancestor, pair: {}, field: members[0] };
+      continue;
+    }
     if (!members.every(ts.isAccessor)) {
       return 'conflict';
     }
