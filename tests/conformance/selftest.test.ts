@@ -95,6 +95,12 @@ describe('conformance expectations', () => {
     TIMEOUT_MS,
   );
 
+  it('rejects a --filter that matches no case', async () => {
+    await expect(
+      run({ targets: ['js'], filter: 'no-such-area/*' }),
+    ).rejects.toThrow("--filter 'no-such-area/*' matches no case");
+  });
+
   it(
     'skips targets excluded by --filter',
     async () => {

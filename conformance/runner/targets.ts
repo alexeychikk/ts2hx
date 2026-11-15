@@ -116,7 +116,7 @@ export function dispatcherSource(cases: readonly ConformanceCase[]): string {
   ].join('\n');
 }
 
-interface BatchTarget {
+export interface BatchTarget {
   name: Target;
   build(
     ctx: TargetContext,
@@ -204,12 +204,18 @@ const cppTarget: BatchTarget = {
  * Builds one binary for all cases. When the build fails, the cases its errors name are
  * dropped and the rest rebuilt, at most MAX_REBUILDS times.
  */
-function batchRunner(target: BatchTarget): TargetRunner {
+export function batchRunner(target: BatchTarget): TargetRunner {
   return async (cases, ctx) => {
     const runs = new Map<string, TargetRun>();
     const mainDir = path.join(ctx.targetDir, 'main');
     fs.mkdirSync(mainDir, { recursive: true });
     let remaining = [...cases];
+    const failAll = (reason: string) => {
+      remaining.forEach((c) =>
+        runs.set(c.id, { kind: 'build-failed', reason }),
+      );
+      remaining = [];
+    };
     for (let attempt = 0; remaining.length > 0; attempt++) {
       fs.writeFileSync(
         path.join(mainDir, 'ConformanceMain.hx'),
@@ -220,12 +226,10 @@ function batchRunner(target: BatchTarget): TargetRunner {
         break;
       }
       const culprits = attributeBuildErrors(build.log, remaining);
-      if (culprits.size === 0 || attempt === MAX_REBUILDS) {
-        const reason = `batch ${target.name} build failed (attempt ${attempt + 1}) without errors attributable to a single case:\n${tail(build.log, 30)}`;
-        remaining.forEach((c) =>
-          runs.set(c.id, { kind: 'build-failed', reason }),
+      if (culprits.size === 0) {
+        failAll(
+          `batch ${target.name} build failed (attempt ${attempt + 1}) without errors attributable to a single case:\n${tail(build.log, 30)}`,
         );
-        remaining = [];
         break;
       }
       for (const [id, lines] of culprits) {
@@ -235,6 +239,12 @@ function batchRunner(target: BatchTarget): TargetRunner {
         });
       }
       remaining = remaining.filter((c) => !culprits.has(c.id));
+      if (attempt === MAX_REBUILDS) {
+        failAll(
+          `batch ${target.name} rebuild budget exhausted: ${attempt + 1} batch builds failed on other cases' errors, so this case was not built`,
+        );
+        break;
+      }
     }
     const { file, args } = target.command(ctx);
     const outputs = await mapPool(remaining, ctx.concurrency, (c) =>

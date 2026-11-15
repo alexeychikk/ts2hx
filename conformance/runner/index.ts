@@ -159,6 +159,11 @@ export async function runConformance(
   const log = options.log ?? ((line: string) => console.log(line));
 
   const cases = discoverCases(casesDir, options.filter);
+  if (options.filter !== undefined && cases.length === 0) {
+    throw new Error(
+      `conformance: --filter '${options.filter}' matches no case under ${path.relative(repoRoot, casesDir) || '.'}`,
+    );
+  }
   const expectations = readExpectations(expectationsFile);
   if (!options.filter) {
     const known = new Set(cases.map((c) => c.id));
