@@ -361,9 +361,12 @@ class StateMachine {
         const operand = this.linearize(expr.operand);
         return operand && { ...expr, operand };
       }
+      case 'blockExpr':
+        this.stmts(expr.stmts);
+        return this.linearize(expr.result);
       case 'binop': {
         if (['&&', '||', '??'].includes(expr.op) && containsYield(expr.right)) {
-          break;
+          return this.shortCircuit(expr);
         }
         const operands = this.operands([expr.left, expr.right]);
         return operands && { ...expr, left: operands[0], right: operands[1] };
@@ -397,13 +400,72 @@ class StateMachine {
         return value && { ...expr, value };
       }
       case 'ternary': {
-        if (containsYield(expr.then) || containsYield(expr.else)) break;
         const cond = this.linearize(expr.cond);
-        return cond && { ...expr, cond };
+        if (!cond) return undefined;
+        if (!containsYield(expr.then) && !containsYield(expr.else)) {
+          return { ...expr, cond };
+        }
+        return this.conditional(cond, expr.then, expr.else, expr.type);
       }
     }
     this.unsupported('a yield inside this expression');
     return undefined;
+  }
+
+  /** `left && right`, `left || right`, `left ?? right` whose `right` suspends: it runs only when `left` says so. */
+  private shortCircuit(
+    expr: Extract<HxExpr, { kind: 'binop' }>,
+  ): HxExpr | undefined {
+    const left = this.linearize(expr.left);
+    if (!left) return undefined;
+    const temp = this.temp('logical', expr.op === '??' ? left.type : expr.type);
+    this.emit(assign(temp, left));
+    const skip: HxExpr =
+      expr.op === '&&'
+        ? not(temp)
+        : expr.op === '||'
+          ? temp
+          : {
+              kind: 'binop',
+              op: '!=',
+              left: temp,
+              right: constExpr(null),
+              type: BOOL,
+            };
+    const end = this.newState();
+    this.emit({ kind: 'if', cond: skip, then: this.goto(end) });
+    const right = this.linearize(expr.right);
+    if (!right) return undefined;
+    this.emit(assign(temp, right));
+    this.mark(end);
+    return temp;
+  }
+
+  /** `cond ? then : otherwise` with a resume point in an arm: only the chosen arm runs. */
+  private conditional(
+    cond: HxExpr,
+    then: HxExpr,
+    otherwise: HxExpr,
+    type: HxType,
+  ): HxExpr | undefined {
+    const temp = this.temp('conditional', type);
+    const elseState = this.newState();
+    const end = this.newState();
+    this.emit({ kind: 'if', cond: not(cond), then: this.goto(elseState) });
+    const thenValue = this.linearize(then);
+    if (!thenValue) return undefined;
+    this.emit(assign(temp, thenValue));
+    this.jump(end);
+    this.mark(elseState);
+    const elseValue = this.linearize(otherwise);
+    if (!elseValue) return undefined;
+    this.emit(assign(temp, elseValue));
+    this.mark(end);
+    return temp;
+  }
+
+  private temp(hint: string, type: HxType): HxExpr {
+    return localExpr(this.hoist(this.context.freshName(hint), type), type);
   }
 
   private linearCall(
