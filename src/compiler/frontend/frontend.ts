@@ -5,6 +5,7 @@ import { padCallback } from '../stdlib/callbacks';
 import {
   ANY,
   arrayType,
+  sameTypePath,
   BOOL,
   constExpr,
   dictType,
@@ -81,6 +82,7 @@ import {
   accessorPair,
   assignsAtTopLevel,
   inheritedAccessors,
+  inheritedStaticDivergence,
   overridesAccessor,
   privateMemberName,
   extendsClause,
@@ -94,6 +96,7 @@ import {
   redeclaredWrittenFields,
   boundClassExpression,
   isHoistedClass,
+  staticThisClass,
   structuralAccessorMembers,
   structuralMemberConflicts,
   structuralOptionalMembers,
@@ -296,12 +299,42 @@ function isPure(expr: HxExpr): boolean {
     case 'const':
     case 'local':
     case 'staticField':
+    case 'typeRef':
     case 'fn':
       return true;
     case 'arrayLit':
       return expr.elements.every(isPure);
     case 'objectLit':
       return expr.fields.every((f) => isPure(f.value));
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether a `String`-typed expression may still be `undefined` at run time, which
+ * TS lets through unsoundly (a field read before init, an out-of-range element).
+ */
+function mayHoldUndefined(expr: HxExpr): boolean {
+  switch (expr.kind) {
+    case 'local':
+    case 'field':
+    case 'staticField':
+    case 'moduleField':
+    case 'index':
+    case 'cast':
+      return true;
+    case 'call':
+      return !(
+        expr.callee.kind === 'staticField' &&
+        expr.callee.owner.pack[0] === RUNTIME.ts2hx.pack[0]
+      );
+    case 'ternary':
+      return mayHoldUndefined(expr.then) || mayHoldUndefined(expr.else);
+    case 'blockExpr':
+      return mayHoldUndefined(expr.result);
+    case 'assign':
+      return mayHoldUndefined(expr.value);
     default:
       return false;
   }
@@ -1897,8 +1930,8 @@ export class ModuleFrontend {
       );
     }
     const lvalue = this.lvalue(target);
-    if (!lvalue) {
-      return this.unsupported(target);
+    if (!lvalue || lvalue.kind === 'unsupported') {
+      return lvalue ?? this.unsupported(target);
     }
     return {
       kind: 'assign',
@@ -2954,9 +2987,9 @@ export class ModuleFrontend {
   /** The values `new` passes for a hoisted class's captures; `undefined` out of their scope. */
   private captureArguments(
     node: ts.NewExpression,
+    symbol: ts.Symbol | undefined,
     pos: SourcePos,
   ): HxExpr[] | string {
-    const symbol = this.classSymbolOf(node.expression);
     const declaration = symbol?.declarations?.find(isHoistedClass);
     if (!declaration) {
       return [];
@@ -3011,10 +3044,35 @@ export class ModuleFrontend {
     if (!owner || !name) {
       return undefined;
     }
+    const divergence = this.inheritedStaticDivergence(node, classSymbol);
+    if (divergence) {
+      return this.unsupported(node, divergence);
+    }
     const type = ts.isPropertyDeclaration(declaration)
       ? this.staticFieldType(declaration)
       : this.types.map(this.checker.getTypeOfSymbol(symbol));
     return { kind: 'staticField', owner, name, type, pos };
+  }
+
+  /** Why a static access through a subclass of `owner` cannot be rewritten to `owner`. */
+  private inheritedStaticDivergence(
+    node: ts.PropertyAccessExpression,
+    owner: ts.Symbol,
+  ): string | undefined {
+    const thisClass =
+      node.expression.kind === ts.SyntaxKind.ThisKeyword
+        ? staticThisClass(node.expression)
+        : undefined;
+    const receiver = thisClass
+      ? this.classSymbol(thisClass)
+      : this.classSymbolOf(node.expression);
+    return receiver && receiver !== owner
+      ? inheritedStaticDivergence(
+          this.checker,
+          node,
+          this.checker.getTypeOfSymbol(receiver),
+        )
+      : undefined;
   }
 
   private thisExpression(node: ts.Node, pos: SourcePos): HxExpr {
@@ -3045,29 +3103,113 @@ export class ModuleFrontend {
     if (this.libKey(node.expression) === 'RegExp') {
       return this.newRegExp(node, args, pos);
     }
-    const path = this.classOf(node.expression);
-    if (!path || args.some(ts.isSpreadElement)) {
+    if (args.some(ts.isSpreadElement)) {
       return this.unsupported(node);
     }
-    const captured = this.captureArguments(node, pos);
+    const path = this.classOf(node.expression);
+    if (!path) {
+      return this.newOfClassValue(node, pos);
+    }
+    const captured = this.captureArguments(
+      node,
+      this.classSymbolOf(node.expression),
+      pos,
+    );
     if (typeof captured === 'string') {
       return this.unsupported(node, captured);
     }
+    return this.newInstance(node, path, captured, pos);
+  }
+
+  private newInstance(
+    node: ts.NewExpression,
+    path: HxTypePath,
+    captured: HxExpr[],
+    pos: SourcePos,
+  ): HxExpr {
     return {
       kind: 'new',
       path,
       typeArgs: [],
-      args: [
-        ...captured,
-        ...this.arguments(
-          node,
-          args.map((a) => this.expression(a)),
-          false,
-        ),
-      ],
+      args: [...captured, ...this.constructorArguments(node)],
       type: this.hxTypeOf(node),
       pos,
     };
+  }
+
+  private constructorArguments(node: ts.NewExpression): HxExpr[] {
+    return this.arguments(
+      node,
+      (node.arguments ?? []).map((a) => this.expression(a)),
+      false,
+    );
+  }
+
+  /**
+   * `new C()` where `C` is a class value rather than a class name: a class
+   * expression is constructed directly, any other value through
+   * `Type.createInstance`, cast to the project class the checker resolves.
+   */
+  private newOfClassValue(node: ts.NewExpression, pos: SourcePos): HxExpr {
+    const signature = this.checker.getResolvedSignature(node);
+    const symbol = signature?.getReturnType().getSymbol();
+    const path = symbol && this.types.classPath(symbol);
+    const declaration = symbol?.declarations?.find(ts.isClassLike);
+    if (!path || !declaration) {
+      return this.unsupported(node);
+    }
+    const value = this.expression(node.expression);
+    const ref = value.kind === 'blockExpr' ? value.result : value;
+    if (ref.kind === 'typeRef' && sameTypePath(ref.path, path)) {
+      const captured = this.captureArguments(node, symbol, pos);
+      if (typeof captured === 'string') {
+        return this.unsupported(node, captured);
+      }
+      const constructed = this.newInstance(node, path, captured, pos);
+      return value.kind === 'blockExpr'
+        ? { ...value, result: constructed, type: constructed.type }
+        : constructed;
+    }
+    if (
+      isHoistedClass(declaration) &&
+      this.captures(declaration)?.length !== 0
+    ) {
+      return this.unsupported(
+        node,
+        '`new` on a class value whose class captures locals is not supported',
+      );
+    }
+    const parameters = signature
+      ? (this.types.signatureType(signature) as Extract<HxType, { kind: 'fn' }>)
+          .args
+      : [];
+    if (parameters.some((p) => p.rest)) {
+      return this.unsupported(
+        node,
+        '`new` on a class value with a rest parameter is not supported',
+      );
+    }
+    const args = this.constructorArguments(node);
+    while (args.length < parameters.length) {
+      args.push(constExpr(null, pos));
+    }
+    const type = this.hxTypeOf(node);
+    const created = staticCall(
+      typePath([], 'Type'),
+      'createInstance',
+      [
+        value,
+        {
+          kind: 'arrayLit',
+          elements: args,
+          type: arrayType(DYNAMIC),
+          pos,
+        },
+      ],
+      DYNAMIC,
+      pos,
+    );
+    return { kind: 'cast', expr: created, checked: false, type, pos };
   }
 
   /** `new RegExp(pattern, flags?)`, bound like the call `RegExp(…)`. */
@@ -3376,6 +3518,21 @@ export class ModuleFrontend {
     return this.toJsString(this.expression(node), this.typeOf(node));
   }
 
+  /**
+   * An operand of string `+` or a template: like `toJsString`, and a `String` that
+   * may hold `undefined` despite its type prints `undefined` on every target.
+   */
+  private concatOperand(expr: HxExpr, type: ts.Type): HxExpr {
+    const converted = this.toJsString(expr, type);
+    return converted === expr && mayHoldUndefined(expr)
+      ? staticCall(RUNTIME.ts2hx, 'stringOperand', [expr], STRING, expr.pos)
+      : converted;
+  }
+
+  private concatOperandOf(node: ts.Expression): HxExpr {
+    return this.concatOperand(this.expression(node), this.typeOf(node));
+  }
+
   private concat(parts: HxExpr[], pos: SourcePos): HxExpr {
     const nonEmpty = parts.filter(
       (p) => !(p.kind === 'const' && p.value === ''),
@@ -3624,7 +3781,7 @@ export class ModuleFrontend {
   private template(node: ts.TemplateExpression, pos: SourcePos): HxExpr {
     const parts: HxExpr[] = [constExpr(node.head.text, pos)];
     for (const span of node.templateSpans) {
-      parts.push(this.stringOf(span.expression));
+      parts.push(this.concatOperandOf(span.expression));
       parts.push(constExpr(span.literal.text, pos));
     }
     return this.concat(parts, pos);
@@ -3649,7 +3806,7 @@ export class ModuleFrontend {
       constExpr(template.head.rawText ?? template.head.text, pos),
     ];
     for (const span of template.templateSpans) {
-      parts.push(this.stringOf(span.expression));
+      parts.push(this.concatOperandOf(span.expression));
       parts.push(constExpr(span.literal.rawText ?? span.literal.text, pos));
     }
     return this.concat(parts, pos);
@@ -4330,7 +4487,9 @@ export class ModuleFrontend {
       isWritableLibProperty(this.libKey(node.name))
     ) {
       const target = this.propertyAccess(node, this.pos(node));
-      return target.kind === 'field' || target.kind === 'staticField'
+      return target.kind === 'field' ||
+        target.kind === 'staticField' ||
+        target.kind === 'unsupported'
         ? target
         : undefined;
     }
@@ -4487,6 +4646,9 @@ export class ModuleFrontend {
       return updated ?? this.unsupported(node);
     }
     const target = this.lvalue(operand);
+    if (target?.kind === 'unsupported') {
+      return target;
+    }
     if (!target || !this.isNumberLike(operand)) {
       return this.unsupported(node);
     }
@@ -4577,8 +4739,8 @@ export class ModuleFrontend {
     ) {
       return this.concat(
         [
-          this.toJsString(left, this.typeOf(leftNode)),
-          this.stringOf(rightNode),
+          this.concatOperand(left, this.typeOf(leftNode)),
+          this.concatOperandOf(rightNode),
         ],
         pos,
       );
@@ -4680,8 +4842,8 @@ export class ModuleFrontend {
       return length;
     }
     const target = this.lvalue(node.left);
-    if (!target) {
-      return this.unsupported(node);
+    if (!target || target.kind === 'unsupported') {
+      return target ?? this.unsupported(node);
     }
     return {
       kind: 'assign',
@@ -4784,8 +4946,8 @@ export class ModuleFrontend {
       return updated ?? this.unsupported(node);
     }
     const target = this.lvalue(node.left);
-    if (!target) {
-      return this.unsupported(node);
+    if (!target || target.kind === 'unsupported') {
+      return target ?? this.unsupported(node);
     }
     const floatOp = FLOAT_OPERATORS.get(operator);
     const numeric =
@@ -4804,7 +4966,7 @@ export class ModuleFrontend {
       return compoundExpr(
         target,
         '+',
-        this.stringOf(node.right),
+        this.concatOperandOf(node.right),
         STRING,
         pos,
         this.isModuleVar(node.left) && isValueUsed(node),
@@ -4951,7 +5113,7 @@ export class ModuleFrontend {
       };
     }
     const target = this.lvalue(node);
-    if (!target) {
+    if (!target || target.kind === 'unsupported') {
       return undefined;
     }
     const assign =
@@ -5168,8 +5330,10 @@ export class ModuleFrontend {
       return 'undefined';
     if (everyConstituent(type, ts.TypeFlags.Null)) return 'object';
     if (type.isUnion() || !(type.flags & ts.TypeFlags.Object)) return undefined;
-    if (type.getCallSignatures().length > 0) return 'function';
-    return type.getConstructSignatures().length > 0 ? undefined : 'object';
+    return type.getCallSignatures().length > 0 ||
+      type.getConstructSignatures().length > 0
+      ? 'function'
+      : 'object';
   }
 
   private typeOfExpression(node: ts.TypeOfExpression, pos: SourcePos): HxExpr {

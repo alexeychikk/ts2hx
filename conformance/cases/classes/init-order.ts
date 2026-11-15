@@ -49,3 +49,20 @@ class Late extends Eager {
 const late = new Late();
 late.peek();
 console.log(`after:${late.name}`, 'after:' + late.name);
+
+function show(s: string): void {
+  console.log('[' + s + ']', `<${s}>`);
+  console.log(s);
+}
+function shout(s: string): string {
+  return s + '!';
+}
+
+class Shown extends Eager {
+  title: string = 'shown';
+  peek(): void {
+    show(this.title);
+    console.log(shout(this.title));
+  }
+}
+new Shown().peek();

@@ -618,3 +618,119 @@ export function hoistedClassName(node: ts.ClassLikeDeclaration): string {
     ? binding.name.text
     : 'Class';
 }
+
+/** Whether `node` is written: an assignment target or the operand of `++`/`--`. */
+export function isWriteTarget(node: ts.Expression): boolean {
+  let child: ts.Node = node;
+  let parent = node.parent;
+  while (
+    ts.isParenthesizedExpression(parent) ||
+    ts.isNonNullExpression(parent)
+  ) {
+    child = parent;
+    parent = parent.parent;
+  }
+  if (ts.isBinaryExpression(parent)) {
+    const operator = parent.operatorToken.kind;
+    return (
+      parent.left === child &&
+      operator >= ts.SyntaxKind.FirstAssignment &&
+      operator <= ts.SyntaxKind.LastAssignment
+    );
+  }
+  return (
+    (ts.isPrefixUnaryExpression(parent) ||
+      ts.isPostfixUnaryExpression(parent)) &&
+    (parent.operator === ts.SyntaxKind.PlusPlusToken ||
+      parent.operator === ts.SyntaxKind.MinusMinusToken)
+  );
+}
+
+function isCallee(node: ts.Expression): boolean {
+  return ts.isCallExpression(node.parent) && node.parent.expression === node;
+}
+
+/** The class a `this` in a static method, static initialiser or static block denotes. */
+export function staticThisClass(
+  node: ts.Node,
+): ts.ClassLikeDeclaration | undefined {
+  const container = ts.findAncestor(
+    node.parent,
+    (n) =>
+      (ts.isFunctionLike(n) && !ts.isArrowFunction(n)) ||
+      ts.isClassLike(n) ||
+      ts.isPropertyDeclaration(n) ||
+      ts.isClassStaticBlockDeclaration(n),
+  );
+  if (
+    !container ||
+    ts.isClassLike(container) ||
+    !(ts.isClassStaticBlockDeclaration(container) || isStatic(container)) ||
+    !ts.isClassLike(container.parent)
+  ) {
+    return undefined;
+  }
+  return container.parent;
+}
+
+/**
+ * Why accessing a static through `receiver`, a class that inherits it, diverges
+ * from JS, where `receiver` is the `this` of the access: a write creates an own
+ * property of `receiver`, and an inherited static method run with `this` =
+ * `receiver` may write through it, read a static `receiver` redeclares, or use
+ * `this` as a value. `undefined` when the rewrite to the declaring class is exact.
+ */
+export function inheritedStaticDivergence(
+  checker: ts.TypeChecker,
+  access: ts.PropertyAccessExpression,
+  receiver: ts.Type,
+): string | undefined {
+  if (isWriteTarget(access)) {
+    return 'writing an inherited static through a subclass is not supported: in JS it creates a separate static of the subclass';
+  }
+  const method = checker.getSymbolAtLocation(access.name)?.valueDeclaration;
+  return method &&
+    ts.isMethodDeclaration(method) &&
+    isCallee(access) &&
+    staticThisDiverges(checker, method, receiver, new Set())
+    ? 'calling an inherited static method through a subclass is not supported when the method writes a static through `this`, reads one the subclass redeclares or uses `this` as a value'
+    : undefined;
+}
+
+function staticThisDiverges(
+  checker: ts.TypeChecker,
+  method: ts.MethodDeclaration,
+  receiver: ts.Type,
+  visited: Set<ts.MethodDeclaration>,
+): boolean {
+  if (!method.body || visited.has(method)) {
+    return false;
+  }
+  visited.add(method);
+  const diverges = (node: ts.Node): boolean => {
+    if (node.kind !== ts.SyntaxKind.ThisKeyword) {
+      return (
+        !(ts.isFunctionLike(node) && !ts.isArrowFunction(node)) &&
+        !ts.isClassLike(node) &&
+        (ts.forEachChild(node, diverges) ?? false)
+      );
+    }
+    const access = node.parent;
+    if (!ts.isPropertyAccessExpression(access) || access.expression !== node) {
+      return true;
+    }
+    const declared = checker.getSymbolAtLocation(access.name)?.valueDeclaration;
+    const seen = ts.isIdentifier(access.name)
+      ? checker.getPropertyOfType(receiver, access.name.text)?.valueDeclaration
+      : undefined;
+    if (!declared || declared !== seen || isWriteTarget(access)) {
+      return true;
+    }
+    return (
+      ts.isMethodDeclaration(declared) &&
+      isCallee(access) &&
+      staticThisDiverges(checker, declared, receiver, visited)
+    );
+  };
+  return ts.forEachChild(method.body, diverges) ?? false;
+}

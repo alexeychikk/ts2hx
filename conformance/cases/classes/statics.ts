@@ -38,3 +38,5 @@ class Table {
   }
 }
 console.log(Table.size, Table.rows.join(','));
+
+console.log(SubCounter.describe(), SubCounter.create().id);
