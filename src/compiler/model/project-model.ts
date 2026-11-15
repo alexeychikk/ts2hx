@@ -33,8 +33,9 @@ export interface ModuleInfo {
   /** Haxe names of the class expressions and local classes the module declares at its top level. */
   hoistedClasses: Map<ts.ClassLikeDeclaration, string>;
   /**
-   * Haxe names of the module's enums and namespaces, by declaration: nested ones are
-   * `Outer_Inner`, and a namespace merged with a class takes the class's name.
+   * Haxe names of the module's types, by declaration, unique in their package: its
+   * top-level classes, interfaces and type aliases, its enums and namespaces (nested
+   * ones are `Outer_Inner`; a namespace merged with a class takes the class's name).
    */
   types: Map<ts.Node, string>;
   /** Static fields of those enums and namespaces, by member declaration. */
@@ -364,10 +365,24 @@ export function enumMemberKey(member: ts.EnumMember): string | undefined {
     : undefined;
 }
 
+/** Whether an interface or type alias may become a typedef: declared at top level, without type parameters. */
+function isTypedefCandidate(
+  statement: ts.Statement,
+): statement is ts.InterfaceDeclaration | ts.TypeAliasDeclaration {
+  return (
+    (ts.isInterfaceDeclaration(statement) ||
+      ts.isTypeAliasDeclaration(statement)) &&
+    ts.isSourceFile(statement.parent) &&
+    statement.typeParameters === undefined
+  );
+}
+
 /**
- * Haxe names of a module's enums and namespaces (ADR 0005) and of their static
- * members. Nested namespaces and enums are named `Outer_Inner`; a namespace merged
- * with a class adds its members to the class. Statics never take a `reserved` name.
+ * Haxe names of a module's types and of the static members of its enums and
+ * namespaces (ADR 0005), unique within the module only. Top-level classes, interfaces
+ * and aliases are named after themselves; nested namespaces and enums `Outer_Inner`;
+ * a namespace merged with a class adds its members to the class. Statics never take
+ * a `reserved` name.
  */
 export function assignTypeNames(
   sf: ts.SourceFile,
@@ -411,7 +426,17 @@ export function assignTypeNames(
     outer?: string,
   ): void => {
     for (const statement of statements) {
-      if (ts.isEnumDeclaration(statement) && !isAmbient(statement)) {
+      if (
+        (ts.isClassDeclaration(statement) &&
+          statement.name &&
+          ts.isSourceFile(statement.parent)) ||
+        isTypedefCandidate(statement)
+      ) {
+        const symbol = checker.getSymbolAtLocation(statement.name!);
+        if (symbol) {
+          types.set(statement, typeName(symbol, statement.name!.text));
+        }
+      } else if (ts.isEnumDeclaration(statement) && !isAmbient(statement)) {
         const symbol = checker.getSymbolAtLocation(statement.name);
         if (
           !symbol ||
@@ -430,7 +455,7 @@ export function assignTypeNames(
         if (!isConvertedNamespace(statement, symbol)) continue;
         const merged = symbol.declarations?.find(ts.isClassDeclaration);
         const name = merged?.name
-          ? className(merged.name.text, modulePath.module, reserved)
+          ? typeName(symbol, merged.name.text)
           : typeName(symbol, (statement.name as ts.Identifier).text, outer);
         types.set(statement, name);
         for (const member of namespaceStatements(statement)) {
@@ -645,6 +670,7 @@ export function buildProjectModel(
       ...assignTypeNames(sourceFile, modulePath, checker, reservedLocalNames),
     };
   });
+  makeTypeNamesUniquePerPackage(modules, rootPackage, reservedLocalNames);
   const bySourceFile = new Map(modules.map((m) => [m.sourceFile, m]));
 
   let entry: ModuleInfo | undefined;
@@ -684,6 +710,73 @@ export function buildProjectModel(
     moduleOf: (sf) => bySourceFile.get(sf),
     resolveValue: (symbol) => resolveValue(symbol, checker, bySourceFile),
   };
+}
+
+/**
+ * Renames types so that no two modules of a package declare the same Haxe type name
+ * (case-insensitively, as files of the C# and C++ output), nor one named like a
+ * module of the package or `Main`. Modules keep their names in file name order; a
+ * later colliding type becomes `Name_2`, `Name_3`, … avoiding its module's other names.
+ */
+export function makeTypeNamesUniquePerPackage(
+  modules: readonly ModuleInfo[],
+  rootPackage: readonly string[],
+  reserved: ReadonlySet<string> = new Set(),
+): void {
+  const byPackage = new Map<string, ModuleInfo[]>();
+  for (const module of modules) {
+    const key = module.path.pack.join('.');
+    byPackage.set(key, [...(byPackage.get(key) ?? []), module]);
+  }
+  for (const [pack, members] of byPackage) {
+    const taken = new Set(members.map((m) => m.path.module.toLowerCase()));
+    if (pack === rootPackage.join('.')) taken.add(MAIN_CLASS.toLowerCase());
+    const sorted = [...members].sort((a, b) =>
+      a.sourceFile.fileName < b.sourceFile.fileName
+        ? -1
+        : a.sourceFile.fileName > b.sourceFile.fileName
+          ? 1
+          : 0,
+    );
+    for (const module of sorted) {
+      const typeNames = new Set([
+        ...module.types.values(),
+        ...module.hoistedClasses.values(),
+      ]);
+      const own = new Set([...typeNames, ...module.fields.values()]);
+      const renames = new Map<string, string>();
+      for (const name of typeNames) {
+        let unique = name;
+        for (
+          let n = 2;
+          taken.has(unique.toLowerCase()) ||
+          (unique !== name && (own.has(unique) || reserved.has(unique)));
+          n++
+        ) {
+          unique = `${name}_${n}`;
+        }
+        taken.add(unique.toLowerCase());
+        if (unique !== name) renames.set(name, unique);
+      }
+      if (renames.size > 0) renameTypes(module, renames);
+    }
+  }
+}
+
+function renameTypes(
+  module: ModuleInfo,
+  renames: ReadonlyMap<string, string>,
+): void {
+  const renamed = (name: string) => renames.get(name) ?? name;
+  for (const [node, name] of module.types) {
+    module.types.set(node, renamed(name));
+  }
+  for (const [node, name] of module.hoistedClasses) {
+    module.hoistedClasses.set(node, renamed(name));
+  }
+  for (const [node, member] of module.statics) {
+    module.statics.set(node, { ...member, owner: renamed(member.owner) });
+  }
 }
 
 function resolveValue(
