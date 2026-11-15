@@ -96,6 +96,18 @@ reason it is not a gate.)
   Iterators see entries added while they run. `WeakMap` and `WeakSet` are
   the same strong collections (degraded). `for…of` and spreads walk
   `toArray()` of their iterators.
+- **Generators and the iteration protocol.** `ts2hx.Generator<T>` is an
+  abstract over the untyped `GeneratorCore`, which runs the step function
+  that the `lowerGenerators` pass builds. It forwards `yield*` to the
+  delegate's `next`/`throw`/`return`. `return()` throws a `GeneratorReturn`
+  signal where the generator is suspended: lowered `finally` blocks catch it
+  and `catch` clauses let it through. `ts2hx.Iter` is the protocol over any
+  value: arrays, strings, collections, generators, objects with a `next`
+  method, and project classes with a `__ts2hx_iterator` method (their
+  `[Symbol.iterator]()`). Iterator results are `{ value, done }` in JS key
+  order. A local that shares the name of a static function of its class is
+  avoided in the runtime: hxcpp emits `var f = f(x)` unqualified, so the
+  call reads the uninitialised local.
 - **JSON and console.** `ts2hx.Json` uses native `JSON.parse` on JS and a
   pure Haxe parser elsewhere; `stringify` is pure Haxe everywhere so that
   key order and number formatting match. `null` and `undefined` are one

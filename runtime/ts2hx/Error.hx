@@ -108,9 +108,9 @@ class URIError extends Error {
 class AggregateError extends Error {
 	public var errors:Array<Dynamic>;
 
-	public function new(errors:Array<Dynamic>, ?message:String, ?options:Dynamic) {
+	public function new(errors:Dynamic, ?message:String, ?options:Dynamic) {
 		super(message, options);
-		this.errors = errors.copy();
+		this.errors = Iter.toArray(errors);
 		named("AggregateError");
 	}
 }

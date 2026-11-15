@@ -69,6 +69,14 @@ import {
   isCollectionType,
   newCollection,
 } from '../stdlib/collection-bindings';
+import {
+  generatorType,
+  hasIteratorMember,
+  iterableArray,
+  ITERATOR_METHOD,
+  lazyIterableArray,
+  lazyIterableElement,
+} from '../stdlib/iterable-bindings';
 import { newPromise } from '../stdlib/promise-bindings';
 import { arrayConstructor, setArrayLength } from '../stdlib/array-bindings';
 import {
@@ -503,9 +511,25 @@ function memberName(
       member as ts.NamedDeclaration & { name: ts.PrivateIdentifier },
     );
   }
+  if (
+    name &&
+    ts.isComputedPropertyName(name) &&
+    isSymbolIterator(name.expression)
+  ) {
+    return ITERATOR_METHOD;
+  }
   return name && (ts.isIdentifier(name) || ts.isStringLiteral(name))
     ? escapeIdentifier(name.text)
     : undefined;
+}
+
+function isSymbolIterator(node: ts.Expression): boolean {
+  return (
+    ts.isPropertyAccessExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === 'Symbol' &&
+    node.name.text === 'iterator'
+  );
 }
 
 /** The function or class whose `this` a `this` keyword denotes: arrows are transparent. */
@@ -2024,7 +2048,8 @@ export class ModuleFrontend {
         !this.checker.isTupleType(iterated) &&
         !overString &&
         !isRegExpIterator(this.types.map(iterated)) &&
-        !isCollectionType(this.types.map(iterated))) ||
+        !isCollectionType(this.types.map(iterated)) &&
+        !this.isLazyIterable(node.expression)) ||
       (ts.isVariableDeclarationList(initializer) &&
         initializer.declarations.length !== 1)
     ) {
@@ -2041,10 +2066,17 @@ export class ModuleFrontend {
     const name = this.localName(symbol.name);
     const isConst = (initializer.flags & ts.NodeFlags.Const) !== 0;
     const body = this.body(node.statement);
-    const iterable = this.iterated(
-      this.expression(node.expression),
-      overString,
-    );
+    const source = this.expression(node.expression);
+    if (this.isLazyIterable(node.expression)) {
+      return this.iterationLoop(
+        source,
+        name,
+        this.declaredType(declaration),
+        body,
+        isConst || !this.hoisted.has(symbol),
+      );
+    }
+    const iterable = this.iterated(source, overString);
     if (isConst) {
       return [{ kind: 'forIn', name, iterable, body }];
     }
@@ -2071,6 +2103,130 @@ export class ModuleFrontend {
     return [{ kind: 'forIn', name: element, iterable, body: [bind, ...body] }];
   }
 
+  /** Whether `for…of` and spread must run the iterator protocol: generators, iterators and classes with `[Symbol.iterator]()`. */
+  private isLazyIterable(node: ts.Expression): boolean {
+    const type = this.checker.getNonNullableType(this.typeOf(node));
+    const mapped = this.types.map(type);
+    if (lazyIterableElement(mapped)) return true;
+    return (
+      !this.checker.isArrayType(type) &&
+      !this.checker.isTupleType(type) &&
+      !this.isStringLike(node) &&
+      !isRegExpIterator(mapped) &&
+      !isCollectionType(mapped) &&
+      hasIteratorMember(type)
+    );
+  }
+
+  /**
+   * `for (x of source)` over the iterator protocol: `Iter.step` until done,
+   * and `Iter.close` when the body leaves the loop early (break, return, throw).
+   */
+  private iterationLoop(
+    source: HxExpr,
+    name: string,
+    type: HxType,
+    body: HxStmt[],
+    declare: boolean,
+  ): HxStmt[] {
+    const iteratorName = this.freshName('iterator');
+    const stepName = this.freshName('step');
+    const openName = this.freshName('open');
+    const iterator = localExpr(iteratorName, DYNAMIC);
+    const step = localExpr(stepName, DYNAMIC);
+    const open = localExpr(openName, BOOL);
+    const setOpen = (value: boolean): HxStmt => ({
+      kind: 'expr',
+      expr: {
+        kind: 'assign',
+        op: '=',
+        target: open,
+        value: constExpr(value),
+        type: BOOL,
+      },
+    });
+    const value: HxExpr = {
+      kind: 'cast',
+      expr: { kind: 'field', target: step, name: 'value', type: DYNAMIC },
+      checked: false,
+      type,
+    };
+    const bind: HxStmt = declare
+      ? { kind: 'var', name, final: false, type, init: value }
+      : {
+          kind: 'expr',
+          expr: {
+            kind: 'assign',
+            op: '=',
+            target: localExpr(name, type),
+            value,
+            type,
+          },
+        };
+    return [
+      {
+        kind: 'var',
+        name: iteratorName,
+        final: true,
+        type: DYNAMIC,
+        init: staticCall(
+          RUNTIME.iter,
+          'iterator',
+          [source],
+          DYNAMIC,
+          source.pos,
+        ),
+      },
+      {
+        kind: 'var',
+        name: openName,
+        final: false,
+        type: BOOL,
+        init: constExpr(false),
+      },
+      {
+        kind: 'tryFinally',
+        body: [
+          {
+            kind: 'while',
+            cond: constExpr(true),
+            doWhile: false,
+            body: [
+              setOpen(false),
+              {
+                kind: 'var',
+                name: stepName,
+                final: true,
+                type: DYNAMIC,
+                init: staticCall(RUNTIME.iter, 'step', [iterator], DYNAMIC),
+              },
+              {
+                kind: 'if',
+                cond: staticCall(RUNTIME.iter, 'done', [step], BOOL),
+                then: [{ kind: 'break' }],
+              },
+              setOpen(true),
+              bind,
+              ...body,
+            ],
+          },
+        ],
+        finally: [
+          {
+            kind: 'if',
+            cond: open,
+            then: [
+              {
+                kind: 'expr',
+                expr: staticCall(RUNTIME.iter, 'close', [iterator], VOID),
+              },
+            ],
+          },
+        ],
+      },
+    ];
+  }
+
   /** The array `for…of` iterates: a string's code points, the matches of `matchAll`, or the array itself. */
   private iterated(source: HxExpr, overString: boolean): HxExpr {
     if (overString) return stringCodePoints(source);
@@ -2084,13 +2240,17 @@ export class ModuleFrontend {
     initializer: ts.ForInitializer,
     overString: boolean,
   ): HxStmt[] {
-    const iterable = this.iterated(
-      this.expression(node.expression),
-      overString,
-    );
+    const source = this.expression(node.expression);
+    const lazy = this.isLazyIterable(node.expression);
+    const iterable = lazy ? source : this.iterated(source, overString);
+    const elementName = this.freshName('item');
     const element = localExpr(
-      this.freshName('item'),
-      overString ? STRING : arrayElement(iterable.type),
+      elementName,
+      lazy
+        ? (lazyIterableElement(source.type) ?? DYNAMIC)
+        : overString
+          ? STRING
+          : arrayElement(iterable.type),
     );
     let bind: HxStmt[];
     if (ts.isVariableDeclarationList(initializer)) {
@@ -2113,6 +2273,15 @@ export class ModuleFrontend {
         elementType
           ? this.assignPattern(target, element, elementType).stmts
           : [{ kind: 'expr', expr: this.assignValue(target, () => element) }];
+    }
+    if (lazy) {
+      return this.iterationLoop(
+        source,
+        elementName,
+        element.type,
+        [...bind, ...this.body(node.statement)],
+        true,
+      );
     }
     return [
       {
@@ -3401,6 +3570,15 @@ export class ModuleFrontend {
       : signature
         ? this.types.mapReturn(signature.getReturnType())
         : DYNAMIC;
+    if (node.asteriskToken) {
+      return {
+        typeParams,
+        params,
+        ret,
+        body: [...prologue, this.generatorBody(node, ret)],
+        isGenerator: true,
+      };
+    }
     this.returnTypes.push(ret);
     try {
       return {
@@ -3412,6 +3590,51 @@ export class ModuleFrontend {
     } finally {
       this.returnTypes.pop();
     }
+  }
+
+  /** `return new ts2hx.Generator<T>(function(ctx) body)`: `lowerGenerators` turns `body` into its state machine. */
+  private generatorBody(node: FunctionNode, ret: HxType): HxStmt {
+    const element = lazyIterableElement(ret) ?? DYNAMIC;
+    const generator = generatorType(element);
+    this.returnTypes.push(DYNAMIC);
+    let step: HxStmt[];
+    try {
+      step = [
+        ...this.functionBody(node, DYNAMIC),
+        { kind: 'return', value: constExpr(null) },
+      ];
+    } finally {
+      this.returnTypes.pop();
+    }
+    const created: HxExpr = {
+      kind: 'new',
+      path: RUNTIME.generator,
+      typeArgs: [element],
+      args: [
+        {
+          kind: 'fn',
+          fn: {
+            typeParams: [],
+            params: [
+              {
+                name: this.freshName('gen'),
+                type: { kind: 'path', path: RUNTIME.generatorCore, params: [] },
+              },
+            ],
+            ret: DYNAMIC,
+            body: step,
+          },
+          type: DYNAMIC,
+        },
+      ],
+      type: generator,
+    };
+    return {
+      kind: 'return',
+      value: sameType(ret, generator)
+        ? created
+        : { kind: 'cast', expr: created, checked: false, type: ret },
+    };
   }
 
   /** `if (p == null) p = <default>;` */
@@ -3842,6 +4065,16 @@ export class ModuleFrontend {
     }
     if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
       return this.functionExpr(node, pos);
+    }
+    if (ts.isYieldExpression(node)) {
+      const type = this.hxTypeOf(node);
+      return {
+        kind: 'yield',
+        value: node.expression && this.expression(node.expression),
+        delegate: node.asteriskToken !== undefined,
+        type: sameType(type, VOID) ? DYNAMIC : type,
+        pos,
+      };
     }
     if (ts.isClassExpression(node)) {
       const declared = this.hoistedDecls.length;
@@ -5505,6 +5738,12 @@ export class ModuleFrontend {
           value: collectionArray(spread)!,
           fresh: true,
         });
+      } else if (this.isLazyIterable(e.expression)) {
+        segments.push({
+          spread: true,
+          value: lazyIterableArray(spread) ?? iterableArray(spread),
+          fresh: true,
+        });
       } else {
         return this.unsupported(
           node,
@@ -6016,6 +6255,19 @@ export class ModuleFrontend {
       return enumCall;
     }
     const callee = node.expression;
+    if (
+      ts.isElementAccessExpression(callee) &&
+      isSymbolIterator(callee.argumentExpression) &&
+      node.arguments.length === 0
+    ) {
+      return staticCall(
+        RUNTIME.iter,
+        'iterator',
+        [this.expression(callee.expression)],
+        this.hxTypeOf(node),
+        pos,
+      );
+    }
     const callArgs = this.callArguments(node, pos);
     if ('unsupported' in callArgs) {
       return callArgs.unsupported;

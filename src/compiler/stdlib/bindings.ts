@@ -42,6 +42,7 @@ import {
   REGEXP_CALL_BINDINGS,
   REGEXP_PROPERTY_BINDINGS,
 } from './regexp-bindings';
+import { ITERABLE_CALL_BINDINGS } from './iterable-bindings';
 import { STRING_CALL_BINDINGS } from './string-bindings';
 
 /** The object a method is called on (`console` in `console.log(x)`). */
@@ -141,6 +142,7 @@ export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = firstBound([
   ...REGEXP_CALL_BINDINGS,
   ...PROMISE_CALL_BINDINGS,
   ...COLLECTION_CALL_BINDINGS,
+  ...ITERABLE_CALL_BINDINGS,
   ['ObjectConstructor.keys', dictEnumeration('keys', () => arrayType(STRING))],
   ['ObjectConstructor.values', dictEnumeration('values', arrayType)],
   [

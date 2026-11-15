@@ -19,11 +19,6 @@
     "cs": "fail",
     "cpp": "fail"
   },
-  "generators/basic": {
-    "js": "fail",
-    "cs": "fail",
-    "cpp": "fail"
-  },
   "numbers/format-range-errors": {
     "js": "fail",
     "cs": "fail",

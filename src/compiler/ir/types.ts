@@ -152,6 +152,8 @@ export interface HxCatch {
   name: string;
   type: HxType;
   body: HxStmt[];
+  /** The catch-all of a lowered `finally`: it also catches a generator's `return()`, which `catch` clauses let through. */
+  finalizer?: boolean;
 }
 
 /** Statements Haxe can express directly — the only kinds the printer accepts. */

@@ -81,7 +81,9 @@ describe('stdlib: Promise and timers', () => {
       "const e = new AggregateError([1], 'all');",
       'console.log(e.errors.length);',
     ]);
-    expect(hx).toContain('new ts2hx.Error.AggregateError([1.0], "all")');
+    expect(hx).toContain(
+      'new ts2hx.Error.AggregateError((cast [1.0] : ts2hx.Iter.JsIterable<Dynamic>), "all")',
+    );
     expect(hx).toContain('e.errors.length');
     expect(hx).toMatch(/r\.status == "fulfilled"/);
     expect(hx).toMatch(/r\.value/);

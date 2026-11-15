@@ -111,20 +111,17 @@ class FinallyLowering {
   }
 
   lower(stmt: TryFinally): HxStmt[] {
-    const body = this.exitable(stmt.body);
-    const handler: HxCatch = stmt.catch
-      ? {
-          name: stmt.catch.name,
-          type: DYNAMIC,
-          body: [
-            {
-              kind: 'try',
-              body: this.exitable(stmt.catch.body),
-              catches: [this.recordThrow()],
-            },
-          ],
-        }
-      : this.recordThrow();
+    const guarded: HxStmt[] = stmt.catch
+      ? [
+          {
+            kind: 'try',
+            body: stmt.body,
+            catches: [{ ...stmt.catch, type: DYNAMIC }],
+          },
+        ]
+      : stmt.body;
+    const body = this.exitable(guarded);
+    const handler = this.recordThrow();
     const declarations: HxStmt[] = [
       {
         kind: 'var',
@@ -168,6 +165,7 @@ class FinallyLowering {
     return {
       name,
       type: DYNAMIC,
+      finalizer: true,
       body: [
         assign(this.error, DYNAMIC, localExpr(name, DYNAMIC)),
         assign(this.completion, INT, intConst(THROW_CODE)),
