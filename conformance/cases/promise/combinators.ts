@@ -8,25 +8,25 @@ function failAfter(ms: number, message: string): Promise<never> {
   );
 }
 
-Promise.all([after(20, 'slow'), after(5, 'fast'), Promise.resolve(3)]).then(
+Promise.all([after(200, 'slow'), after(50, 'fast'), Promise.resolve(3)]).then(
   (values) => console.log('all', values),
 );
 
-Promise.all([after(5, 1), failAfter(10, 'all failed'), after(15, 3)]).catch(
+Promise.all([after(50, 1), failAfter(100, 'all failed'), after(150, 3)]).catch(
   (e: Error) => console.log('all rejected', e.message),
 );
 
 Promise.all([]).then((values) => console.log('all empty', values));
 
-Promise.all([1, 2, 3].map((n) => after(n * 3, n * n))).then((squares) => {
+Promise.all([1, 2, 3].map((n) => after(n * 50, n * n))).then((squares) => {
   let sum = 0;
   for (const s of squares) sum += s;
   console.log('sum of squares', sum);
 });
 
 Promise.allSettled([
-  after(10, 'ok'),
-  failAfter(5, 'nope'),
+  after(100, 'ok'),
+  failAfter(50, 'nope'),
   Promise.resolve(42),
 ]).then((results) => {
   console.log(results.length);
@@ -36,19 +36,19 @@ Promise.allSettled([
   }
 });
 
-Promise.race([after(30, 'late'), after(10, 'early')]).then((v) =>
+Promise.race([after(300, 'late'), after(100, 'early')]).then((v) =>
   console.log('race', v),
 );
 
-Promise.race([failAfter(5, 'race lost'), after(10, 'too late')]).catch(
+Promise.race([failAfter(50, 'race lost'), after(100, 'too late')]).catch(
   (e: Error) => console.log('race rejected', e.message),
 );
 
-Promise.any([failAfter(5, 'a'), after(15, 'b'), after(25, 'c')]).then((v) =>
+Promise.any([failAfter(50, 'a'), after(150, 'b'), after(250, 'c')]).then((v) =>
   console.log('any', v),
 );
 
-Promise.any([failAfter(5, 'x'), failAfter(10, 'y')]).catch(
+Promise.any([failAfter(50, 'x'), failAfter(100, 'y')]).catch(
   (e: AggregateError) => {
     console.log('any rejected', e.message);
     console.log(e.errors.length, (e.errors[1] as Error).message);

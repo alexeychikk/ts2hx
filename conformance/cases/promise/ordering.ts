@@ -1,7 +1,7 @@
 console.log('script start');
 
 setTimeout(() => console.log('timeout 0'), 0);
-setTimeout(() => console.log('timeout 10'), 10);
+setTimeout(() => console.log('timeout 100'), 100);
 setTimeout(() => console.log('timeout 1'), 1);
 
 Promise.resolve()
