@@ -127,10 +127,13 @@ const identity: CallBinding = ({ receiver, args }) =>
 
 /** `String.fromCharCode(...)` and `String.fromCodePoint(...)`. */
 function variadicStatic(name: string): CallBinding {
-  return ({ args, pos, spreadLast }) => ({
-    ...staticCall(RUNTIME.jsString, name, args, STRING, pos),
-    spreadLast,
-  });
+  return ({ args, pos, spreadLast }) =>
+    spreadLast && args.length !== 1
+      ? undefined
+      : {
+          ...staticCall(RUNTIME.jsString, name, args, STRING, pos),
+          spreadLast,
+        };
 }
 
 const stringMethods: Array<[string, CallBinding]> = [

@@ -26,6 +26,10 @@ class Console {
 	static inline final BREAK_LENGTH = 80;
 	static inline final COMPACT = 3;
 	static inline final MAX_DEPTH = 2;
+	static inline final SINGLE_QUOTE = 0x27;
+	static inline final DOUBLE_QUOTE = 0x22;
+	static inline final BACKTICK = 0x60;
+	static inline final BACKSLASH = 0x5C;
 
 	static var indentation = 0;
 	static var currentDepth = 0;
@@ -33,7 +37,7 @@ class Console {
 	/** Node `util.inspect` of a nested value: quoted strings, arrays and plain objects laid out like Node. */
 	static function inspectValue(value:Dynamic, depth:Int):String {
 		if (Std.isOfType(value, String))
-			return "'" + value + "'";
+			return quote(value);
 		if (Std.isOfType(value, Array))
 			return RegExp.isMatch(value) ? inspectMatch(value, depth) : inspectArray(value, depth);
 		if (Reflect.isFunction(value))
@@ -43,6 +47,53 @@ class Console {
 		if (Std.isOfType(value, RegExp.MatchGroups))
 			return inspectDict(value, depth, "[Object: null prototype] ");
 		return Ts2hx.string(value);
+	}
+
+	/**
+	 * Node `strEscape`: single quotes, or double quotes or backticks when that
+	 * spares escaping `'`; control characters, `\\` and lone surrogates escaped.
+	 */
+	public static function quote(s:String):String {
+		var mark = SINGLE_QUOTE;
+		if (s.indexOf("'") >= 0) {
+			if (s.indexOf('"') < 0)
+				mark = DOUBLE_QUOTE;
+			else if (s.indexOf("`") < 0 && s.indexOf("${") < 0)
+				mark = BACKTICK;
+		}
+		var buf = new StringBuf();
+		var start = 0;
+		var i = 0;
+		while (i < s.length) {
+			var unit = StringTools.fastCodeAt(s, i);
+			if (JsString.isPairAt(s, i)) {
+				i += 2;
+				continue;
+			}
+			var escaped = unit == mark || unit == BACKSLASH || unit < 0x20 || (unit >= 0x7F && unit < 0xA0) ? escapeUnit(unit) : JsString.isSurrogate(unit) ? "\\u" + StringTools.hex(unit).toLowerCase() : null;
+			if (escaped != null) {
+				buf.add(s.substring(start, i));
+				buf.add(escaped);
+				start = i + 1;
+			}
+			i++;
+		}
+		buf.add(s.substring(start));
+		var quote = String.fromCharCode(mark);
+		return quote + buf.toString() + quote;
+	}
+
+	static function escapeUnit(unit:Int):String {
+		return switch (unit) {
+			case 0x08: "\\b";
+			case 0x09: "\\t";
+			case 0x0A: "\\n";
+			case 0x0C: "\\f";
+			case 0x0D: "\\r";
+			case 0x27: "\\'";
+			case 0x5C: "\\\\";
+			default: "\\x" + StringTools.hex(unit, 2);
+		}
 	}
 
 	static function isPlainObject(value:Dynamic):Bool {
@@ -188,6 +239,8 @@ class Console {
 	static function writeLine(line:String):Void {
 		#if js
 		js.Syntax.code("process.stdout.write({0})", line + "\n");
+		#elseif cpp
+		Sys.println(JsString.toWellFormed(line));
 		#else
 		Sys.println(line);
 		#end

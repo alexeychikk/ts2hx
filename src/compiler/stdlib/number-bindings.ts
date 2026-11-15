@@ -38,11 +38,12 @@ function mathFunction(
   };
 }
 
+/** `Math.max(…)`-style: plain arguments, or one spread array (the frontend folds any mix into one). */
 function variadicMath(name: string): CallBinding {
-  return ({ args, pos, spreadLast }) => ({
-    ...staticCall(RUNTIME.jsMath, name, args, FLOAT, pos),
-    spreadLast,
-  });
+  return ({ args, pos, spreadLast }) =>
+    spreadLast && args.length !== 1
+      ? undefined
+      : { ...staticCall(RUNTIME.jsMath, name, args, FLOAT, pos), spreadLast };
 }
 
 /** `x.name(args)` → `Num.name(x, args)` with at most `maxArgs` arguments. */

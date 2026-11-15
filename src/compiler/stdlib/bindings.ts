@@ -76,27 +76,30 @@ export type ValueBinding = (pos?: SourcePos) => HxExpr;
 export const CALL_BINDINGS: ReadonlyMap<string, CallBinding> = firstBound([
   [
     'Console.log',
-    ({ receiver, args, argTypes, pos }) =>
+    ({ receiver, args, argTypes, pos, spreadLast }) =>
       receiver?.libKey !== 'console'
         ? undefined
-        : staticCall(
-            RUNTIME.console,
-            'log',
-            args.map((arg, i) =>
-              argTypes[i].flags & ts.TypeFlags.NumberLike &&
-              (isFloatType(arg.type) || isIntType(arg.type))
-                ? staticCall(
-                    RUNTIME.console,
-                    'inspectNumber',
-                    [arg],
-                    STRING,
-                    pos,
-                  )
-                : arg,
+        : {
+            ...staticCall(
+              RUNTIME.console,
+              'log',
+              args.map((arg, i) =>
+                argTypes[i].flags & ts.TypeFlags.NumberLike &&
+                (isFloatType(arg.type) || isIntType(arg.type))
+                  ? staticCall(
+                      RUNTIME.console,
+                      'inspectNumber',
+                      [arg],
+                      STRING,
+                      pos,
+                    )
+                  : arg,
+              ),
+              VOID,
+              pos,
             ),
-            VOID,
-            pos,
-          ),
+            spreadLast,
+          },
   ],
   [
     'String',

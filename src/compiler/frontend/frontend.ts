@@ -5202,7 +5202,7 @@ export class ModuleFrontend {
         pos,
       };
     }
-    return this.spreadArrayLiteral(node, type, element, pos);
+    return this.spreadArrayLiteral(node, node.elements, type, element, pos);
   }
 
   /**
@@ -5211,7 +5211,8 @@ export class ModuleFrontend {
    * time when a spread's element type differs from the literal's.
    */
   private spreadArrayLiteral(
-    node: ts.ArrayLiteralExpression,
+    node: ts.Node,
+    elements: readonly ts.Expression[],
     type: HxType,
     element: HxType,
     pos: SourcePos,
@@ -5224,7 +5225,7 @@ export class ModuleFrontend {
         plain = [];
       }
     };
-    for (const e of node.elements) {
+    for (const e of elements) {
       if (!ts.isSpreadElement(e)) {
         plain.push(this.branch(this.expression(e), element));
         continue;
@@ -5757,15 +5758,11 @@ export class ModuleFrontend {
       return enumCall;
     }
     const callee = node.expression;
-    const spreadIndex = node.arguments.findIndex(ts.isSpreadElement);
-    const spreadLast =
-      spreadIndex === node.arguments.length - 1 && spreadIndex >= 0;
-    if (spreadIndex >= 0 && !spreadLast) {
-      return this.unsupported(node);
+    const callArgs = this.callArguments(node, pos);
+    if ('unsupported' in callArgs) {
+      return callArgs.unsupported;
     }
-    const args = node.arguments.map((a) =>
-      this.expression(ts.isSpreadElement(a) ? a.expression : a),
-    );
+    const { args, argTypes, spreadLast } = callArgs;
     const npm = this.npmReference(callee);
     if (npm) {
       return this.npmCall(node, npm, args, spreadLast, pos);
@@ -5784,7 +5781,7 @@ export class ModuleFrontend {
           ? this.receiver(callee.expression)
           : undefined,
         args,
-        argTypes: node.arguments.map((a) => this.typeOf(a)),
+        argTypes,
         pos,
         toJsString: this.toJsString,
         spreadLast,
@@ -5802,12 +5799,6 @@ export class ModuleFrontend {
         !this.chainValues.has(callee.expression);
     if (unguarded) {
       return this.unsupported(node);
-    }
-    if (spreadLast && !this.spreadsIntoRest(node, spreadIndex)) {
-      return this.unsupported(
-        node,
-        'spread into a non-rest parameter is not supported yet',
-      );
     }
     const signature = this.checker.getResolvedSignature(node);
     const ret = signature
@@ -5871,17 +5862,90 @@ export class ModuleFrontend {
     );
   }
 
-  private spreadsIntoRest(
+  /**
+   * A call's arguments. With spreads, the arguments that land in the rest
+   * parameter become one array spread last (`f(a, ...[b].concat(xs))`): Haxe
+   * spreads only a lone array into a rest parameter.
+   */
+  private callArguments(
     node: ts.CallExpression,
-    spreadIndex: number,
-  ): boolean {
-    const declaration = this.checker.getResolvedSignature(node)?.declaration;
-    if (!declaration || ts.isJSDocSignature(declaration)) return false;
-    const last = declaration.parameters[declaration.parameters.length - 1];
-    return (
-      last?.dotDotDotToken !== undefined &&
-      declaration.parameters.length - 1 === spreadIndex
-    );
+    pos: SourcePos,
+  ):
+    | { args: HxExpr[]; argTypes: ts.Type[]; spreadLast: boolean }
+    | { unsupported: HxExpr } {
+    const spreadIndex = node.arguments.findIndex(ts.isSpreadElement);
+    if (spreadIndex < 0) {
+      return {
+        args: node.arguments.map((a) => this.expression(a)),
+        argTypes: node.arguments.map((a) => this.typeOf(a)),
+        spreadLast: false,
+      };
+    }
+    const rest = this.restParameter(node);
+    if (!rest || spreadIndex < rest.index) {
+      return {
+        unsupported: this.unsupported(
+          node,
+          'spread into a non-rest parameter is not supported yet',
+        ),
+      };
+    }
+    const fixed = node.arguments.slice(0, rest.index);
+    const restArgs = node.arguments.slice(rest.index);
+    const args = fixed.map((a) => this.expression(a));
+    const restArray = this.restArray(node, restArgs, rest.type, pos);
+    return {
+      args: [...args, restArray],
+      argTypes: [...fixed.map((a) => this.typeOf(a)), rest.type],
+      spreadLast: true,
+    };
+  }
+
+  /** The resolved signature's rest parameter: its position and array type. */
+  private restParameter(
+    node: ts.CallExpression,
+  ): { index: number; type: ts.Type } | undefined {
+    const parameters = this.checker.getResolvedSignature(node)?.parameters;
+    const index = (parameters?.length ?? 0) - 1;
+    const parameter = parameters?.[index];
+    const declaration = parameter?.valueDeclaration;
+    return declaration &&
+      ts.isParameter(declaration) &&
+      declaration.dotDotDotToken
+      ? { index, type: this.checker.getTypeOfSymbol(parameter) }
+      : undefined;
+  }
+
+  /** The arguments passed to a rest parameter as one array: a lone spread array of the rest's element type as is. */
+  private restArray(
+    node: ts.CallExpression,
+    restArgs: readonly ts.Expression[],
+    restType: ts.Type,
+    pos: SourcePos,
+  ): HxExpr {
+    const type = this.types.map(restType);
+    const element = arrayElement(type);
+    const [only] = restArgs;
+    if (
+      restArgs.length === 1 &&
+      ts.isSpreadElement(only) &&
+      this.checker.isArrayLikeType(this.typeOf(only.expression))
+    ) {
+      const spread = this.expression(only.expression);
+      if (
+        sameType(arrayElement(spread.type), element) ||
+        !isArray(spread.type)
+      ) {
+        return spread;
+      }
+      return this.appendSegments(
+        [{ spread: true, value: spread, fresh: false }],
+        type,
+        element,
+        pos,
+      );
+    }
+    return this.spreadArrayLiteral(node, restArgs, type, element, pos);
   }
 
   /** The npm package or member an identifier or `namespace.member` access names. */

@@ -264,6 +264,35 @@ class JsString {
 		return result;
 	}
 
+	/** JS `String.prototype.toWellFormed`: every lone surrogate becomes U+FFFD. */
+	public static function toWellFormed(s:String):String {
+		var buf:Null<StringBuf> = null;
+		var start = 0;
+		var i = 0;
+		while (i < s.length) {
+			if (isPairAt(s, i)) {
+				i += 2;
+				continue;
+			}
+			if (isSurrogate(unitAt(s, i))) {
+				if (buf == null)
+					buf = new StringBuf();
+				buf.add(s.substring(start, i));
+				buf.add(fromUnit(0xFFFD));
+				start = i + 1;
+			}
+			i++;
+		}
+		if (buf == null)
+			return s;
+		buf.add(s.substring(start));
+		return buf.toString();
+	}
+
+	public static inline function isSurrogate(unit:Int):Bool {
+		return unit >= 0xD800 && unit <= 0xDFFF;
+	}
+
 	/** JS `String.fromCharCode`: each argument is truncated to a UTF-16 code unit. */
 	public static function fromCharCode(...codes:Float):String {
 		var buf = new StringBuf();
@@ -302,7 +331,7 @@ class JsString {
 		return StringTools.fastCodeAt(s, i);
 	}
 
-	static function isPairAt(s:String, i:Int):Bool {
+	public static function isPairAt(s:String, i:Int):Bool {
 		if (i + 1 >= s.length)
 			return false;
 		var high = unitAt(s, i);

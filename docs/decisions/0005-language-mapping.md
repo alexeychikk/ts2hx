@@ -66,7 +66,7 @@ all and must build on every target. "Runtime" means the `ts2hx` package
 | `this` in object-literal methods | a self local: `{ var self = null; self = {…}; self; }` | Arrows inside the methods see the same `this`. |
 | `function` expressions using a dynamic `this`, `call`/`apply`/`bind` with a foreign `this`, `arguments` | Degraded (`bind` keeps the receiver) / out of scope | |
 | default parameters | Haxe constant defaults, otherwise `if (p == null) p = …` | Explicit `null` triggers the default (degraded, see 0002). |
-| rest parameters, spread arguments | `...rest:T` (`haxe.Rest`). Spread into a fixed-arity call goes through `Reflect.callMethod` or an inlined unpack | |
+| rest parameters, spread arguments | `...rest:T` (`haxe.Rest`). The arguments that reach a rest parameter become one spread array (`f(a, ...[b].concat(xs))`), copied element by element when the element types differ, since Haxe spreads only a lone array into a rest. Spread into a fixed-arity call goes through `Reflect.callMethod` or an inlined unpack | A spread into a parameter before the rest is unsupported. |
 | decorators (legacy and TC39) | Out of scope: a TODO plus `@:ts.decorator("…")` metadata on the class or member. The decorator call is not executed | A warning per decorator. |
 
 ## Statements and expressions

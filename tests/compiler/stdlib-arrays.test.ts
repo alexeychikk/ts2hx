@@ -130,14 +130,14 @@ describe('stdlib: arrays', () => {
     );
   });
 
-  it('casts a spread pushed into a Dynamic-element array', async () => {
+  it('copies a spread pushed into a Dynamic-element array', async () => {
     const hx = await moduleOf([
       'const u: Array<number | string> = [1];',
       "const nums = [2]; const more: Array<number | string> = ['m'];",
       'u.push(...nums); u.unshift(...more);',
     ]);
-    expect(hx).toContain(
-      'ts2hx.JsArray.push(u, ...((cast nums : Array<Dynamic>)))',
+    expect(hx).toMatch(
+      /ts2hx\.JsArray\.push\(u, \.\.\.\(\{\s*final (__spread_\d+):Array<Dynamic> = \[\];\s*for \((__item_\d+) in nums\) \{\s*\1\.push\(\(cast \2 : Dynamic\)\);/,
     );
     expect(hx).toContain('ts2hx.JsArray.unshift(u, ...more)');
   });
